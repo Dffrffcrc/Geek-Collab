@@ -1,9 +1,13 @@
 // StorageExtension.js - AsyncStorage helpers (converted from UserDefaults+Extension.swift)
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestoreDb } from './FirebaseClient';
 
 const USERS_KEY = 'techcollab_users';
 const FORUM_STATE_KEY = 'techcollab_forum_state';
 const AUTH_SESSION_KEY = 'techcollab_auth_session_user_id';
+const FIREBASE_APP_STATE_COLLECTION = 'appState';
+const FIREBASE_FORUM_STATE_DOC = 'forumState';
 
 export const saveUser = async (user) => {
   const users = await getAllUsers();
@@ -73,10 +77,43 @@ export const deleteAllUsers = async () => {
 };
 
 export const saveForumState = async (forumState) => {
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    const forumStateRef = doc(
+      firestoreDb,
+      FIREBASE_APP_STATE_COLLECTION,
+      FIREBASE_FORUM_STATE_DOC
+    );
+    await setDoc(forumStateRef, {
+      ...forumState,
+      updatedAt: new Date().toISOString(),
+    });
+  }
   await AsyncStorage.setItem(FORUM_STATE_KEY, JSON.stringify(forumState));
 };
 
 export const getForumState = async () => {
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      const forumStateRef = doc(
+        firestoreDb,
+        FIREBASE_APP_STATE_COLLECTION,
+        FIREBASE_FORUM_STATE_DOC
+      );
+      const snapshot = await getDoc(forumStateRef);
+      if (snapshot.exists()) {
+        const remoteState = snapshot.data();
+        if (remoteState) {
+          await AsyncStorage.setItem(FORUM_STATE_KEY, JSON.stringify(remoteState));
+          return remoteState;
+        }
+      }
+    } catch {
+      // fall back to local AsyncStorage below
+    }
+  }
+
   const data = await AsyncStorage.getItem(FORUM_STATE_KEY);
   if (!data) return null;
   try {
@@ -87,5 +124,18 @@ export const getForumState = async () => {
 };
 
 export const clearForumState = async () => {
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      const forumStateRef = doc(
+        firestoreDb,
+        FIREBASE_APP_STATE_COLLECTION,
+        FIREBASE_FORUM_STATE_DOC
+      );
+      await deleteDoc(forumStateRef);
+    } catch {
+      // continue clearing local state even if remote clear fails
+    }
+  }
   await AsyncStorage.removeItem(FORUM_STATE_KEY);
 };

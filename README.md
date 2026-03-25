@@ -65,3 +65,35 @@ npx expo run:android
 - Includes role-based permissions (`admin`, `moderator`, `user`) and dictionary-based word filtering.
 - Forums can be short-term and auto-switch to read-only after expiry.
 - In-app notifications, report/delete tools, temporary mute, and admin ban controls are implemented in the feed/detail views.
+
+## Firebase (Posts/Forums Storage)
+
+This project now supports Firestore for storing forum/post state while keeping auth unchanged.
+
+### 1) Add Firebase Web SDK config to your environment
+
+Create a `.env` file in project root and add:
+
+```bash
+EXPO_PUBLIC_FIREBASE_API_KEY=your_api_key
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
+```
+
+### 2) Restart Expo
+
+```bash
+npm run start
+```
+
+### 3) Firestore collection used
+
+- `appState/forumState` document stores the forum/post state.
+
+### Behavior
+
+- If Firebase config is present, forum/post state is read from and written to Firestore.
+- AsyncStorage is still used as local cache/fallback so the app continues to run even without Firebase configured.
