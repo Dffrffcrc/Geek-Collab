@@ -1,7 +1,15 @@
 // AuthViewModel.js - Auth state & logic (converted from AuthViewModel.swift)
 import { useState, useEffect, useCallback } from 'react';
-import { createUser } from '../models/Models';
-import { saveUser, getAllUsers, userExists, getUser } from '../utils/StorageExtension';
+import { createUser } from './Models';
+import {
+  saveUser,
+  userExists,
+  getUser,
+  getUserById,
+  saveActiveSessionUserID,
+  getActiveSessionUserID,
+  clearActiveSessionUserID,
+} from './StorageExtension';
 import uuid from 'react-native-uuid';
 
 export const useAuthViewModel = () => {
@@ -9,20 +17,25 @@ export const useAuthViewModel = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [newUserNotice, setNewUserNotice] = useState('');
 
-  // On mount: restore first saved user session (mirrors Swift init)
+  // On mount: restore active saved session user
   useEffect(() => {
     const restoreSession = async () => {
-      const allUsers = await getAllUsers();
-      if (allUsers.length > 0) {
-        setCurrentUser(allUsers[0]);
+      const activeUserID = await getActiveSessionUserID();
+      if (!activeUserID) return;
+      const activeUser = await getUserById(activeUserID);
+      if (activeUser && !activeUser.isBanned) {
+        setCurrentUser(activeUser);
         setIsLoggedIn(true);
+      } else {
+        await clearActiveSessionUserID();
       }
     };
     restoreSession();
   }, []);
 
-  const signUp = useCallback(async (username, password, confirmPassword) => {
+  const signUp = useCallback(async (username, password, confirmPassword, role = 'user') => {
     if (!username || !password || !confirmPassword) {
       setAuthError('Please fill in all fields');
       return;
@@ -55,14 +68,17 @@ export const useAuthViewModel = () => {
       id: uuid.v4(),
       username,
       password,
+      role,
       bio: '',
       profileImage: null,
       createdAt: new Date().toISOString(),
     });
 
     await saveUser(newUser);
+    await saveActiveSessionUserID(newUser.id);
     setCurrentUser(newUser);
     setIsLoggedIn(true);
+    setNewUserNotice(`Welcome ${username}! Your role is ${role}.`);
     setIsLoading(false);
     setAuthError(null);
   }, []);
@@ -80,6 +96,12 @@ export const useAuthViewModel = () => {
 
     const user = await getUser(username, password);
     if (user) {
+      if (user.isBanned) {
+        setAuthError('Your account has been banned by an admin.');
+        setIsLoading(false);
+        return;
+      }
+      await saveActiveSessionUserID(user.id);
       setCurrentUser(user);
       setIsLoggedIn(true);
       setAuthError(null);
@@ -93,7 +115,23 @@ export const useAuthViewModel = () => {
     setCurrentUser(null);
     setIsLoggedIn(false);
     setAuthError(null);
+    clearActiveSessionUserID();
   }, []);
 
-  return { currentUser, isLoggedIn, authError, setAuthError, isLoading, signUp, login, logout };
+  const clearNewUserNotice = useCallback(() => {
+    setNewUserNotice('');
+  }, []);
+
+  return {
+    currentUser,
+    isLoggedIn,
+    authError,
+    setAuthError,
+    isLoading,
+    newUserNotice,
+    signUp,
+    login,
+    logout,
+    clearNewUserNotice,
+  };
 };

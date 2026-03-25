@@ -17,12 +17,13 @@ const AuthView = ({ authVM }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState('user');
 
   const submitForm = () => {
     if (isLoginMode) {
       authVM.login(username, password);
     } else {
-      authVM.signUp(username, password, confirmPassword);
+      authVM.signUp(username, password, confirmPassword, role);
     }
   };
 
@@ -31,6 +32,7 @@ const AuthView = ({ authVM }) => {
     authVM.setAuthError(null);
     setPassword('');
     setConfirmPassword('');
+    setRole('user');
   };
 
   return (
@@ -53,6 +55,7 @@ const AuthView = ({ authVM }) => {
             <TextInput
               style={styles.input}
               placeholder="Enter username"
+              placeholderTextColor="#B6BFCC"
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
@@ -66,6 +69,7 @@ const AuthView = ({ authVM }) => {
             <TextInput
               style={styles.input}
               placeholder="Enter password"
+              placeholderTextColor="#B6BFCC"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -80,11 +84,31 @@ const AuthView = ({ authVM }) => {
               <TextInput
                 style={styles.input}
                 placeholder="Confirm password"
+                placeholderTextColor="#B6BFCC"
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry
                 textContentType="none"
               />
+            </View>
+          )}
+
+          {!isLoginMode && (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Role</Text>
+              <View style={styles.roleRow}>
+                {['user', 'moderator', 'admin'].map((item) => (
+                  <TouchableOpacity
+                    key={item}
+                    style={[styles.roleChip, role === item && styles.roleChipActive]}
+                    onPress={() => setRole(item)}
+                  >
+                    <Text style={[styles.roleChipText, role === item && styles.roleChipTextActive]}>
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           )}
 
@@ -145,6 +169,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: '#F9FAFB',
   },
+  roleRow: { flexDirection: 'row', gap: 8 },
+  roleChip: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F9FAFB',
+  },
+  roleChipActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  roleChipText: { fontSize: 12, color: '#374151', textTransform: 'capitalize' },
+  roleChipTextActive: { color: '#1D4ED8', fontWeight: '600' },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -8,7 +8,7 @@ import { launchImageLibrary } from 'react-native-image-picker';
  * MediaPicker - allows user to select an image from the photo library.
  *
  * Props:
- *   onImageSelected: (base64: string) => void
+ *   onImageSelected: (image: {base64: string, width?: number, height?: number}) => void
  *   onCancel: () => void
  *   children: optional custom trigger element
  */
@@ -33,7 +33,11 @@ const MediaPicker = ({ onImageSelected, onCancel, children }) => {
         }
         const asset = response.assets?.[0];
         if (asset?.base64) {
-          onImageSelected(asset.base64);
+          onImageSelected({
+            base64: asset.base64,
+            width: asset.width,
+            height: asset.height,
+          });
         }
       }
     );

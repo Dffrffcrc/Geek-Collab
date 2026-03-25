@@ -1,6 +1,6 @@
 // App.js - Entry point (converted from ForumAppApp.swift)
 import React from 'react';
-import ContentView from './src/views/ContentView';
+import ContentView from './ContentView';
 
 export default function App() {
   return <ContentView />;

@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  Image,
   StyleSheet,
   SafeAreaView,
 } from 'react-native';
@@ -17,15 +18,25 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
   const [content, setContent] = useState('');
   const [tags, setTags] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedForumID, setSelectedForumID] = useState(viewModel.selectedForumID);
+  const permissions = viewModel.getPermissionSummary(currentUser);
 
   const postDiscussion = () => {
-    if (!title.trim() || !content.trim()) return;
+    if (!title.trim() || !content.trim() || !permissions.canPostOrComment) return;
     const tagArray = tags
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
 
-    viewModel.createDiscussion(title, description, content, selectedImage, tagArray, currentUser);
+    viewModel.createDiscussion(
+      title,
+      description,
+      content,
+      selectedImage,
+      tagArray,
+      currentUser,
+      selectedForumID
+    );
     onDismiss();
   };
 
@@ -41,11 +52,40 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.forumMetaBox}>
+          <Text style={styles.forumMetaText}>
+            {viewModel.activeForum?.title || 'No active forum'} · {viewModel.forumIsReadOnly ? 'Read-only' : 'Open'} · {viewModel.forumCountdown}
+          </Text>
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Post to forum</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.forumSelectRow}>
+              {viewModel.forums.map((forum) => {
+                const isSelected = selectedForumID === forum.id;
+                return (
+                  <TouchableOpacity
+                    key={forum.id}
+                    style={[styles.forumSelectChip, isSelected && styles.forumSelectChipActive]}
+                    onPress={() => setSelectedForumID(forum.id)}
+                  >
+                    <Text style={[styles.forumSelectText, isSelected && styles.forumSelectTextActive]}>
+                      {forum.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Title</Text>
           <TextInput
             style={styles.input}
             placeholder="Title"
+            placeholderTextColor="#B6BFCC"
             value={title}
             onChangeText={setTitle}
           />
@@ -56,6 +96,7 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
           <TextInput
             style={styles.input}
             placeholder="Brief description"
+            placeholderTextColor="#B6BFCC"
             value={description}
             onChangeText={setDescription}
           />
@@ -66,6 +107,7 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
           <TextInput
             style={styles.textArea}
             placeholder="Write your discussion content here..."
+            placeholderTextColor="#B6BFCC"
             value={content}
             onChangeText={setContent}
             multiline
@@ -78,6 +120,7 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
           <TextInput
             style={styles.input}
             placeholder="e.g. SwiftUI, React, AI"
+            placeholderTextColor="#B6BFCC"
             value={tags}
             onChangeText={setTags}
             autoCapitalize="none"
@@ -87,11 +130,18 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
         {/* Image Picker */}
         <View style={styles.fieldGroup}>
           <MediaPicker
-            onImageSelected={(base64) => setSelectedImage(base64)}
+            onImageSelected={(image) => setSelectedImage(image)}
             onCancel={() => {}}
           />
           {selectedImage && (
-            <Text style={styles.imageAdded}>✓ Image added</Text>
+            <>
+              <Text style={styles.imageAdded}>✓ Image added</Text>
+              <Image
+                source={{ uri: `data:image/jpeg;base64,${selectedImage.base64}` }}
+                style={styles.imagePreview}
+                resizeMode="contain"
+              />
+            </>
           )}
         </View>
       </ScrollView>
@@ -101,12 +151,14 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
         <TouchableOpacity
           style={[
             styles.postButton,
-            (!title.trim() || !content.trim()) && styles.postButtonDisabled,
+            (!title.trim() || !content.trim() || !permissions.canPostOrComment) && styles.postButtonDisabled,
           ]}
           onPress={postDiscussion}
-          disabled={!title.trim() || !content.trim()}
+          disabled={!title.trim() || !content.trim() || !permissions.canPostOrComment}
         >
-          <Text style={styles.postButtonText}>Post</Text>
+          <Text style={styles.postButtonText}>
+            {permissions.canPostOrComment ? 'Post' : 'Posting disabled'}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -128,6 +180,27 @@ const styles = StyleSheet.create({
   navTitle: { fontWeight: '600', fontSize: 16 },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 16 },
+  forumMetaBox: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    padding: 10,
+  },
+  forumMetaText: { color: '#1D4ED8', fontSize: 12, fontWeight: '600' },
+  forumSelectRow: { flexDirection: 'row', gap: 8 },
+  forumSelectChip: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F9FAFB',
+  },
+  forumSelectChipActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  forumSelectText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  forumSelectTextActive: { color: '#1D4ED8' },
   fieldGroup: { gap: 6 },
   label: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
   input: {
@@ -148,6 +221,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   imageAdded: { fontSize: 12, color: '#16A34A', marginTop: 4 },
+  imagePreview: {
+    width: '100%',
+    height: 220,
+    borderRadius: 10,
+    backgroundColor: '#F3F4F6',
+  },
   footer: { padding: 16, borderTopWidth: 1, borderTopColor: '#E5E7EB' },
   postButton: {
     backgroundColor: '#2563EB',

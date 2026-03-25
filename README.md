@@ -8,21 +8,17 @@ Converted from SwiftUI (iOS-only) to React Native (iOS + Android).
 TechCollab/
 ├── App.js                          # Entry point (ForumAppApp.swift)
 ├── package.json
-└── src/
-    ├── models/
-    │   └── Models.js               # Data types (Models.swift)
-    ├── viewmodels/
-    │   ├── AuthViewModel.js        # Auth logic (AuthViewModel.swift)
-    │   └── DiscussionViewModel.js  # Discussion logic (DiscussionViewModel.swift)
-    ├── views/
-    │   ├── ContentView.js          # Root view (ContentView.swift)
-    │   ├── AuthView.js             # Login / Sign up screen (AuthView.swift)
-    │   ├── ForumHomeView.js        # Home feed + DiscussionCard (ForumHomeView.swift)
-    │   ├── DiscussionDetailView.js # Full discussion + comments (DiscussionDetailView.swift)
-    │   ├── NewDiscussionView.js    # Create post sheet (NewDiscussionView.swift)
-    │   └── MediaPicker.js         # Image picker wrapper (MediaPicker.swift)
-    └── utils/
-        └── StorageExtension.js    # AsyncStorage helpers (UserDefaults+Extension.swift)
+├── Models.js                       # Data types (users/discussions/forums)
+├── AuthViewModel.js                # Auth logic + role-aware signup/login
+├── DiscussionViewModel.js          # Forum lifecycle, moderation, notifications
+├── ContentView.js                  # Root view
+├── AuthView.js                     # Login / Sign up screen
+├── ForumHomeView.js                # Home feed + forum controls + moderation UI
+├── DiscussionDetailView.js         # Full discussion + comments
+├── NewDiscussionView.js            # Create post sheet
+├── FAQView.js                      # FAQ section
+├── MediaPicker.js                  # Image picker wrapper
+└── StorageExtension.js             # AsyncStorage helpers
 ```
 
 ## Setup
@@ -66,5 +62,6 @@ npx expo run:android
 
 - **Passwords** are stored in plain text in AsyncStorage (mirrors original Swift). Add hashing (e.g. `expo-crypto`) for production.
 - **Images** are stored as base64 strings instead of `Data` blobs.
-- The mock discussions in `DiscussionViewModel.js` exactly mirror the original Swift mock data.
-- The logout button is integrated into `ForumHomeView`'s header (top-right), replacing the ZStack overlay approach in `ContentView.swift`.
+- Includes role-based permissions (`admin`, `moderator`, `user`) and dictionary-based word filtering.
+- Forums can be short-term and auto-switch to read-only after expiry.
+- In-app notifications, report/delete tools, temporary mute, and admin ban controls are implemented in the feed/detail views.

@@ -1,7 +1,7 @@
 // ContentView.js (converted from ContentView.swift)
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { useAuthViewModel } from '../viewmodels/AuthViewModel';
+import { useAuthViewModel } from './AuthViewModel';
 import AuthView from './AuthView';
 import ForumHomeView from './ForumHomeView';
 
@@ -11,7 +11,12 @@ const ContentView = () => {
   return (
     <View style={styles.container}>
       {authVM.isLoggedIn && authVM.currentUser ? (
-        <ForumHomeView currentUser={authVM.currentUser} onLogout={authVM.logout} />
+        <ForumHomeView
+          currentUser={authVM.currentUser}
+          onLogout={authVM.logout}
+          newUserNotice={authVM.newUserNotice}
+          clearNewUserNotice={authVM.clearNewUserNotice}
+        />
       ) : (
         <AuthView authVM={authVM} />
       )}
