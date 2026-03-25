@@ -7,6 +7,7 @@ import uuid from 'react-native-uuid';
 
 const FILTERS = ['Latest', 'Popular', 'Trending', 'Reported'];
 const DEFAULT_DICTIONARY_FILTER = ['spam', 'scam', 'hate'];
+const DEFAULT_FORUM_ID = 'forum-general-discussion';
 const SAMPLE_USER_IDS = {
   varun: 'sample-user-varun',
   ekansh_mishra: 'sample-user-ekansh_mishra',
@@ -50,7 +51,7 @@ const sanitizeText = (text, blockedWords) => {
   return { sanitized, blockedCount };
 };
 
-const loadMockDiscussions = () => [
+const loadMockDiscussions = (forumID = DEFAULT_FORUM_ID) => [
   createDiscussion({
     id: uuid.v4(),
     authorID: SAMPLE_USER_IDS.varun,
@@ -70,6 +71,7 @@ const loadMockDiscussions = () => [
       }),
     ],
     likes: 67,
+    forumID,
     createdAt: new Date(Date.now() - 7_200_000).toISOString(),
     updatedAt: new Date(Date.now() - 1_800_000).toISOString(),
   }),
@@ -99,6 +101,7 @@ const loadMockDiscussions = () => [
       }),
     ],
     likes: 41,
+    forumID,
     createdAt: new Date(Date.now() - 3_600_000).toISOString(),
     updatedAt: new Date(Date.now() - 3_600_000).toISOString(),
   }),
@@ -112,6 +115,7 @@ const loadMockDiscussions = () => [
     tags: ['AI'],
     comments: [],
     likes: 3,
+    forumID,
     createdAt: new Date(Date.now() - 10_800_000).toISOString(),
     updatedAt: new Date(Date.now() - 900_000).toISOString(),
   }),
@@ -129,7 +133,7 @@ export const useDiscussionViewModel = () => {
   const [clockTick, setClockTick] = useState(Date.now());
   const [forums, setForums] = useState(() => {
     const initialForum = createForumConfig({
-      id: uuid.v4(),
+      id: DEFAULT_FORUM_ID,
       title: 'General Discussion',
       createdByID: 'system',
       createdByName: 'system',
@@ -655,9 +659,10 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('Only moderators/admins can restore posts.', 'danger');
       return;
     }
-    setDiscussions(loadMockDiscussions());
+    const targetForumID = selectedForum?.id || forums[0]?.id || DEFAULT_FORUM_ID;
+    setDiscussions(loadMockDiscussions(targetForumID));
     enqueueNotification('Sample posts restored.');
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, selectedForum?.id, forums]);
 
   const getPostsByAuthor = useCallback((authorID) => {
     return discussions
@@ -669,21 +674,33 @@ export const useDiscussionViewModel = () => {
     return discussions.filter((discussion) => discussion.forumID === forumID).length;
   }, [discussions]);
 
-  const deletePostsByAuthor = useCallback((authorID, actor) => {
+  const deletePostsByAuthor = useCallback((authorID, actor, options = {}) => {
+    const normalizeName = (name) => String(name || '').trim().toLowerCase();
+    const { authorName = '', additionalAuthorIDs = [] } = options;
     const permissions = getPermissionSummary(actor);
     if (!permissions.canModerate) {
       enqueueNotification('Only moderators/admins can delete user posts.', 'danger');
-      return;
+      return false;
     }
+    const targetIDs = new Set([authorID, ...additionalAuthorIDs].filter(Boolean));
+    const normalizedAuthorName = normalizeName(authorName);
+
     setDiscussions((prev) => {
-      const removedCount = prev.filter((discussion) => discussion.authorID === authorID).length;
+      const matchesTarget = (discussion) => {
+        if (targetIDs.has(discussion.authorID)) return true;
+        if (!normalizedAuthorName) return false;
+        return normalizeName(discussion.authorName) === normalizedAuthorName;
+      };
+
+      const removedCount = prev.filter(matchesTarget).length;
       enqueueNotification(
         removedCount > 0
           ? `${removedCount} post(s) removed for this user.`
           : 'No posts found for this user.'
       );
-      return prev.filter((discussion) => discussion.authorID !== authorID);
+      return prev.filter((discussion) => !matchesTarget(discussion));
     });
+    return true;
   }, [enqueueNotification, getPermissionSummary]);
 
   const closeForum = useCallback((forumID, actor) => {

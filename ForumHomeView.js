@@ -329,13 +329,16 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
 
       const existing = mergedByName.get(key);
       if (!existing) {
-        mergedByName.set(key, { ...entry });
+        mergedByName.set(key, { ...entry, allIDs: [entry.id] });
         return;
       }
 
       existing.posts += entry.posts;
       existing.isBanned = Boolean(existing.isBanned || entry.isBanned);
       existing.isMuted = Boolean(existing.isMuted || entry.isMuted);
+      if (!existing.allIDs.includes(entry.id)) {
+        existing.allIDs.push(entry.id);
+      }
 
       const existingIsRegistered = registeredIdSet.has(existing.id);
       const incomingIsRegistered = registeredIdSet.has(entry.id);
@@ -691,6 +694,12 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                 </View>
                 <Text style={styles.panelMeta}>{userItem.posts} post(s)</Text>
                 <View style={styles.panelActionRow}>
+                  {(() => {
+                    const targetUserIDs = (userItem.allIDs && userItem.allIDs.length > 0)
+                      ? userItem.allIDs
+                      : [userItem.id];
+                    return (
+                      <>
                   <TouchableOpacity
                     style={styles.panelButton}
                     onPress={() => openProfile(userItem.id, userItem.name)}
@@ -703,7 +712,10 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                       confirmAction(
                         'Delete User Posts',
                         'Delete all posts by this user?',
-                        () => discussionVM.deletePostsByAuthor(userItem.id, currentUser)
+                        () => discussionVM.deletePostsByAuthor(userItem.id, currentUser, {
+                          authorName: userItem.name,
+                          additionalAuthorIDs: targetUserIDs,
+                        })
                       )
                     }
                   >
@@ -717,7 +729,12 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                         confirmAction(
                           'Unmute User',
                           'Remove mute for this user?',
-                          () => discussionVM.unmuteUser(userItem.id, currentUser)
+                          async () => {
+                            const results = await Promise.all(
+                              targetUserIDs.map((userID) => discussionVM.unmuteUser(userID, currentUser))
+                            );
+                            return results.some(Boolean);
+                          }
                         )
                       }
                     >
@@ -732,7 +749,12 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                         confirmAction(
                           'Ban User',
                           'Ban this user and remove all their posts?',
-                          () => discussionVM.banUser(userItem.id, currentUser)
+                          async () => {
+                            const results = await Promise.all(
+                              targetUserIDs.map((userID) => discussionVM.banUser(userID, currentUser))
+                            );
+                            return results.some(Boolean);
+                          }
                         )
                       }
                     >
@@ -747,13 +769,21 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                         confirmAction(
                           'Unban User',
                           'Remove ban for this user?',
-                          () => discussionVM.unbanUser(userItem.id, currentUser)
+                          async () => {
+                            const results = await Promise.all(
+                              targetUserIDs.map((userID) => discussionVM.unbanUser(userID, currentUser))
+                            );
+                            return results.some(Boolean);
+                          }
                         )
                       }
                     >
                       <Text style={styles.panelButtonText}>Unban User</Text>
                     </TouchableOpacity>
                   )}
+                      </>
+                    );
+                  })()}
                 </View>
               </View>
             ))}
