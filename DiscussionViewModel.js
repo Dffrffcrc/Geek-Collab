@@ -122,7 +122,7 @@ const loadMockDiscussions = (forumID = DEFAULT_FORUM_ID) => [
 ];
 
 export const useDiscussionViewModel = () => {
-  const [discussions, setDiscussions] = useState(loadMockDiscussions);
+  const [discussions, setDiscussions] = useState([]);
   const [selectedFilter, setSelectedFilter] = useState('Latest');
   const [notifications, setNotifications] = useState([]);
   const [knownUsers, setKnownUsers] = useState({});
@@ -131,16 +131,7 @@ export const useDiscussionViewModel = () => {
   const [bannedUsers, setBannedUsers] = useState({});
   const [blockedWords, setBlockedWords] = useState(DEFAULT_DICTIONARY_FILTER);
   const [clockTick, setClockTick] = useState(Date.now());
-  const [forums, setForums] = useState(() => {
-    const initialForum = createForumConfig({
-      id: DEFAULT_FORUM_ID,
-      title: 'General Discussion',
-      createdByID: 'system',
-      createdByName: 'system',
-      expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-    });
-    return [initialForum];
-  });
+  const [forums, setForums] = useState([]);
   const [selectedForumID, setSelectedForumID] = useState(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [toast, setToast] = useState(null);
@@ -148,8 +139,9 @@ export const useDiscussionViewModel = () => {
 
   const selectedForum = useMemo(() => {
     if (!forums.length) return null;
+    if (!selectedForumID) return null;
     const match = forums.find((forum) => forum.id === selectedForumID);
-    return match || forums[0];
+    return match || null;
   }, [forums, selectedForumID]);
 
   const pastForums = useMemo(
@@ -473,31 +465,74 @@ export const useDiscussionViewModel = () => {
     }
   }, [enqueueNotification, getPermissionSummary, blockedWords]);
 
-  const likeDiscussion = useCallback((discussionID) => {
+  const likeDiscussion = useCallback((discussionID, likerID) => {
+    if (!likerID) {
+      enqueueNotification('You must be logged in to like posts.', 'danger');
+      return false;
+    }
+
+    let didLike = false;
     setDiscussions((prev) =>
-      prev.map((d) => (d.id === discussionID ? { ...d, likes: d.likes + 1 } : d))
+      prev.map((discussion) => {
+        if (discussion.id !== discussionID) return discussion;
+        const existingLikesBy = Array.isArray(discussion.likesBy) ? discussion.likesBy : [];
+        if (existingLikesBy.includes(likerID)) {
+          return discussion;
+        }
+        didLike = true;
+        return {
+          ...discussion,
+          likes: discussion.likes + 1,
+          likesBy: [...existingLikesBy, likerID],
+        };
+      })
     );
-  }, []);
+
+    if (!didLike) {
+      enqueueNotification('You already liked this post.');
+      return false;
+    }
+    return true;
+  }, [enqueueNotification]);
 
   const filterDiscussions = useCallback((filter) => {
     setSelectedFilter(filter);
   }, []);
 
   const reportDiscussion = useCallback((discussionID, reporterID, reason = 'Inappropriate content') => {
+    if (!reporterID) {
+      enqueueNotification('You must be logged in to report posts.', 'danger');
+      return false;
+    }
+
+    let didReport = false;
     setDiscussions((prev) =>
       prev.map((discussion) =>
         discussion.id === discussionID
-          ? {
-            ...discussion,
-            reports: [
-              ...discussion.reports,
-              { reporterID, reason, createdAt: nowIso() },
-            ],
-          }
+          ? (() => {
+            const reports = Array.isArray(discussion.reports) ? discussion.reports : [];
+            const alreadyReported = reports.some((report) => report.reporterID === reporterID);
+            if (alreadyReported) {
+              return discussion;
+            }
+            didReport = true;
+            return {
+              ...discussion,
+              reports: [
+                ...reports,
+                { reporterID, reason, createdAt: nowIso() },
+              ],
+            };
+          })()
           : discussion
       )
     );
+    if (!didReport) {
+      enqueueNotification('You already reported this post.');
+      return false;
+    }
     enqueueNotification('Post reported to moderators.', 'report');
+    return true;
   }, [enqueueNotification]);
 
   const deleteDiscussion = useCallback((discussionID, actor) => {
@@ -802,6 +837,7 @@ export const useDiscussionViewModel = () => {
     selectedForumID: selectedForum?.id || null,
     forumIsReadOnly,
     forumCountdown,
+    isHydrated,
     notifications,
     knownUsers,
     postHistoryCounts,

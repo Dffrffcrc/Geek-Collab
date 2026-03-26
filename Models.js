@@ -65,6 +65,7 @@ export const createComment = ({ id, authorID, authorName, text, createdAt }) => 
  * @property {DiscussionComment[]} comments
  * @property {{reporterID: string, reason: string, createdAt: string}[]} reports
  * @property {number} likes
+ * @property {string[]} likesBy
  * @property {string} createdAt - ISO date string
  * @property {string} updatedAt - ISO date string
  */
@@ -82,6 +83,7 @@ export const createDiscussion = ({
   comments = [],
   reports = [],
   likes = 0,
+  likesBy = [],
   createdAt,
   updatedAt,
 }) => ({
@@ -98,6 +100,7 @@ export const createDiscussion = ({
   comments,
   reports,
   likes,
+  likesBy,
   createdAt: createdAt || new Date().toISOString(),
   updatedAt: updatedAt || new Date().toISOString(),
 });

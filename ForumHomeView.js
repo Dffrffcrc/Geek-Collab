@@ -14,6 +14,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useDiscussionViewModel } from './DiscussionViewModel';
 import DiscussionDetailView from './DiscussionDetailView';
 import NewDiscussionView from './NewDiscussionView';
@@ -42,7 +43,7 @@ const relativeDate = (dateStr) => {
   return `${Math.floor(interval / 86400)}d ago`;
 };
 
-const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, confirmAction }) => {
+const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, confirmAction, openMenu }) => {
   const [showDetail, setShowDetail] = useState(false);
   const permissions = viewModel.getPermissionSummary(currentUser);
 
@@ -50,16 +51,27 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
     <>
       <TouchableOpacity style={styles.card} onPress={() => setShowDetail(true)} activeOpacity={0.85}>
         <View style={styles.cardAuthorRow}>
-          <View style={styles.cardAuthorAvatar}>
-            <Text style={styles.cardAuthorAvatarText}>
-              {discussion.authorName[0].toUpperCase()}
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={styles.cardAuthorAvatar}>
+              <Text style={styles.cardAuthorAvatarText}>
+                {discussion.authorName[0].toUpperCase()}
+              </Text>
+            </View>
+            <View>
+              <TouchableOpacity onPress={() => onOpenProfile(discussion.authorID, discussion.authorName)}>
+                <Text style={styles.cardAuthorName}>{discussion.authorName}</Text>
+              </TouchableOpacity>
+              <Text style={styles.cardAuthorDate}>{relativeDate(discussion.createdAt)}</Text>
+            </View>
           </View>
-          <View>
-            <TouchableOpacity onPress={() => onOpenProfile(discussion.authorID, discussion.authorName)}>
-              <Text style={styles.cardAuthorName}>{discussion.authorName}</Text>
+
+          <View style={styles.moreMenuWrapper}>
+            <TouchableOpacity
+              style={styles.moreButton}
+              onPressIn={(e) => openMenu(discussion, e.nativeEvent.pageX, e.nativeEvent.pageY)}
+            >
+              <Ionicons name="ellipsis-horizontal" size={16} color="#374151" />
             </TouchableOpacity>
-            <Text style={styles.cardAuthorDate}>{relativeDate(discussion.createdAt)}</Text>
           </View>
         </View>
 
@@ -93,25 +105,24 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
         <View style={styles.cardActions}>
           <TouchableOpacity
             style={styles.actionItem}
-            onPress={() => viewModel.likeDiscussion(discussion.id)}
+            onPress={() => viewModel.likeDiscussion(discussion.id, currentUser.id)}
           >
-            <Text style={styles.heartIcon}>❤️</Text>
+            <Ionicons
+              name={(discussion.likesBy || []).includes(currentUser.id) ? 'heart' : 'heart-outline'}
+              size={16}
+              color={(discussion.likesBy || []).includes(currentUser.id) ? '#EF4444' : '#6B7280'}
+            />
             <Text style={styles.actionText}>{discussion.likes}</Text>
           </TouchableOpacity>
 
           <View style={styles.actionItem}>
-            <Text style={styles.commentIcon}>💬</Text>
+            <Ionicons name="chatbubble-outline" size={15} color="#6B7280" />
             <Text style={styles.actionText}>{discussion.comments.length}</Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.actionItem}
-            onPress={() => viewModel.reportDiscussion(discussion.id, currentUser.id, 'User report')}
-          >
-            <Text style={styles.actionText}>Report ({discussion.reports.length})</Text>
-          </TouchableOpacity>
-
           <View style={{ flex: 1 }} />
+
+          {/* more menu moved to header */}
 
           {permissions.canModerate && (
             <TouchableOpacity
@@ -183,8 +194,10 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const [forumTitle, setForumTitle] = useState('');
   const [forumDuration, setForumDuration] = useState('30');
   const [filterWordInput, setFilterWordInput] = useState('');
+  const [showPastForumPosts, setShowPastForumPosts] = useState(false);
   const [registeredUsers, setRegisteredUsers] = useState([]);
   const toastOpacity = useRef(new Animated.Value(0)).current;
+  const [overlayMenu, setOverlayMenu] = useState({ visible: false, x: 0, y: 0, discussion: null });
 
   const permissions = useMemo(() => discussionVM.getPermissionSummary(currentUser), [discussionVM, currentUser]);
 
@@ -243,6 +256,18 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const openProfile = (userID, userName) => {
     setSelectedProfile({ id: userID, name: userName });
     setShowProfile(true);
+  };
+
+  const goHome = () => {
+    setShowPastForumPosts(false);
+    setShowPastForums(false);
+    setShowModPanel(false);
+    setShowFAQ(false);
+    if (discussionVM.openForums.length > 0) {
+      discussionVM.selectForum(discussionVM.openForums[0].id);
+    } else {
+      discussionVM.selectForum(null);
+    }
   };
 
   const userSummaries = useMemo(() => {
@@ -395,6 +420,8 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
     ]);
   };
 
+  const shouldShowNoForumsState = discussionVM.openForums.length === 0 && !showPastForumPosts;
+
   return (
     <SafeAreaView style={styles.container}>
       {discussionVM.toast?.message ? (
@@ -411,7 +438,9 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
 
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>TechCollab</Text>
+          <TouchableOpacity onPress={goHome}>
+            <Text style={styles.headerTitle}>GeekCollab</Text>
+          </TouchableOpacity>
           <Text style={styles.headerUsername}>@{currentUser.username} · {currentUser.role}</Text>
         </View>
         <View style={styles.headerActions}>
@@ -431,7 +460,12 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
 
       <View style={styles.forumBanner}>
         <View>
-          <Text style={styles.forumTitle}>{discussionVM.activeForum?.title || 'No Active Forum'}</Text>
+          <Text style={styles.forumTitle}>You are currently viewing:</Text>
+          <Text style={styles.forumTitleValue}>
+            {shouldShowNoForumsState
+              ? 'No forum selected'
+              : discussionVM.activeForum?.title || 'No forum selected'}
+          </Text>
         </View>
         <View style={styles.forumBannerActions}>
           <TouchableOpacity style={styles.secondaryForumButton} onPress={() => setShowPastForums(true)}>
@@ -445,7 +479,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
         </View>
       </View>
 
-      {discussionVM.openForums.length === 0 ? (
+      {shouldShowNoForumsState ? (
         <View style={styles.noForumsContent}>
           <Text style={styles.noForumsContentText}>No forums are currently open</Text>
           <TouchableOpacity onPress={() => setShowPastForums(true)}>
@@ -463,11 +497,36 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
               currentUser={currentUser}
               onOpenProfile={openProfile}
               confirmAction={confirmAction}
+              openMenu={(discussion, x, y) => {
+                setOverlayMenu({ visible: true, x, y, discussion });
+              }}
             />
           )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
+      )}
+
+      {overlayMenu.visible && (
+        <View style={styles.overlayContainer} pointerEvents="box-none">
+          <TouchableOpacity style={styles.overlayBackdrop} onPress={() => setOverlayMenu({ visible: false })} />
+          <View
+            style={[
+              styles.moreMenu,
+              { position: 'absolute', left: Math.max(8, overlayMenu.x - 160), top: overlayMenu.y + 8 },
+            ]}
+          >
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => {
+                discussionVM.reportDiscussion(overlayMenu.discussion.id, currentUser.id, 'User report');
+                setOverlayMenu({ visible: false });
+              }}
+            >
+              <Text style={styles.moreMenuItemText}>Report Post ({overlayMenu.discussion.reports.length})</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
 
       <TouchableOpacity
@@ -513,6 +572,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                       style={styles.panelButton}
                       onPress={() => {
                         discussionVM.selectForum(forum.id);
+                        setShowPastForumPosts(true);
                         setShowPastForums(false);
                       }}
                     >
@@ -528,8 +588,8 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                     )}
                   </View>
                 </View>
-              ))
-            )}
+                ))
+              )}
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -624,7 +684,10 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                 <View style={styles.panelActionRow}>
                   <TouchableOpacity
                     style={styles.panelButton}
-                    onPress={() => discussionVM.selectForum(forum.id)}
+                    onPress={() => {
+                      discussionVM.selectForum(forum.id);
+                      setShowPastForumPosts(true);
+                    }}
                   >
                     <Text style={styles.panelButtonText}>View Forum</Text>
                   </TouchableOpacity>
@@ -903,7 +966,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  forumTitle: { fontWeight: '700', color: '#111827' },
+  forumTitle: { fontWeight: '600', color: '#6B7280', fontSize: 12 },
+  forumTitleValue: { fontWeight: '700', color: '#111827', fontSize: 15, marginTop: 2 },
   noOpenForumsLink: { color: '#2563EB', fontSize: 18, fontWeight: '700', marginTop: 10 },
   noForumsContent: {
     flex: 1,
@@ -940,13 +1004,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     gap: 10,
+    position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 2,
   },
-  cardAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  cardAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'space-between' },
   cardAuthorAvatar: {
     width: 36,
     height: 36,
@@ -988,9 +1053,44 @@ const styles = StyleSheet.create({
   tagText: { fontSize: 11, color: '#2563EB' },
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
   actionItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  heartIcon: { fontSize: 14 },
-  commentIcon: { fontSize: 14 },
   actionText: { fontSize: 12, color: '#6B7280' },
+  moreMenuWrapper: { position: 'absolute', top: 12, right: 12, zIndex: 50, elevation: 8 },
+  moreButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  moreMenu: {
+    position: 'absolute',
+    top: 40,
+    right: 0,
+    minWidth: 160,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingVertical: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 120,
+  },
+  overlayContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 },
+  overlayBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  moreMenuItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  moreMenuItemText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '600',
+  },
   viewLink: { fontSize: 12, color: '#2563EB', fontWeight: '500' },
   deleteLink: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
   moderationRow: { flexDirection: 'row', gap: 8, marginTop: 4 },

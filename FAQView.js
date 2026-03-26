@@ -11,14 +11,6 @@ const FAQS = [
     answer: 'The forum automatically switches to read-only mode. Users can still view content but cannot post/comment.',
   },
   {
-    question: 'What can Moderators do?',
-    answer: 'Moderators can delete posts, report posts, and temporarily mute users. They cannot create forums.',
-  },
-  {
-    question: 'What can Admins do?',
-    answer: 'Admins can create forums, delete posts, temporarily mute users, and ban users.',
-  },
-  {
     question: 'How does the word filter work?',
     answer: 'A built-in dictionary filters blocked words in posts/comments and replaces them automatically.',
   },

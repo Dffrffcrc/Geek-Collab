@@ -43,7 +43,7 @@ const AuthView = ({ authVM }) => {
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.appTitle}>TechCollab</Text>
+          <Text style={styles.appTitle}>GeekCollab</Text>
           <Text style={styles.appSubtitle}>Connect. Share. Build Together</Text>
         </View>
 
