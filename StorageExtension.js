@@ -8,21 +8,78 @@ const FORUM_STATE_KEY = 'techcollab_forum_state';
 const AUTH_SESSION_KEY = 'techcollab_auth_session_user_id';
 const FIREBASE_APP_STATE_COLLECTION = 'appState';
 const FIREBASE_FORUM_STATE_DOC = 'forumState';
+const FIREBASE_USERS_DOC = 'users';
+
+const parseStoredUsers = (data) => {
+  if (!data) return [];
+  try {
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const getRemoteUsers = async (firestoreDb) => {
+  const usersRef = doc(
+    firestoreDb,
+    FIREBASE_APP_STATE_COLLECTION,
+    FIREBASE_USERS_DOC
+  );
+  const snapshot = await getDoc(usersRef);
+  if (!snapshot.exists()) return [];
+  const users = snapshot.data()?.users;
+  return Array.isArray(users) ? users : [];
+};
+
+const saveRemoteUsers = async (firestoreDb, users) => {
+  const usersRef = doc(
+    firestoreDb,
+    FIREBASE_APP_STATE_COLLECTION,
+    FIREBASE_USERS_DOC
+  );
+  await setDoc(usersRef, {
+    users,
+    updatedAt: new Date().toISOString(),
+  });
+};
 
 export const saveUser = async (user) => {
   const users = await getAllUsers();
   users.push(user);
   await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
+
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      await saveRemoteUsers(firestoreDb, users);
+    } catch {
+      // keep local write even if remote fails
+    }
+  }
 };
 
 export const getAllUsers = async () => {
   const data = await AsyncStorage.getItem(USERS_KEY);
-  if (!data) return [];
-  try {
-    return JSON.parse(data);
-  } catch {
-    return [];
+  const localUsers = parseStoredUsers(data);
+
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      const remoteUsers = await getRemoteUsers(firestoreDb);
+      if (remoteUsers.length > 0) {
+        await AsyncStorage.setItem(USERS_KEY, JSON.stringify(remoteUsers));
+        return remoteUsers;
+      }
+      if (localUsers.length > 0) {
+        await saveRemoteUsers(firestoreDb, localUsers);
+      }
+    } catch {
+      // fallback to local users below
+    }
   }
+
+  return localUsers;
 };
 
 export const userExists = async (username) => {
@@ -43,6 +100,15 @@ export const updateUserBanStatus = async (userID, isBanned) => {
     user.id === userID ? { ...user, isBanned } : user
   );
   await AsyncStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
+
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      await saveRemoteUsers(firestoreDb, nextUsers);
+    } catch {
+      // keep local update even if remote fails
+    }
+  }
 };
 
 export const updateUserMuteStatus = async (userID, mutedUntil) => {
@@ -51,6 +117,15 @@ export const updateUserMuteStatus = async (userID, mutedUntil) => {
     user.id === userID ? { ...user, mutedUntil: mutedUntil || null } : user
   );
   await AsyncStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
+
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      await saveRemoteUsers(firestoreDb, nextUsers);
+    } catch {
+      // keep local update even if remote fails
+    }
+  }
 };
 
 export const getUserById = async (id) => {
@@ -72,6 +147,19 @@ export const clearActiveSessionUserID = async () => {
 };
 
 export const deleteAllUsers = async () => {
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      const usersRef = doc(
+        firestoreDb,
+        FIREBASE_APP_STATE_COLLECTION,
+        FIREBASE_USERS_DOC
+      );
+      await deleteDoc(usersRef);
+    } catch {
+      // continue local clear even if remote delete fails
+    }
+  }
   await AsyncStorage.removeItem(USERS_KEY);
   await AsyncStorage.removeItem(AUTH_SESSION_KEY);
 };

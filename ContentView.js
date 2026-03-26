@@ -1,6 +1,6 @@
 // ContentView.js (converted from ContentView.swift)
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAuthViewModel } from './AuthViewModel';
 import AuthView from './AuthView';
 import ForumHomeView from './ForumHomeView';
@@ -10,7 +10,11 @@ const ContentView = () => {
 
   return (
     <View style={styles.container}>
-      {authVM.isLoggedIn && authVM.currentUser ? (
+      {!authVM.isAuthReady ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      ) : authVM.isLoggedIn && authVM.currentUser ? (
         <ForumHomeView
           currentUser={authVM.currentUser}
           onLogout={authVM.logout}
@@ -26,6 +30,12 @@ const ContentView = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
 });
 
 export default ContentView;

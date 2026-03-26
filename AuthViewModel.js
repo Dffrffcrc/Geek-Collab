@@ -15,6 +15,7 @@ import uuid from 'react-native-uuid';
 export const useAuthViewModel = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [newUserNotice, setNewUserNotice] = useState('');
@@ -22,14 +23,18 @@ export const useAuthViewModel = () => {
   // On mount: restore active saved session user
   useEffect(() => {
     const restoreSession = async () => {
-      const activeUserID = await getActiveSessionUserID();
-      if (!activeUserID) return;
-      const activeUser = await getUserById(activeUserID);
-      if (activeUser && !activeUser.isBanned) {
-        setCurrentUser(activeUser);
-        setIsLoggedIn(true);
-      } else {
-        await clearActiveSessionUserID();
+      try {
+        const activeUserID = await getActiveSessionUserID();
+        if (!activeUserID) return;
+        const activeUser = await getUserById(activeUserID);
+        if (activeUser && !activeUser.isBanned) {
+          setCurrentUser(activeUser);
+          setIsLoggedIn(true);
+        } else {
+          await clearActiveSessionUserID();
+        }
+      } finally {
+        setIsAuthReady(true);
       }
     };
     restoreSession();
@@ -125,6 +130,7 @@ export const useAuthViewModel = () => {
   return {
     currentUser,
     isLoggedIn,
+    isAuthReady,
     authError,
     setAuthError,
     isLoading,
