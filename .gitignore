@@ -1,1 +1,25 @@
-node_modules
+# dependencies
+node_modules/
+
+# Expo / React Native local state
+.expo/
+.expo-shared/
+
+# build output
+dist/
+web-build/
+
+# env + secrets
+.env
+.env.*
+!.env.example
+
+# Firebase local cache/logs
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# OS/editor noise
+.DS_Store
+*.log
