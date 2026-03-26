@@ -1,80 +1,78 @@
 # TechCollab — React Native
 
-Converted from SwiftUI (iOS-only) to React Native (iOS + Android).
+This repository contains a React Native port of the original SwiftUI forum app. It runs on iOS, Android and the web (via Expo web export).
 
-## Project Structure
+**Quick links**
+
+- **Start (dev)**: `npm start` — opens Expo DevTools
+- **Web build & deploy**: `npm run build:web` then `npx firebase-tools deploy --only hosting`
+
+## Project structure
 
 ```
-TechCollab/
-├── App.js                          # Entry point (ForumAppApp.swift)
-├── package.json
-├── Models.js                       # Data types (users/discussions/forums)
-├── AuthViewModel.js                # Auth logic + role-aware signup/login
-├── DiscussionViewModel.js          # Forum lifecycle, moderation, notifications
-├── ContentView.js                  # Root view
-├── AuthView.js                     # Login / Sign up screen
-├── ForumHomeView.js                # Home feed + forum controls + moderation UI
-├── DiscussionDetailView.js         # Full discussion + comments
-├── NewDiscussionView.js            # Create post sheet
-├── FAQView.js                      # FAQ section
-├── MediaPicker.js                  # Image picker wrapper
-└── StorageExtension.js             # AsyncStorage helpers
+App.js
+package.json
+Models.js
+AuthViewModel.js
+DiscussionViewModel.js
+ContentView.js
+AuthView.js
+ForumHomeView.js
+DiscussionDetailView.js
+NewDiscussionView.js
+FAQView.js
+MediaPicker.js
+StorageExtension.js
 ```
 
 ## Setup
 
-### 1. Install dependencies
+1. Install project dependencies
+
 ```bash
 npm install
 ```
 
-### 2. iOS — install pods
+2. (iOS only) Install CocoaPods
+
 ```bash
 cd ios && pod install && cd ..
 ```
 
-### 3. Run
-```bash
-# Expo Go (easiest)
-npx expo start
+3. Run in development
 
-# Native builds
-npx expo run:ios
-npx expo run:android
+```bash
+# Expo DevTools / Expo Go
+npm start
+
+# Run on device/emulator
+npm run ios
+npm run android
 ```
 
-## Key Conversion Notes
+## Web build & hosting
 
-| Swift / iOS | React Native |
-|---|---|
-| `@Observable` / `@State` | `useState`, `useCallback` hooks |
-| `UserDefaults` | `@react-native-async-storage/async-storage` |
-| `UUID()` | `react-native-uuid` |
-| `UIImagePickerController` | `react-native-image-picker` |
-| `NavigationView` / `.sheet` | `Modal` (slide) |
-| `List` | `FlatList` |
-| `ScrollView(.horizontal)` | `ScrollView horizontal` |
-| `Image(data:)` | `Image` with base64 data URI |
-| `DispatchQueue.main.asyncAfter` | `setTimeout` |
-| `SafeAreaView` modifier | `SafeAreaView` component |
-
-## Notes
-
-- **Passwords** are stored in plain text in AsyncStorage (mirrors original Swift). Add hashing (e.g. `expo-crypto`) for production.
-- **Images** are stored as base64 strings instead of `Data` blobs.
-- Includes role-based permissions (`admin`, `moderator`, `user`) and dictionary-based word filtering.
-- Forums can be short-term and auto-switch to read-only after expiry.
-- In-app notifications, report/delete tools, temporary mute, and admin ban controls are implemented in the feed/detail views.
-
-## Firebase (Posts/Forums Storage)
-
-This project now supports Firestore for storing forum/post state while keeping auth unchanged.
-
-### 1) Add Firebase Web SDK config to your environment
-
-Create a `.env` file in project root and add:
+- Build the web export (outputs `dist/`):
 
 ```bash
+npm run build:web
+```
+
+- Deploy to Firebase Hosting (replace with your project config):
+
+```bash
+npx firebase-tools deploy --only hosting
+```
+
+Notes for web hosting:
+- The web UI depends on vector icon font files being served (Ionicons). If hosted fonts return HTML (index.html) the icons will not render — ensure your hosting uploads the `dist/assets/node_modules/*` font files and does not rewrite requests for those assets to `index.html`.
+- In our Firebase config we add content headers for font files (CORS + long cache) and set `index.html` to `no-cache` so updates propagate reliably.
+
+## Firebase configuration (optional)
+
+If you want to enable Firestore persistence for forum state, add the following environment variables to a `.env` file at project root:
+
+```
 EXPO_PUBLIC_FIREBASE_API_KEY=your_api_key
 EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
 EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
@@ -83,17 +81,24 @@ EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
-### 2) Restart Expo
+After adding `.env`, restart the dev server.
 
-```bash
-npm run start
-```
+Behavior when Firebase is configured:
+- The app reads/writes forum state to the Firestore document `appState/forumState`.
+- AsyncStorage is used as a local cache and fallback so the app still runs without Firebase configured.
 
-### 3) Firestore collection used
+## Important notes
 
-- `appState/forumState` document stores the forum/post state.
+- Passwords are currently stored in plain text in AsyncStorage (keeps behaviour from the original demo). Add hashing (`expo-crypto`) before using this in production.
+- Images are stored as base64 strings rather than binary blobs.
+- Moderation features (reports, mute, ban) and role-based permissions (`admin`, `moderator`, `user`) are implemented in the view-models; review server-side rules before production use.
 
-### Behavior
+## Scripts
 
-- If Firebase config is present, forum/post state is read from and written to Firestore.
-- AsyncStorage is still used as local cache/fallback so the app continues to run even without Firebase configured.
+- `npm start` — start Expo dev server
+- `npm run ios` / `npm run android` — open on native platforms via Expo
+- `npm run build:web` — create web export in `dist/`
+- `npm run deploy` — convenience script: build web + firebase deploy (requires `firebase-tools` and project configured)
+
+---
+If you'd like, I can also add a short section showing how we solved a common web issue (icons appearing as numbers due to fonts returning HTML) and a recommended `firebase.json` snippet. Want that added?
