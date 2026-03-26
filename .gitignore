@@ -23,3 +23,5 @@ ui-debug.log
 # OS/editor noise
 .DS_Store
 *.log
+
+.env
