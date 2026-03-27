@@ -1,4 +1,4 @@
-// DiscussionDetailView.js (converted from DiscussionDetailView.swift)
+ 
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,

@@ -1,4 +1,4 @@
-// DiscussionViewModel.js - Discussion state & logic (converted from DiscussionViewModel.swift)
+ 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { createDiscussion, createComment, createForumConfig } from './Models';
 import { getForumState, saveForumState } from './StorageExtension';
@@ -129,6 +129,7 @@ export const useDiscussionViewModel = () => {
   const [postHistoryCounts, setPostHistoryCounts] = useState({});
   const [mutedUsers, setMutedUsers] = useState({});
   const [bannedUsers, setBannedUsers] = useState({});
+  const [deletedDiscussions, setDeletedDiscussions] = useState([]);
   const [blockedWords, setBlockedWords] = useState(DEFAULT_DICTIONARY_FILTER);
   const [clockTick, setClockTick] = useState(Date.now());
   const [forums, setForums] = useState([]);
@@ -163,10 +164,11 @@ export const useDiscussionViewModel = () => {
         }
         if (Array.isArray(stored.forums) && stored.forums.length > 0) {
           setForums(stored.forums);
-          setSelectedForumID(stored.selectedForumID || stored.forums[0].id);
+          // Restore previously active forum if available, otherwise fall back to the first forum
+          setSelectedForumID(stored.selectedForumID || stored.activeForum?.id || stored.forums[0].id || null);
         } else if (stored.activeForum) {
           setForums([stored.activeForum]);
-          setSelectedForumID(stored.activeForum.id);
+          setSelectedForumID(stored.selectedForumID || stored.activeForum.id || null);
         }
         if (stored.mutedUsers && typeof stored.mutedUsers === 'object') {
           setMutedUsers(stored.mutedUsers);
@@ -185,6 +187,9 @@ export const useDiscussionViewModel = () => {
         }
         if (stored.postHistoryCounts && typeof stored.postHistoryCounts === 'object') {
           setPostHistoryCounts(stored.postHistoryCounts);
+        }
+        if (Array.isArray(stored.deletedDiscussions)) {
+          setDeletedDiscussions(stored.deletedDiscussions);
         }
       }
       setIsHydrated(true);
@@ -206,6 +211,21 @@ export const useDiscussionViewModel = () => {
       postHistoryCounts,
     });
   }, [isHydrated, discussions, forums, selectedForumID, mutedUsers, bannedUsers, blockedWords, notifications, knownUsers, postHistoryCounts]);
+  useEffect(() => {
+    if (!isHydrated) return;
+    saveForumState({
+      discussions,
+      forums,
+      selectedForumID,
+      mutedUsers,
+      bannedUsers,
+      blockedWords,
+      notifications,
+      knownUsers,
+      postHistoryCounts,
+      deletedDiscussions,
+    });
+  }, [isHydrated, deletedDiscussions]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -395,16 +415,25 @@ export const useDiscussionViewModel = () => {
 
   const createDiscussionPost = useCallback((title, description, content, image, tags, author, forumID) => {
     const permissions = getPermissionSummary(author);
-    if (!permissions.canPostOrComment) {
-      enqueueNotification(
-        permissions.isBanned
-          ? 'Banned users cannot post.'
-          : permissions.isMuted
-            ? 'You are temporarily muted and cannot post right now.'
-            : 'This forum is read-only.'
-        ,
-        permissions.isBanned || permissions.isMuted ? 'danger' : 'info'
-      );
+    // Determine the target forum and check read-only status explicitly.
+    const targetForumID = forumID || selectedForum?.id || null;
+    const targetForum = forums.find((f) => f.id === targetForumID) || null;
+    const targetForumIsReadOnly = Boolean(
+      !targetForum || targetForum.isReadOnly || (targetForum.expiresAt && new Date(targetForum.expiresAt).getTime() <= Date.now())
+    );
+
+    if (!permissions || permissions.isBanned) {
+      enqueueNotification('Banned users cannot post.', 'danger');
+      return;
+    }
+
+    if (permissions.isMuted) {
+      enqueueNotification('You are temporarily muted and cannot post right now.', 'danger');
+      return;
+    }
+
+    if (targetForumIsReadOnly) {
+      enqueueNotification('This forum is read-only.', 'info');
       return;
     }
     const titleResult = sanitizeText(title.trim(), blockedWords);
@@ -420,7 +449,7 @@ export const useDiscussionViewModel = () => {
       content: contentResult.sanitized,
       image: image || null,
       tags,
-      forumID: forumID || selectedForum?.id || null,
+      forumID: targetForumID,
     });
     setDiscussions((prev) => [newDiscussion, ...prev]);
     setPostHistoryCounts((prev) => ({
@@ -431,6 +460,7 @@ export const useDiscussionViewModel = () => {
     if (blocked > 0) {
       enqueueNotification(`Word filter replaced ${blocked} blocked word(s) in your post.`);
     }
+    return true;
   }, [enqueueNotification, getPermissionSummary, selectedForum?.id, blockedWords]);
 
   const addComment = useCallback((discussionID, comment, author) => {
@@ -471,15 +501,20 @@ export const useDiscussionViewModel = () => {
       return false;
     }
 
-    let didLike = false;
+    let action = null;
     setDiscussions((prev) =>
       prev.map((discussion) => {
         if (discussion.id !== discussionID) return discussion;
         const existingLikesBy = Array.isArray(discussion.likesBy) ? discussion.likesBy : [];
         if (existingLikesBy.includes(likerID)) {
-          return discussion;
+          action = 'unlike';
+          return {
+            ...discussion,
+            likes: Math.max(0, discussion.likes - 1),
+            likesBy: existingLikesBy.filter((id) => id !== likerID),
+          };
         }
-        didLike = true;
+        action = 'like';
         return {
           ...discussion,
           likes: discussion.likes + 1,
@@ -488,11 +523,14 @@ export const useDiscussionViewModel = () => {
       })
     );
 
-    if (!didLike) {
-      enqueueNotification('You already liked this post.');
-      return false;
+    if (action === 'unlike') {
+      return true;
     }
-    return true;
+    if (action === 'like') {
+      return true;
+    }
+    enqueueNotification('Post not found.', 'info');
+    return false;
   }, [enqueueNotification]);
 
   const filterDiscussions = useCallback((filter) => {
@@ -541,12 +579,90 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('Only moderators/admins can delete posts.', 'danger');
       return false;
     }
+
+    let removed = null;
     setDiscussions((prev) => {
-      return prev.filter((discussion) => discussion.id !== discussionID);
+      const next = prev.filter((discussion) => {
+        if (discussion.id === discussionID) {
+          removed = discussion;
+          return false;
+        }
+        return true;
+      });
+      return next;
     });
-    enqueueNotification('Post deleted by moderation team.', 'danger');
+
+    if (!removed) {
+      enqueueNotification('Post not found.', 'info');
+      return false;
+    }
+
+    const archived = {
+      ...removed,
+      deletedAt: nowIso(),
+      deletedByID: actor?.id || null,
+      deletedByName: actor?.username || 'moderator',
+    };
+    setDeletedDiscussions((prev) => [archived, ...prev]);
+    enqueueNotification('Post archived by moderation team.', 'danger');
     return true;
   }, [enqueueNotification, getPermissionSummary]);
+
+  const restoreDeletedDiscussion = useCallback((deletedID, actor) => {
+    const permissions = getPermissionSummary(actor);
+    if (!permissions.canModerate) {
+      enqueueNotification('Only moderators/admins can restore posts.', 'danger');
+      return false;
+    }
+    let restored = null;
+    setDeletedDiscussions((prev) => {
+      const next = prev.filter((d) => {
+        if (d.id === deletedID) {
+          restored = d;
+          return false;
+        }
+        return true;
+      });
+      return next;
+    });
+    if (!restored) {
+      enqueueNotification('Deleted post not found.', 'info');
+      return false;
+    }
+    setDiscussions((prev) => [restored, ...prev]);
+    enqueueNotification('Post restored.', 'info');
+    return true;
+  }, [enqueueNotification, getPermissionSummary]);
+
+  const purgeDeletedDiscussion = useCallback((deletedID, actor) => {
+    const permissions = getPermissionSummary(actor);
+    if (!permissions.canModerate) {
+      enqueueNotification('Only moderators/admins can purge deleted posts.', 'danger');
+      return false;
+    }
+    let found = false;
+    setDeletedDiscussions((prev) => {
+      const next = prev.filter((d) => {
+        if (d.id === deletedID) {
+          found = true;
+          return false;
+        }
+        return true;
+      });
+      return next;
+    });
+    if (!found) {
+      enqueueNotification('Deleted post not found.', 'info');
+      return false;
+    }
+    enqueueNotification('Deleted post permanently purged.', 'danger');
+    return true;
+  }, [enqueueNotification, getPermissionSummary]);
+
+  const getDeletedByForum = useCallback((forumID) => {
+    if (!forumID) return [];
+    return deletedDiscussions.filter((d) => d.forumID === forumID);
+  }, [deletedDiscussions]);
 
   const muteUser = useCallback(async (userID, minutes, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -827,6 +943,7 @@ export const useDiscussionViewModel = () => {
 
   return {
     discussions,
+    deletedDiscussions,
     filteredDiscussions,
     selectedFilter,
     filters: FILTERS,
@@ -853,6 +970,9 @@ export const useDiscussionViewModel = () => {
     selectForum,
     reportDiscussion,
     deleteDiscussion,
+    restoreDeletedDiscussion,
+    purgeDeletedDiscussion,
+    getDeletedByForum,
     muteUser,
     unmuteUser,
     banUser,

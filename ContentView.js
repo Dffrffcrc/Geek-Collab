@@ -1,4 +1,4 @@
-// ContentView.js (converted from ContentView.swift)
+ 
 import React from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAuthViewModel } from './AuthViewModel';

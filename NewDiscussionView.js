@@ -1,4 +1,4 @@
-// NewDiscussionView.js (converted from NewDiscussionView.swift)
+ 
 import React, { useState } from 'react';
 import {
   View,
@@ -18,17 +18,24 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
   const [content, setContent] = useState('');
   const [tags, setTags] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
-  const [selectedForumID, setSelectedForumID] = useState(viewModel.selectedForumID);
+  const initialOpenForumID = (viewModel.openForums && viewModel.openForums.length > 0)
+    ? viewModel.openForums[0].id
+    : viewModel.selectedForumID || null;
+  const [selectedForumID, setSelectedForumID] = useState(initialOpenForumID);
   const permissions = viewModel.getPermissionSummary(currentUser);
+  const selectedForum = (viewModel.forums || []).find((f) => f.id === selectedForumID) || viewModel.activeForum || null;
+  const selectedForumIsReadOnly = Boolean(
+    !selectedForum || selectedForum.isReadOnly || (selectedForum.expiresAt && new Date(selectedForum.expiresAt).getTime() <= Date.now())
+  );
+  const canPostToSelectedForum = !selectedForumIsReadOnly && !permissions.isMuted && !permissions.isBanned;
 
   const postDiscussion = () => {
-    if (!title.trim() || !content.trim() || !permissions.canPostOrComment) return;
+    if (!title.trim() || !content.trim() || !canPostToSelectedForum) return;
     const tagArray = tags
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
-
-    viewModel.createDiscussion(
+    const created = viewModel.createDiscussion(
       title,
       description,
       content,
@@ -37,7 +44,9 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
       currentUser,
       selectedForumID
     );
-    onDismiss();
+    if (created) {
+      onDismiss();
+    }
   };
 
   return (
@@ -58,27 +67,29 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
           </Text>
         </View>
 
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Post to forum</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.forumSelectRow}>
-              {viewModel.forums.map((forum) => {
-                const isSelected = selectedForumID === forum.id;
-                return (
-                  <TouchableOpacity
-                    key={forum.id}
-                    style={[styles.forumSelectChip, isSelected && styles.forumSelectChipActive]}
-                    onPress={() => setSelectedForumID(forum.id)}
-                  >
-                    <Text style={[styles.forumSelectText, isSelected && styles.forumSelectTextActive]}>
-                      {forum.title}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </ScrollView>
-        </View>
+        {(viewModel.openForums || []).length > 0 && (
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Post to forum</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.forumSelectRow}>
+                {(viewModel.openForums || []).map((forum) => {
+                  const isSelected = selectedForumID === forum.id;
+                  return (
+                    <TouchableOpacity
+                      key={forum.id}
+                      style={[styles.forumSelectChip, isSelected && styles.forumSelectChipActive]}
+                      onPress={() => setSelectedForumID(forum.id)}
+                    >
+                      <Text style={[styles.forumSelectText, isSelected && styles.forumSelectTextActive]}>
+                        {forum.title}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        )}
 
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Title</Text>
@@ -151,14 +162,12 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
         <TouchableOpacity
           style={[
             styles.postButton,
-            (!title.trim() || !content.trim() || !permissions.canPostOrComment) && styles.postButtonDisabled,
+            (!title.trim() || !content.trim() || !canPostToSelectedForum) && styles.postButtonDisabled,
           ]}
           onPress={postDiscussion}
-          disabled={!title.trim() || !content.trim() || !permissions.canPostOrComment}
+          disabled={!title.trim() || !content.trim() || !canPostToSelectedForum}
         >
-          <Text style={styles.postButtonText}>
-            {permissions.canPostOrComment ? 'Post' : 'Posting disabled'}
-          </Text>
+          <Text style={styles.postButtonText}>{canPostToSelectedForum ? 'Post' : 'Posting disabled'}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

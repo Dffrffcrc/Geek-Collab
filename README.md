@@ -1,4 +1,4 @@
-# TechCollab — React Native
+# GeekCollab — React Native
 
 This repository contains a React Native port of the original SwiftUI forum app. It runs on iOS, Android and the web (via Expo web export).
 

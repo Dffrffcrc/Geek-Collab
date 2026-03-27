@@ -1,11 +1,11 @@
-// StorageExtension.js - AsyncStorage helpers (converted from UserDefaults+Extension.swift)
+ 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { getFirestoreDb } from './FirebaseClient';
 
-const USERS_KEY = 'techcollab_users';
-const FORUM_STATE_KEY = 'techcollab_forum_state';
-const AUTH_SESSION_KEY = 'techcollab_auth_session_user_id';
+const USERS_KEY = 'geekcollab_users';
+const FORUM_STATE_KEY = 'geekcollab_forum_state';
+const AUTH_SESSION_KEY = 'geekcollab_auth_session_user_id';
 const FIREBASE_APP_STATE_COLLECTION = 'appState';
 const FIREBASE_FORUM_STATE_DOC = 'forumState';
 const FIREBASE_USERS_DOC = 'users';

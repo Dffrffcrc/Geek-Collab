@@ -1,4 +1,4 @@
-// MediaPicker.js (converted from MediaPicker.swift)
+ 
 // Uses react-native-image-picker (install: npm install react-native-image-picker)
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';

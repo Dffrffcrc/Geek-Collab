@@ -1,4 +1,4 @@
-// Models.js - Data model definitions (converted from Models.swift)
+ 
 
 /**
  * @typedef {Object} User

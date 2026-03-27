@@ -196,6 +196,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const [filterWordInput, setFilterWordInput] = useState('');
   const [showPastForumPosts, setShowPastForumPosts] = useState(false);
   const [registeredUsers, setRegisteredUsers] = useState([]);
+  const [deletedForumID, setDeletedForumID] = useState(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const [overlayMenu, setOverlayMenu] = useState({ visible: false, x: 0, y: 0, discussion: null });
 
@@ -420,7 +421,8 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
     ]);
   };
 
-  const shouldShowNoForumsState = discussionVM.openForums.length === 0 && !showPastForumPosts;
+  // Only show the "no forums" state after the view model has hydrated to avoid a flash
+  const shouldShowNoForumsState = discussionVM.isHydrated && !discussionVM.activeForum && discussionVM.openForums.length === 0 && !showPastForumPosts;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -459,13 +461,27 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       </View>
 
       <View style={styles.forumBanner}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.forumTitle}>You are currently viewing:</Text>
-          <Text style={styles.forumTitleValue}>
-            {shouldShowNoForumsState
-              ? 'No forum selected'
-              : discussionVM.activeForum?.title || 'No forum selected'}
-          </Text>
+          <Text style={styles.forumTitleValue}>{discussionVM.activeForum?.title || (shouldShowNoForumsState ? 'No forum selected' : 'No forum selected')}</Text>
+          {discussionVM.openForums && discussionVM.openForums.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
+              <View style={styles.forumSelectRow}>
+                {discussionVM.openForums.map((forum) => {
+                  const isActive = discussionVM.activeForum?.id === forum.id;
+                  return (
+                    <TouchableOpacity
+                      key={forum.id}
+                      style={[styles.forumSelectChip, isActive && styles.forumSelectChipActive]}
+                      onPress={() => discussionVM.selectForum(forum.id)}
+                    >
+                      <Text style={[styles.forumSelectText, isActive && styles.forumSelectTextActive]}>{forum.title}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          ) : null}
         </View>
         <View style={styles.forumBannerActions}>
           <TouchableOpacity style={styles.secondaryForumButton} onPress={() => setShowPastForums(true)}>
@@ -672,6 +688,79 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                     </View>
                   </View>
                 ))
+            )}
+
+            <Text style={styles.panelSectionTitle}>Deleted Posts</Text>
+            <View style={{ marginBottom: 8 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
+                <View style={styles.forumSelectRow}>
+                  {discussionVM.forums.map((forum) => (
+                    <TouchableOpacity
+                      key={forum.id}
+                      style={[styles.forumSelectChip, deletedForumID === forum.id && styles.forumSelectChipActive]}
+                      onPress={() => setDeletedForumID((prev) => (prev === forum.id ? null : forum.id))}
+                    >
+                      <Text style={[styles.forumSelectText, deletedForumID === forum.id && styles.forumSelectTextActive]}>
+                        {forum.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+            {deletedForumID ? (
+              (() => {
+                const items = discussionVM.getDeletedByForum(deletedForumID) || [];
+                return items.length === 0 ? (
+                  <Text style={styles.emptyStateText}>No deleted posts in this forum</Text>
+                ) : (
+                  items.map((item) => (
+                    <View key={item.id} style={styles.panelCard}>
+                      <Text style={styles.panelTitle}>{item.title}</Text>
+                      <Text style={styles.panelMeta}>By {item.authorName} · Deleted {item.deletedAt ? item.deletedAt : ''}</Text>
+                      <View style={styles.panelActionRow}>
+                        <TouchableOpacity
+                          style={styles.panelButton}
+                          onPress={() => discussionVM.restoreDeletedDiscussion(item.id, currentUser)}
+                        >
+                          <Text style={styles.panelButtonText}>Restore</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.panelButton, styles.panelDangerButton]}
+                          onPress={() => confirmAction('Purge Deleted Post', 'Permanently delete this post?', () => discussionVM.purgeDeletedDiscussion(item.id, currentUser))}
+                        >
+                          <Text style={styles.panelButtonText}>Purge</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                );
+              })()
+            ) : (
+              discussionVM.deletedDiscussions.length === 0 ? (
+                <Text style={styles.emptyStateText}>No deleted posts</Text>
+              ) : (
+                discussionVM.deletedDiscussions.map((item) => (
+                  <View key={item.id} style={styles.panelCard}>
+                    <Text style={styles.panelTitle}>{item.title}</Text>
+                    <Text style={styles.panelMeta}>By {item.authorName} · Deleted {item.deletedAt ? item.deletedAt : ''}</Text>
+                    <View style={styles.panelActionRow}>
+                      <TouchableOpacity
+                        style={styles.panelButton}
+                        onPress={() => discussionVM.restoreDeletedDiscussion(item.id, currentUser)}
+                      >
+                        <Text style={styles.panelButtonText}>Restore</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.panelButton, styles.panelDangerButton]}
+                        onPress={() => confirmAction('Purge Deleted Post', 'Permanently delete this post?', () => discussionVM.purgeDeletedDiscussion(item.id, currentUser))}
+                      >
+                        <Text style={styles.panelButtonText}>Purge</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )
             )}
 
             <Text style={styles.panelSectionTitle}>Forum Controls</Text>
@@ -1218,6 +1307,22 @@ const styles = StyleSheet.create({
   panelTitle: { color: '#111827', fontWeight: '700' },
   panelMeta: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
   panelActionRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  forumSelectRow: { flexDirection: 'row', gap: 8 },
+  forumSelectChip: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F9FAFB',
+    marginRight: 8,
+  },
+  forumSelectChipActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  forumSelectText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  forumSelectTextActive: { color: '#1D4ED8' },
   filterManageRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   filterInput: {
     flex: 1,

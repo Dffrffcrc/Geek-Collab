@@ -1,4 +1,4 @@
-// AuthViewModel.js - Auth state & logic (converted from AuthViewModel.swift)
+ 
 import { useState, useEffect, useCallback } from 'react';
 import { createUser } from './Models';
 import {
