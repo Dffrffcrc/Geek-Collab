@@ -10,12 +10,15 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 const AuthView = ({ authVM }) => {
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [role, setRole] = useState('user');
 
   const submitForm = () => {
@@ -31,6 +34,8 @@ const AuthView = ({ authVM }) => {
     authVM.setAuthError(null);
     setPassword('');
     setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     setRole('user');
   };
 
@@ -65,30 +70,58 @@ const AuthView = ({ authVM }) => {
           {/* Password */}
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter password"
-              placeholderTextColor="#B6BFCC"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              textContentType="none"
-            />
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={[styles.input, styles.passwordInput]}
+                placeholder="Enter password"
+                placeholderTextColor="#B6BFCC"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                textContentType="none"
+              />
+              <TouchableOpacity
+                style={styles.visibilityButton}
+                onPress={() => setShowPassword((prev) => !prev)}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color="#2563EB"
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Confirm Password */}
           {!isLoginMode && (
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Confirm Password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Confirm password"
-                placeholderTextColor="#B6BFCC"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-                textContentType="none"
-              />
+              <View style={styles.passwordRow}>
+                <TextInput
+                  style={[styles.input, styles.passwordInput]}
+                  placeholder="Confirm password"
+                  placeholderTextColor="#B6BFCC"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showConfirmPassword}
+                  textContentType="none"
+                />
+                <TouchableOpacity
+                  style={styles.visibilityButton}
+                  onPress={() => setShowConfirmPassword((prev) => !prev)}
+                  accessibilityRole="button"
+                  accessibilityLabel={showConfirmPassword ? 'Hide password' : 'Show password'}
+                >
+                  <Ionicons
+                    name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color="#2563EB"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
@@ -167,6 +200,15 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     backgroundColor: '#F9FAFB',
+  },
+  passwordRow: { position: 'relative' },
+  passwordInput: { paddingRight: 48 },
+  visibilityButton: {
+    position: 'absolute',
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
   roleRow: { flexDirection: 'row', gap: 8 },
   roleChip: {
