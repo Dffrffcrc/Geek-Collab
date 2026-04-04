@@ -1,4 +1,3 @@
-// AuthView.js (converted from AuthView.swift)
 import React, { useState } from 'react';
 import {
   View,
