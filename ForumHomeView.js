@@ -21,6 +21,7 @@ import NewDiscussionView from './NewDiscussionView';
 import FAQView from './FAQView';
 import UserProfileView from './UserProfileView';
 import { getAllUsers } from './StorageExtension';
+import { hasModerationMatch } from './ContentModeration';
 
 const toImageURI = (image) => {
   if (!image) return null;
@@ -199,6 +200,11 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const [deletedForumID, setDeletedForumID] = useState(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const [overlayMenu, setOverlayMenu] = useState({ visible: false, x: 0, y: 0, discussion: null });
+  const forumTitleHasBlockedLanguage = hasModerationMatch(forumTitle, discussionVM.blockedWords);
+  const parsedForumDuration = parseInt(forumDuration, 10);
+  const canCreateForum = Boolean(
+    forumTitle.trim() && Number.isFinite(parsedForumDuration) && parsedForumDuration > 0 && !forumTitleHasBlockedLanguage
+  );
 
   const permissions = useMemo(() => discussionVM.getPermissionSummary(currentUser), [discussionVM, currentUser]);
 
@@ -246,7 +252,8 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   }, [discussionVM.discussions, discussionVM.toast?.id, showModPanel]);
 
   const submitForumCreation = () => {
-    const duration = parseInt(forumDuration, 10);
+    const duration = parsedForumDuration;
+    if (!canCreateForum) return;
     if (discussionVM.createForum(forumTitle, duration, currentUser)) {
       setShowNewForumModal(false);
       setForumTitle('');
@@ -942,7 +949,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
 
             <Text style={styles.panelSectionTitle}>Content Filter (Dictionary)</Text>
             <View style={styles.panelCard}>
-              <Text style={styles.panelMeta}>Blocked words are replaced with asterisks in posts/comments.</Text>
+              <Text style={styles.panelMeta}>Posts/comments with blocked words are rejected.</Text>
               <View style={styles.filterManageRow}>
                 <TextInput
                   style={styles.filterInput}
@@ -1006,6 +1013,9 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
               value={forumTitle}
               onChangeText={setForumTitle}
             />
+            {forumTitleHasBlockedLanguage ? (
+              <Text style={styles.validationText}>Blocked language detected in forum title.</Text>
+            ) : null}
 
             <Text style={styles.label}>Duration in minutes</Text>
             <TextInput
@@ -1017,7 +1027,11 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
               onChangeText={setForumDuration}
             />
 
-            <TouchableOpacity style={styles.createButton} onPress={submitForumCreation}>
+            <TouchableOpacity
+              style={[styles.createButton, !canCreateForum && styles.createButtonDisabled]}
+              onPress={submitForumCreation}
+              disabled={!canCreateForum}
+            >
               <Text style={styles.createButtonText}>Create Forum</Text>
             </TouchableOpacity>
           </View>
@@ -1238,7 +1252,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
+  createButtonDisabled: { backgroundColor: '#93C5FD' },
   createButtonText: { color: '#fff', fontWeight: '600' },
+  validationText: { fontSize: 12, color: '#DC2626' },
   panelHeaderCard: {
     backgroundColor: '#EEF2FF',
     borderRadius: 12,

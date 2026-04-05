@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { createDiscussion, createComment, createForumConfig } from './Models';
 import { getForumState, saveForumState } from './StorageExtension';
 import { updateUserBanStatus, updateUserMuteStatus } from './StorageExtension';
+import { moderateText } from './ContentModeration';
 import uuid from 'react-native-uuid';
 
 const FILTERS = ['Latest', 'Popular', 'Trending', 'Reported'];
@@ -36,19 +37,6 @@ const applyFilter = (discussions, filter) => {
     default:
       return discussions;
   }
-};
-
-const sanitizeText = (text, blockedWords) => {
-  let blockedCount = 0;
-  const sanitized = text.replace(/\b([a-zA-Z]+)\b/g, (token) => {
-    const shouldBlock = blockedWords.includes(token.toLowerCase());
-    if (shouldBlock) {
-      blockedCount += 1;
-      return '*'.repeat(token.length);
-    }
-    return token;
-  });
-  return { sanitized, blockedCount };
 };
 
 const loadMockDiscussions = (forumID = DEFAULT_FORUM_ID) => [
@@ -394,10 +382,15 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('Forum title and duration are required.');
       return false;
     }
+    const titleResult = moderateText(title.trim(), blockedWords);
+    if (titleResult.blockedCount > 0) {
+      enqueueNotification('Forum title contains blocked language.', 'danger');
+      return false;
+    }
     const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
     const newForum = createForumConfig({
       id: uuid.v4(),
-      title: title.trim(),
+      title: titleResult.sanitized,
       createdByID: actor.id,
       createdByName: actor.username,
       expiresAt,
@@ -405,9 +398,9 @@ export const useDiscussionViewModel = () => {
     });
     setForums((prev) => [newForum, ...prev]);
     setSelectedForumID(newForum.id);
-    enqueueNotification(`New forum \"${title.trim()}\" is live for ${durationMinutes} minute(s).`);
+    enqueueNotification(`New forum \"${titleResult.sanitized}\" is live for ${durationMinutes} minute(s).`);
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [blockedWords, enqueueNotification, getPermissionSummary]);
 
   const selectForum = useCallback((forumID) => {
     setSelectedForumID(forumID);
@@ -436,9 +429,17 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('This forum is read-only.', 'info');
       return;
     }
-    const titleResult = sanitizeText(title.trim(), blockedWords);
-    const descriptionResult = sanitizeText((description || '').trim(), blockedWords);
-    const contentResult = sanitizeText(content.trim(), blockedWords);
+    const titleResult = moderateText(title.trim(), blockedWords);
+    const descriptionResult = moderateText((description || '').trim(), blockedWords);
+    const contentResult = moderateText(content.trim(), blockedWords);
+    const tagsResult = (Array.isArray(tags) ? tags : []).map((tag) => moderateText(tag, blockedWords));
+    const blockedTagsCount = tagsResult.reduce((sum, result) => sum + result.blockedCount, 0);
+    const blocked = titleResult.blockedCount + descriptionResult.blockedCount + contentResult.blockedCount + blockedTagsCount;
+    if (blocked > 0) {
+      enqueueNotification('Post contains blocked language.', 'danger');
+      return false;
+    }
+    const safeTags = tagsResult.map((result) => result.sanitized);
 
     const newDiscussion = createDiscussion({
       id: uuid.v4(),
@@ -448,7 +449,7 @@ export const useDiscussionViewModel = () => {
       description: descriptionResult.sanitized,
       content: contentResult.sanitized,
       image: image || null,
-      tags,
+      tags: safeTags,
       forumID: targetForumID,
     });
     setDiscussions((prev) => [newDiscussion, ...prev]);
@@ -456,10 +457,6 @@ export const useDiscussionViewModel = () => {
       ...prev,
       [author.id]: (prev[author.id] || 0) + 1,
     }));
-    const blocked = titleResult.blockedCount + descriptionResult.blockedCount + contentResult.blockedCount;
-    if (blocked > 0) {
-      enqueueNotification(`Word filter replaced ${blocked} blocked word(s) in your post.`);
-    }
     return true;
   }, [enqueueNotification, getPermissionSummary, selectedForum?.id, blockedWords]);
 
@@ -477,7 +474,11 @@ export const useDiscussionViewModel = () => {
       );
       return;
     }
-    const textResult = sanitizeText(comment.text, blockedWords);
+    const textResult = moderateText(comment.text, blockedWords);
+    if (textResult.blockedCount > 0) {
+      enqueueNotification('Comment contains blocked language.', 'danger');
+      return false;
+    }
     const safeComment = {
       ...comment,
       text: textResult.sanitized,
@@ -490,9 +491,7 @@ export const useDiscussionViewModel = () => {
           : d
       )
     );
-    if (textResult.blockedCount > 0) {
-      enqueueNotification(`Word filter replaced ${textResult.blockedCount} blocked word(s) in comment.`);
-    }
+    return true;
   }, [enqueueNotification, getPermissionSummary, blockedWords]);
 
   const likeDiscussion = useCallback((discussionID, likerID) => {

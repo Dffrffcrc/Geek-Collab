@@ -11,6 +11,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import MediaPicker from './MediaPicker';
+import { hasModerationMatch } from './ContentModeration';
 
 const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
   const [title, setTitle] = useState('');
@@ -28,9 +29,15 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
     !selectedForum || selectedForum.isReadOnly || (selectedForum.expiresAt && new Date(selectedForum.expiresAt).getTime() <= Date.now())
   );
   const canPostToSelectedForum = !selectedForumIsReadOnly && !permissions.isMuted && !permissions.isBanned;
+  const hasBlockedLanguage =
+    hasModerationMatch(title, viewModel.blockedWords) ||
+    hasModerationMatch(description, viewModel.blockedWords) ||
+    hasModerationMatch(content, viewModel.blockedWords) ||
+    hasModerationMatch(tags, viewModel.blockedWords);
+  const canSubmit = Boolean(title.trim() && content.trim() && canPostToSelectedForum && !hasBlockedLanguage);
 
   const postDiscussion = () => {
-    if (!title.trim() || !content.trim() || !canPostToSelectedForum) return;
+    if (!canSubmit) return;
     const tagArray = tags
       .split(',')
       .map((t) => t.trim())
@@ -100,6 +107,9 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             value={title}
             onChangeText={setTitle}
           />
+          {hasModerationMatch(title, viewModel.blockedWords) ? (
+            <Text style={styles.validationText}>Blocked language detected in title.</Text>
+          ) : null}
         </View>
 
         <View style={styles.fieldGroup}>
@@ -111,6 +121,9 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             value={description}
             onChangeText={setDescription}
           />
+          {hasModerationMatch(description, viewModel.blockedWords) ? (
+            <Text style={styles.validationText}>Blocked language detected in description.</Text>
+          ) : null}
         </View>
 
         <View style={styles.fieldGroup}>
@@ -124,6 +137,9 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             multiline
             textAlignVertical="top"
           />
+          {hasModerationMatch(content, viewModel.blockedWords) ? (
+            <Text style={styles.validationText}>Blocked language detected in content.</Text>
+          ) : null}
         </View>
 
         <View style={styles.fieldGroup}>
@@ -136,7 +152,14 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             onChangeText={setTags}
             autoCapitalize="none"
           />
+          {hasModerationMatch(tags, viewModel.blockedWords) ? (
+            <Text style={styles.validationText}>Blocked language detected in tags.</Text>
+          ) : null}
         </View>
+
+        {hasBlockedLanguage ? (
+          <Text style={styles.validationText}>Posting is blocked until all flagged words are removed.</Text>
+        ) : null}
 
         {/* Image Picker */}
         <View style={styles.fieldGroup}>
@@ -162,12 +185,12 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
         <TouchableOpacity
           style={[
             styles.postButton,
-            (!title.trim() || !content.trim() || !canPostToSelectedForum) && styles.postButtonDisabled,
+            !canSubmit && styles.postButtonDisabled,
           ]}
           onPress={postDiscussion}
-          disabled={!title.trim() || !content.trim() || !canPostToSelectedForum}
+          disabled={!canSubmit}
         >
-          <Text style={styles.postButtonText}>{canPostToSelectedForum ? 'Post' : 'Posting disabled'}</Text>
+          <Text style={styles.postButtonText}>Post</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -229,6 +252,7 @@ const styles = StyleSheet.create({
     minHeight: 120,
     backgroundColor: '#F9FAFB',
   },
+  validationText: { fontSize: 12, color: '#DC2626' },
   imageAdded: { fontSize: 12, color: '#16A34A', marginTop: 4 },
   imagePreview: {
     width: '100%',

@@ -14,6 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { createComment } from './Models';
+import { hasModerationMatch } from './ContentModeration';
 import uuid from 'react-native-uuid';
 
 const toImageURI = (image) => {
@@ -40,6 +41,8 @@ const relativeDate = (dateStr) => {
 const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOpenProfile }) => {
   const [newCommentText, setNewCommentText] = useState('');
   const permissions = viewModel.getPermissionSummary(currentUser);
+  const commentHasBlockedLanguage = hasModerationMatch(newCommentText, viewModel.blockedWords);
+  const canSendComment = Boolean(newCommentText.trim() && permissions.canPostOrComment && !commentHasBlockedLanguage);
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -53,7 +56,7 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
   }, [viewModel.toast?.id, toastOpacity, viewModel.toast]);
 
   const addComment = () => {
-    if (!newCommentText.trim()) return;
+    if (!canSendComment) return;
     const comment = createComment({
       id: uuid.v4(),
       authorID: currentUser.id,
@@ -212,29 +215,34 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
 
       {/* Comment Input */}
       <View style={styles.commentInputRow}>
-        <TextInput
-          style={styles.commentInput}
-          placeholder={
-            permissions.canPostOrComment
-              ? 'Add a comment...'
-              : 'Read-only / muted / banned'
-          }
-          placeholderTextColor="#B6BFCC"
-          value={newCommentText}
-          onChangeText={setNewCommentText}
-          multiline={false}
-          editable={permissions.canPostOrComment}
-        />
-        <TouchableOpacity
-          onPress={addComment}
-          disabled={!newCommentText.trim() || !permissions.canPostOrComment}
-          style={[
-            styles.sendButton,
-            (!newCommentText.trim() || !permissions.canPostOrComment) && styles.sendButtonDisabled,
-          ]}
-        >
-          <Text style={styles.sendIcon}>✈</Text>
-        </TouchableOpacity>
+        <View style={styles.commentInputInnerRow}>
+          <TextInput
+            style={styles.commentInput}
+            placeholder={
+              permissions.canPostOrComment
+                ? 'Add a comment...'
+                : 'Read-only / muted / banned'
+            }
+            placeholderTextColor="#B6BFCC"
+            value={newCommentText}
+            onChangeText={setNewCommentText}
+            multiline={false}
+            editable={permissions.canPostOrComment}
+          />
+          <TouchableOpacity
+            onPress={addComment}
+            disabled={!canSendComment}
+            style={[
+              styles.sendButton,
+              !canSendComment && styles.sendButtonDisabled,
+            ]}
+          >
+            <Text style={styles.sendIcon}>✈</Text>
+          </TouchableOpacity>
+        </View>
+        {commentHasBlockedLanguage ? (
+          <Text style={styles.validationText}>Blocked language detected in comment.</Text>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -315,11 +323,14 @@ const styles = StyleSheet.create({
   commentDate: { fontSize: 11, color: '#9CA3AF' },
   commentText: { fontSize: 14, color: '#374151' },
   commentInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    gap: 6,
     padding: 12,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
+  },
+  commentInputInnerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   commentInput: {
@@ -331,6 +342,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     backgroundColor: '#F9FAFB',
   },
+  validationText: { color: '#DC2626', fontSize: 11, marginHorizontal: 2 },
   sendButton: {
     width: 40,
     height: 40,

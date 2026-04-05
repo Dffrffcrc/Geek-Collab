@@ -10,6 +10,7 @@ import {
   getActiveSessionUserID,
   clearActiveSessionUserID,
 } from './StorageExtension';
+import { hasModerationMatch } from './ContentModeration';
 import uuid from 'react-native-uuid';
 
 export const useAuthViewModel = () => {
@@ -41,12 +42,18 @@ export const useAuthViewModel = () => {
   }, []);
 
   const signUp = useCallback(async (username, password, confirmPassword, role = 'user') => {
-    if (!username || !password || !confirmPassword) {
+    const normalizedUsername = String(username || '').trim();
+
+    if (!normalizedUsername || !password || !confirmPassword) {
       setAuthError('Please fill in all fields');
       return;
     }
-    if (username.length < 3) {
+    if (normalizedUsername.length < 3) {
       setAuthError('Username must be at least 3 characters');
+      return;
+    }
+    if (hasModerationMatch(normalizedUsername)) {
+      setAuthError('Username contains disallowed language');
       return;
     }
     if (password.length < 6) {
@@ -58,7 +65,7 @@ export const useAuthViewModel = () => {
       return;
     }
 
-    const exists = await userExists(username);
+    const exists = await userExists(normalizedUsername);
     if (exists) {
       setAuthError('Username already taken');
       return;
@@ -71,7 +78,7 @@ export const useAuthViewModel = () => {
 
     const newUser = createUser({
       id: uuid.v4(),
-      username,
+      username: normalizedUsername,
       password,
       role,
       bio: '',
@@ -83,7 +90,7 @@ export const useAuthViewModel = () => {
     await saveActiveSessionUserID(newUser.id);
     setCurrentUser(newUser);
     setIsLoggedIn(true);
-    setNewUserNotice(`Welcome ${username}! Your role is ${role}.`);
+    setNewUserNotice(`Welcome ${normalizedUsername}! Your role is ${role}.`);
     setIsLoading(false);
     setAuthError(null);
   }, []);
