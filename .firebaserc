@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "geekcollab-tsc"
-  }
+  },
+  "targets": {
+    "geekcollab-tsc": {
+      "hosting": {
+        "check": [
+          "geekcollab-tsc"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
