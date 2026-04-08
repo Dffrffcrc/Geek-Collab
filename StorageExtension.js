@@ -1,7 +1,7 @@
  
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
-import { getFirestoreDb } from './FirebaseClient';
+import { getFirestoreDb, isFirebaseConfigured } from './FirebaseClient';
 
 const USERS_KEY = 'geekcollab_users';
 const FORUM_STATE_KEY = 'geekcollab_forum_state';
@@ -9,6 +9,8 @@ const AUTH_SESSION_KEY = 'geekcollab_auth_session_user_id';
 const FIREBASE_APP_STATE_COLLECTION = 'appState';
 const FIREBASE_FORUM_STATE_DOC = 'forumState';
 const FIREBASE_USERS_DOC = 'users';
+let lastUsersSource = 'local';
+let lastUsersSyncError = null;
 
 const parseStoredUsers = (data) => {
   if (!data) return [];
@@ -44,6 +46,13 @@ const saveRemoteUsers = async (firestoreDb, users) => {
   });
 };
 
+const setUsersSyncStatus = ({ source, error = null }) => {
+  if (source) {
+    lastUsersSource = source;
+  }
+  lastUsersSyncError = error;
+};
+
 export const saveUser = async (user) => {
   const users = await getAllUsers();
   users.push(user);
@@ -53,9 +62,13 @@ export const saveUser = async (user) => {
   if (firestoreDb) {
     try {
       await saveRemoteUsers(firestoreDb, users);
+      setUsersSyncStatus({ source: 'remote', error: null });
     } catch {
+      setUsersSyncStatus({ source: 'local', error: 'firestore-write-failed' });
       // keep local write even if remote fails
     }
+  } else {
+    setUsersSyncStatus({ source: 'local', error: null });
   }
 };
 
@@ -67,19 +80,32 @@ export const getAllUsers = async () => {
   if (firestoreDb) {
     try {
       const remoteUsers = await getRemoteUsers(firestoreDb);
+      setUsersSyncStatus({ source: 'remote', error: null });
       if (remoteUsers.length > 0) {
         await AsyncStorage.setItem(USERS_KEY, JSON.stringify(remoteUsers));
         return remoteUsers;
       }
       if (localUsers.length > 0) {
         await saveRemoteUsers(firestoreDb, localUsers);
+        setUsersSyncStatus({ source: 'remote', error: null });
       }
     } catch {
+      setUsersSyncStatus({ source: 'local', error: 'firestore-read-failed' });
       // fallback to local users below
     }
+  } else {
+    setUsersSyncStatus({ source: 'local', error: null });
   }
 
   return localUsers;
+};
+
+export const getUsersSyncStatus = () => {
+  return {
+    firebaseConfigured: isFirebaseConfigured(),
+    source: lastUsersSource,
+    error: lastUsersSyncError,
+  };
 };
 
 export const userExists = async (username) => {

@@ -6,6 +6,7 @@ import {
   userExists,
   getUser,
   getUserById,
+  getUsersSyncStatus,
   saveActiveSessionUserID,
   getActiveSessionUserID,
   clearActiveSessionUserID,
@@ -118,7 +119,16 @@ export const useAuthViewModel = () => {
       setIsLoggedIn(true);
       setAuthError(null);
     } else {
-      setAuthError('Invalid username or password');
+      const syncStatus = getUsersSyncStatus();
+      if (!syncStatus.firebaseConfigured) {
+        setAuthError('Firebase config missing. Check EXPO_PUBLIC_FIREBASE_* environment values.');
+      } else if (syncStatus.error === 'firestore-read-failed') {
+        setAuthError('Cannot read accounts from Firestore. Check Firestore rules and project settings.');
+      } else if (syncStatus.source === 'local') {
+        setAuthError('No shared account data found. This app is using local-only auth data on this device.');
+      } else {
+        setAuthError('Invalid username or password');
+      }
     }
     setIsLoading(false);
   }, []);
