@@ -15,6 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useDiscussionViewModel } from './DiscussionViewModel';
 import DiscussionDetailView from './DiscussionDetailView';
 import NewDiscussionView from './NewDiscussionView';
@@ -42,6 +43,22 @@ const relativeDate = (dateStr) => {
   if (interval < 3600) return 'Now';
   if (interval < 86400) return `${Math.floor(interval / 3600)}h ago`;
   return `${Math.floor(interval / 86400)}d ago`;
+};
+
+const formatDateInputValue = (date) => date.toISOString().slice(0, 10);
+const formatTimeInputValue = (date) => date.toTimeString().slice(0, 5);
+const formatDisplayDate = (date) => date.toLocaleDateString();
+const formatDisplayTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const webPickerInputStyle = {
+  width: '220px',
+  border: '1px solid #D1D5DB',
+  borderRadius: 8,
+  padding: '12px',
+  fontSize: 15,
+  backgroundColor: '#F9FAFB',
+  color: '#111827',
+  boxSizing: 'border-box',
+  cursor: 'pointer',
 };
 
 const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, confirmAction, openMenu }) => {
@@ -193,17 +210,34 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const [selectedProfile, setSelectedProfile] = useState({ id: null, name: '' });
   const [showNewForumModal, setShowNewForumModal] = useState(false);
   const [forumTitle, setForumTitle] = useState('');
-  const [forumDuration, setForumDuration] = useState('30');
+  const [forumEndDate, setForumEndDate] = useState(() => formatDateInputValue(new Date(Date.now() + 30 * 60 * 1000)));
+  const [forumEndTime, setForumEndTime] = useState(() => formatTimeInputValue(new Date(Date.now() + 30 * 60 * 1000)));
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [filterWordInput, setFilterWordInput] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [modTab, setModTab] = useState('reports');
   const [showPastForumPosts, setShowPastForumPosts] = useState(false);
   const [registeredUsers, setRegisteredUsers] = useState([]);
   const [deletedForumID, setDeletedForumID] = useState(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
+  const webDateInputRef = useRef(null);
+  const webTimeInputRef = useRef(null);
   const [overlayMenu, setOverlayMenu] = useState({ visible: false, x: 0, y: 0, discussion: null });
   const forumTitleHasBlockedLanguage = hasModerationMatch(forumTitle, discussionVM.blockedWords);
-  const parsedForumDuration = parseInt(forumDuration, 10);
+  const parsedForumEnd = useMemo(() => {
+    if (!forumEndDate || !forumEndTime) return null;
+    const dt = new Date(`${forumEndDate}T${forumEndTime}`);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt;
+  }, [forumEndDate, forumEndTime]);
+  const isForumEndFuture = Boolean(parsedForumEnd && parsedForumEnd.getTime() > Date.now());
   const canCreateForum = Boolean(
-    forumTitle.trim() && Number.isFinite(parsedForumDuration) && parsedForumDuration > 0 && !forumTitleHasBlockedLanguage
+    forumTitle.trim() && isForumEndFuture && !forumTitleHasBlockedLanguage
+  );
+  const reportedPosts = useMemo(
+    () => discussionVM.discussions.filter((item) => item.reports.length > 0),
+    [discussionVM.discussions]
   );
 
   const permissions = useMemo(() => discussionVM.getPermissionSummary(currentUser), [discussionVM, currentUser]);
@@ -252,13 +286,33 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   }, [discussionVM.discussions, discussionVM.toast?.id, showModPanel]);
 
   const submitForumCreation = () => {
-    const duration = parsedForumDuration;
     if (!canCreateForum) return;
-    if (discussionVM.createForum(forumTitle, duration, currentUser)) {
+    const nextExpiresAt = parsedForumEnd.toISOString();
+    if (discussionVM.createForum(forumTitle, nextExpiresAt, currentUser)) {
       setShowNewForumModal(false);
       setForumTitle('');
-      setForumDuration('30');
+      const nextDefault = new Date(Date.now() + 30 * 60 * 1000);
+      setForumEndDate(formatDateInputValue(nextDefault));
+      setForumEndTime(formatTimeInputValue(nextDefault));
+      setShowEndDatePicker(false);
+      setShowEndTimePicker(false);
     }
+  };
+
+  const applyPickedDate = (pickedDate) => {
+    const current = parsedForumEnd || new Date();
+    const next = new Date(current);
+    next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+    setForumEndDate(formatDateInputValue(next));
+    setForumEndTime(formatTimeInputValue(next));
+  };
+
+  const applyPickedTime = (pickedTime) => {
+    const current = parsedForumEnd || new Date();
+    const next = new Date(current);
+    next.setHours(pickedTime.getHours(), pickedTime.getMinutes(), 0, 0);
+    setForumEndDate(formatDateInputValue(next));
+    setForumEndTime(formatTimeInputValue(next));
   };
 
   const openProfile = (userID, userName) => {
@@ -292,6 +346,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       map.set(userID, {
         id: userID,
         name: userName,
+        role: 'user',
         posts: 0,
         isBanned: Boolean(bannedMap[userID]),
         isMuted: Boolean(mutedMap[userID] && new Date(mutedMap[userID]).getTime() > now),
@@ -303,6 +358,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       map.set(user.id, {
         id: user.id,
         name: user.username,
+        role: String(user.role || 'user').toLowerCase(),
         posts: 0,
         isBanned: Boolean(user.isBanned || bannedMap[user.id]),
         isMuted: (mutedUntil > now) || Boolean(mutedMap[user.id] && new Date(mutedMap[user.id]).getTime() > now),
@@ -313,6 +369,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       const current = map.get(currentUser.id) || {
         id: currentUser.id,
         name: currentUser.username,
+        role: String(currentUser.role || 'user').toLowerCase(),
         posts: 0,
         isBanned: false,
         isMuted: false,
@@ -367,6 +424,9 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       }
 
       existing.posts += entry.posts;
+      if (existing.role === 'user' && entry.role && entry.role !== 'user') {
+        existing.role = entry.role;
+      }
       existing.isBanned = Boolean(existing.isBanned || entry.isBanned);
       existing.isMuted = Boolean(existing.isMuted || entry.isMuted);
       if (!existing.allIDs.includes(entry.id)) {
@@ -390,6 +450,29 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
 
     return Array.from(mergedByName.values()).sort((a, b) => b.posts - a.posts);
   }, [discussionVM.discussions, discussionVM.mutedUsers, discussionVM.bannedUsers, discussionVM.knownUsers, discussionVM.postHistoryCounts, registeredUsers, currentUser]);
+
+  const filteredUserSummaries = useMemo(() => {
+    const query = String(userSearchQuery || '').trim().toLowerCase();
+    if (!query) return userSummaries;
+
+    const rolePrefix = 'role:';
+    const idPrefix = 'id:';
+    if (query.startsWith(rolePrefix)) {
+      const value = query.slice(rolePrefix.length).trim();
+      if (!value) return userSummaries;
+      return userSummaries.filter((userItem) => String(userItem.role || '').toLowerCase().includes(value));
+    }
+    if (query.startsWith(idPrefix)) {
+      const value = query.slice(idPrefix.length).trim();
+      if (!value) return userSummaries;
+      return userSummaries.filter((userItem) => String(userItem.id || '').toLowerCase().includes(value));
+    }
+
+    return userSummaries.filter((userItem) => {
+      // Default search behavior is username-only to keep results predictable.
+      return String(userItem.name || '').toLowerCase().includes(query);
+    });
+  }, [userSearchQuery, userSummaries]);
 
   const confirmAction = (title, message, onConfirm, deniedMessage = 'This action was not applied. Check your permissions and current forum state.') => {
     if (Platform.OS === 'web') {
@@ -649,13 +732,34 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
               </TouchableOpacity>
             </View>
 
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.adminTabsRow}>
+              {[
+                { key: 'reports', label: 'Reports' },
+                { key: 'deleted', label: 'Deleted' },
+                { key: 'forums', label: 'Forums' },
+                { key: 'users', label: 'Users' },
+                { key: 'filters', label: 'Filters' },
+              ].map((tab) => {
+                const isActive = modTab === tab.key;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    style={[styles.adminTabChip, isActive && styles.adminTabChipActive]}
+                    onPress={() => setModTab(tab.key)}
+                  >
+                    <Text style={[styles.adminTabChipText, isActive && styles.adminTabChipTextActive]}>{tab.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {modTab === 'reports' && (
+              <>
             <Text style={styles.panelSectionTitle}>Reported Posts</Text>
-            {discussionVM.discussions.filter((item) => item.reports.length > 0).length === 0 ? (
+            {reportedPosts.length === 0 ? (
               <Text style={styles.emptyStateText}>No reported posts</Text>
             ) : (
-              discussionVM.discussions
-                .filter((item) => item.reports.length > 0)
-                .map((item) => (
+              reportedPosts.map((item) => (
                   <View key={item.id} style={styles.panelCard}>
                     <Text style={styles.panelTitle}>{item.title}</Text>
                     <Text style={styles.panelMeta}>Author: {item.authorName} · Reports: {item.reports.length}</Text>
@@ -696,7 +800,11 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                   </View>
                 ))
             )}
+              </>
+            )}
 
+            {modTab === 'deleted' && (
+              <>
             <Text style={styles.panelSectionTitle}>Deleted Posts</Text>
             <View style={{ marginBottom: 8 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
@@ -769,7 +877,11 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                 ))
               )
             )}
+              </>
+            )}
 
+            {modTab === 'forums' && (
+              <>
             <Text style={styles.panelSectionTitle}>Forum Controls</Text>
             {discussionVM.forums.map((forum) => (
               <View key={forum.id} style={styles.panelCard}>
@@ -832,9 +944,21 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                 </View>
               </View>
             ))}
+              </>
+            )}
 
+            {modTab === 'users' && (
+              <>
             <Text style={styles.panelSectionTitle}>User Controls</Text>
-            {userSummaries.map((userItem) => (
+            <TextInput
+              style={styles.input}
+              placeholder="Search username (or role:admin, id:xxxxx)"
+              placeholderTextColor="#B6BFCC"
+              value={userSearchQuery}
+              onChangeText={setUserSearchQuery}
+              autoCapitalize="none"
+            />
+            {filteredUserSummaries.map((userItem) => (
               <View key={userItem.id} style={styles.panelCard}>
                 <View style={styles.userTitleRow}>
                   <Text style={styles.panelTitle}>{userItem.name}</Text>
@@ -851,7 +975,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                     )}
                   </View>
                 </View>
-                <Text style={styles.panelMeta}>{userItem.posts} post(s)</Text>
+                <Text style={styles.panelMeta}>{userItem.posts} post(s) · role: {userItem.role || 'user'}</Text>
                 <View style={styles.panelActionRow}>
                   {(() => {
                     const targetUserIDs = (userItem.allIDs && userItem.allIDs.length > 0)
@@ -940,20 +1064,67 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                       <Text style={styles.panelButtonText}>Unban User</Text>
                     </TouchableOpacity>
                   )}
+
+                  {permissions.isAdmin && (userItem.role || 'user') !== 'moderator' && (
+                    <TouchableOpacity
+                      style={styles.panelButton}
+                      onPress={() =>
+                        confirmAction(
+                          'Promote User',
+                          'Promote this user to moderator?',
+                          async () => {
+                            const results = await Promise.all(
+                              targetUserIDs.map((userID) => discussionVM.promoteUserToModerator(userID, currentUser))
+                            );
+                            return results.some(Boolean);
+                          }
+                        )
+                      }
+                    >
+                      <Text style={styles.panelButtonText}>Promote to Mod</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {permissions.isAdmin && (userItem.role || 'user') === 'moderator' && (
+                    <TouchableOpacity
+                      style={styles.panelButton}
+                      onPress={() =>
+                        confirmAction(
+                          'Demote Moderator',
+                          'Demote this moderator to regular user?',
+                          async () => {
+                            const results = await Promise.all(
+                              targetUserIDs.map((userID) => discussionVM.demoteModeratorToUser(userID, currentUser))
+                            );
+                            return results.some(Boolean);
+                          }
+                        )
+                      }
+                    >
+                      <Text style={styles.panelButtonText}>Demote to User</Text>
+                    </TouchableOpacity>
+                  )}
                       </>
                     );
                   })()}
                 </View>
               </View>
             ))}
+            {filteredUserSummaries.length === 0 ? (
+              <Text style={styles.emptyStateText}>No users matched your search.</Text>
+            ) : null}
+              </>
+            )}
 
-            <Text style={styles.panelSectionTitle}>Content Filter (Dictionary)</Text>
+            {modTab === 'filters' && (
+              <>
+            <Text style={styles.panelSectionTitle}>Content Filter</Text>
             <View style={styles.panelCard}>
-              <Text style={styles.panelMeta}>Posts/comments with blocked words are rejected.</Text>
+              <Text style={styles.panelMeta}>By default, swearing is blocked automatically. Add extra custom words below if needed.</Text>
               <View style={styles.filterManageRow}>
                 <TextInput
                   style={styles.filterInput}
-                  placeholder="Add blocked word"
+                  placeholder="Add custom blocked word"
                   placeholderTextColor="#B6BFCC"
                   value={filterWordInput}
                   onChangeText={setFilterWordInput}
@@ -981,6 +1152,8 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                 ))}
               </View>
             </View>
+              </>
+            )}
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -1017,15 +1190,70 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
               <Text style={styles.validationText}>Blocked language detected in forum title.</Text>
             ) : null}
 
-            <Text style={styles.label}>Duration in minutes</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="30"
-              placeholderTextColor="#B6BFCC"
-              keyboardType="numeric"
-              value={forumDuration}
-              onChangeText={setForumDuration}
-            />
+            <Text style={styles.label}>End date</Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                ref={webDateInputRef}
+                value={forumEndDate}
+                onChange={(event) => setForumEndDate(event.target.value)}
+                onClick={() => webDateInputRef.current?.showPicker?.()}
+                onFocus={() => webDateInputRef.current?.showPicker?.()}
+                style={webPickerInputStyle}
+              />
+            ) : (
+              <TouchableOpacity style={styles.pickerButton} onPress={() => setShowEndDatePicker(true)}>
+                <Text style={styles.pickerButtonText}>{parsedForumEnd ? formatDisplayDate(parsedForumEnd) : 'Select end date'}</Text>
+              </TouchableOpacity>
+            )}
+
+            <Text style={styles.label}>End time (24h)</Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="time"
+                ref={webTimeInputRef}
+                value={forumEndTime}
+                onChange={(event) => setForumEndTime(event.target.value)}
+                onClick={() => webTimeInputRef.current?.showPicker?.()}
+                onFocus={() => webTimeInputRef.current?.showPicker?.()}
+                style={webPickerInputStyle}
+              />
+            ) : (
+              <TouchableOpacity style={styles.pickerButton} onPress={() => setShowEndTimePicker(true)}>
+                <Text style={styles.pickerButtonText}>{parsedForumEnd ? formatDisplayTime(parsedForumEnd) : 'Select end time'}</Text>
+              </TouchableOpacity>
+            )}
+            {!isForumEndFuture ? (
+              <Text style={styles.validationText}>End date/time must be in the future.</Text>
+            ) : null}
+
+            {Platform.OS !== 'web' && showEndDatePicker ? (
+              <DateTimePicker
+                value={parsedForumEnd || new Date()}
+                mode="date"
+                display="default"
+                onChange={(_, selectedDate) => {
+                  setShowEndDatePicker(false);
+                  if (selectedDate) {
+                    applyPickedDate(selectedDate);
+                  }
+                }}
+              />
+            ) : null}
+
+            {Platform.OS !== 'web' && showEndTimePicker ? (
+              <DateTimePicker
+                value={parsedForumEnd || new Date()}
+                mode="time"
+                display="default"
+                onChange={(_, selectedDate) => {
+                  setShowEndTimePicker(false);
+                  if (selectedDate) {
+                    applyPickedTime(selectedDate);
+                  }
+                }}
+              />
+            ) : null}
 
             <TouchableOpacity
               style={[styles.createButton, !canCreateForum && styles.createButtonDisabled]}
@@ -1245,6 +1473,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     backgroundColor: '#F9FAFB',
   },
+  pickerButton: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: '#F9FAFB',
+  },
+  pickerButtonText: { fontSize: 15, color: '#111827' },
   createButton: {
     marginTop: 8,
     backgroundColor: '#2563EB',
@@ -1265,6 +1501,21 @@ const styles = StyleSheet.create({
   },
   panelHeaderTitle: { color: '#1E3A8A', fontWeight: '700', fontSize: 15 },
   panelHeaderSubtitle: { color: '#4B5563', fontSize: 12 },
+  adminTabsRow: { paddingVertical: 2, gap: 8 },
+  adminTabChip: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F9FAFB',
+  },
+  adminTabChipActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  adminTabChipText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  adminTabChipTextActive: { color: '#1D4ED8' },
   restorePostsButton: {
     marginTop: 8,
     alignSelf: 'flex-start',

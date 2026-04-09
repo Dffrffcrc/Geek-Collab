@@ -154,6 +154,31 @@ export const updateUserMuteStatus = async (userID, mutedUntil) => {
   }
 };
 
+export const updateUserRole = async (userID, role) => {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  if (!userID || !normalizedRole) return false;
+
+  const users = await getAllUsers();
+  let didUpdate = false;
+  const nextUsers = users.map((user) => {
+    if (user.id !== userID) return user;
+    didUpdate = true;
+    return { ...user, role: normalizedRole };
+  });
+  if (!didUpdate) return false;
+
+  await AsyncStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      await saveRemoteUsers(firestoreDb, nextUsers);
+    } catch {
+      // keep local role update even if remote fails
+    }
+  }
+  return true;
+};
+
 export const getUserById = async (id) => {
   if (!id) return null;
   const users = await getAllUsers();

@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { createDiscussion, createComment, createForumConfig } from './Models';
 import { getForumState, saveForumState } from './StorageExtension';
-import { updateUserBanStatus, updateUserMuteStatus } from './StorageExtension';
+import { updateUserBanStatus, updateUserMuteStatus, updateUserRole } from './StorageExtension';
 import { moderateText } from './ContentModeration';
 import uuid from 'react-native-uuid';
 
@@ -372,14 +372,19 @@ export const useDiscussionViewModel = () => {
     };
   }, [bannedUsers, mutedUsers, forumIsReadOnly]);
 
-  const createForum = useCallback((title, durationMinutes, actor) => {
+  const createForum = useCallback((title, expiresAtISO, actor) => {
     const permissions = getPermissionSummary(actor);
     if (!permissions.canCreateForums) {
       enqueueNotification('Only admins can create forums.');
       return false;
     }
-    if (!title.trim() || durationMinutes <= 0) {
-      enqueueNotification('Forum title and duration are required.');
+    const expiresAtMs = new Date(expiresAtISO).getTime();
+    if (!title.trim() || !expiresAtISO || Number.isNaN(expiresAtMs)) {
+      enqueueNotification('Forum title and end date/time are required.');
+      return false;
+    }
+    if (expiresAtMs <= Date.now()) {
+      enqueueNotification('Forum end date/time must be in the future.');
       return false;
     }
     const titleResult = moderateText(title.trim(), blockedWords);
@@ -387,7 +392,7 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('Forum title contains blocked language.', 'danger');
       return false;
     }
-    const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+    const expiresAt = new Date(expiresAtMs).toISOString();
     const newForum = createForumConfig({
       id: uuid.v4(),
       title: titleResult.sanitized,
@@ -398,7 +403,7 @@ export const useDiscussionViewModel = () => {
     });
     setForums((prev) => [newForum, ...prev]);
     setSelectedForumID(newForum.id);
-    enqueueNotification(`New forum \"${titleResult.sanitized}\" is live for ${durationMinutes} minute(s).`);
+    enqueueNotification(`New forum \"${titleResult.sanitized}\" is live until ${new Date(expiresAt).toLocaleString()}.`);
     return true;
   }, [blockedWords, enqueueNotification, getPermissionSummary]);
 
@@ -774,6 +779,58 @@ export const useDiscussionViewModel = () => {
     return true;
   }, [enqueueNotification, getPermissionSummary]);
 
+  const promoteUserToModerator = useCallback(async (userID, actor) => {
+    const permissions = getPermissionSummary(actor);
+    if (!permissions.isAdmin) {
+      enqueueNotification('Only admins can promote moderators.', 'danger');
+      return false;
+    }
+    if (!userID) {
+      enqueueNotification('Invalid promote request.', 'danger');
+      return false;
+    }
+
+    try {
+      const updated = await updateUserRole(userID, 'moderator');
+      if (!updated) {
+        enqueueNotification('User not found for promotion.', 'info');
+        return false;
+      }
+    } catch {
+      enqueueNotification('Failed to persist role update.', 'danger');
+      return false;
+    }
+
+    enqueueNotification('User promoted to moderator.');
+    return true;
+  }, [enqueueNotification, getPermissionSummary]);
+
+  const demoteModeratorToUser = useCallback(async (userID, actor) => {
+    const permissions = getPermissionSummary(actor);
+    if (!permissions.isAdmin) {
+      enqueueNotification('Only admins can demote moderators.', 'danger');
+      return false;
+    }
+    if (!userID) {
+      enqueueNotification('Invalid demote request.', 'danger');
+      return false;
+    }
+
+    try {
+      const updated = await updateUserRole(userID, 'user');
+      if (!updated) {
+        enqueueNotification('User not found for demotion.', 'info');
+        return false;
+      }
+    } catch {
+      enqueueNotification('Failed to persist role update.', 'danger');
+      return false;
+    }
+
+    enqueueNotification('Moderator demoted to user.');
+    return true;
+  }, [enqueueNotification, getPermissionSummary]);
+
   const addBlockedWord = useCallback((word, actor) => {
     const permissions = getPermissionSummary(actor);
     if (!permissions.canModerate) {
@@ -976,6 +1033,8 @@ export const useDiscussionViewModel = () => {
     unmuteUser,
     banUser,
     unbanUser,
+    promoteUserToModerator,
+    demoteModeratorToUser,
     restoreSamplePosts,
     getPostsByAuthor,
     getForumPostCount,
