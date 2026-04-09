@@ -3,7 +3,7 @@ import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   Image,
   StyleSheet,
@@ -26,8 +26,12 @@ import { hasModerationMatch } from './ContentModeration';
 
 const toImageURI = (image) => {
   if (!image) return null;
-  if (typeof image === 'string') return `data:image/jpeg;base64,${image}`;
-  if (image.base64) return `data:image/jpeg;base64,${image.base64}`;
+  if (typeof image === 'string') return image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
+  if (image.uri) return image.uri;
+  if (image.base64) {
+    const mimeType = image.mimeType || 'image/jpeg';
+    return `data:${mimeType};base64,${image.base64}`;
+  }
   return null;
 };
 
@@ -68,6 +72,21 @@ const webPickerInputStyle = {
   color: '#111827',
   boxSizing: 'border-box',
   cursor: 'pointer',
+};
+
+const TouchableOpacity = ({ children, style, activeOpacity = 0.85, disabled, ...rest }) => {
+  return (
+    <Pressable
+      disabled={disabled}
+      {...rest}
+      style={({ pressed }) => [
+        typeof style === 'function' ? style({ pressed }) : style,
+        !disabled && pressed ? { opacity: activeOpacity } : null,
+      ]}
+    >
+      {children}
+    </Pressable>
+  );
 };
 
 const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, confirmAction, openMenu }) => {
@@ -279,10 +298,11 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   useEffect(() => {
     if (!discussionVM.toast?.id) return;
     toastOpacity.setValue(0);
+    const useNativeDriver = Platform.OS !== 'web';
     Animated.sequence([
-      Animated.timing(toastOpacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.timing(toastOpacity, { toValue: 1, duration: 180, useNativeDriver }),
       Animated.delay(1500),
-      Animated.timing(toastOpacity, { toValue: 0, duration: 450, useNativeDriver: true }),
+      Animated.timing(toastOpacity, { toValue: 0, duration: 450, useNativeDriver }),
     ]).start();
   }, [discussionVM.toast?.id, toastOpacity, discussionVM.toast]);
 
@@ -1288,7 +1308,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
             <Text style={styles.label}>Forum title</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. Hackathon Sprint"
+              placeholder="e.g. Workshop"
               placeholderTextColor="#B6BFCC"
               value={forumTitle}
               onChangeText={setForumTitle}

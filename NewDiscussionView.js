@@ -39,6 +39,17 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
     hasModerationMatch(tags, viewModel.blockedWords);
   const canSubmit = Boolean(title.trim() && content.trim() && canPostToSelectedForum && !hasBlockedLanguage);
 
+  const toImageURI = (image) => {
+    if (!image) return null;
+    if (image.uri) return image.uri;
+    if (typeof image === 'string') return image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
+    if (image.base64) {
+      const mimeType = image.mimeType || 'image/jpeg';
+      return `data:${mimeType};base64,${image.base64}`;
+    }
+    return null;
+  };
+
   const postDiscussion = () => {
     if (!canSubmit) return;
     const tagArray = tags
@@ -185,7 +196,7 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             <>
               <Text style={styles.imageAdded}>✓ Image added</Text>
               <Image
-                source={{ uri: `data:image/jpeg;base64,${selectedImage.base64}` }}
+                source={{ uri: toImageURI(selectedImage) }}
                 style={styles.imagePreview}
                 resizeMode="contain"
               />
@@ -294,6 +305,14 @@ const styles = StyleSheet.create({
     code_inline: { backgroundColor: '#F3F4F6', color: '#111827', paddingHorizontal: 4 },
     fence: { backgroundColor: '#111827', color: '#F9FAFB', borderRadius: 6, padding: 8 },
     link: { color: '#2563EB' },
+    image: {
+      width: '100%',
+      height: 220,
+      resizeMode: 'contain',
+      marginVertical: 8,
+      borderRadius: 10,
+      backgroundColor: '#F3F4F6',
+    },
   },
   validationText: { fontSize: 12, color: '#DC2626' },
   imageAdded: { fontSize: 12, color: '#16A34A', marginTop: 4 },

@@ -1,7 +1,7 @@
  
 // Uses react-native-image-picker (install: npm install react-native-image-picker)
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { Pressable, Text, StyleSheet } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 
 /**
@@ -37,6 +37,7 @@ const MediaPicker = ({ onImageSelected, onCancel, children }) => {
             base64: asset.base64,
             width: asset.width,
             height: asset.height,
+            mimeType: asset.type || 'image/jpeg',
           });
         }
       }
@@ -45,16 +46,16 @@ const MediaPicker = ({ onImageSelected, onCancel, children }) => {
 
   if (children) {
     return (
-      <TouchableOpacity onPress={openPicker}>
+      <Pressable onPress={openPicker}>
         {children}
-      </TouchableOpacity>
+      </Pressable>
     );
   }
 
   return (
-    <TouchableOpacity style={styles.button} onPress={openPicker}>
+    <Pressable style={styles.button} onPress={openPicker}>
       <Text style={styles.buttonText}>📷  Add Image</Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 };
 
