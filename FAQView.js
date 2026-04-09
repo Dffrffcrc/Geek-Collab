@@ -12,7 +12,7 @@ const FAQS = [
   },
   {
     question: 'How does the word filter work?',
-    answer: 'A built-in dictionary filters blocked words in posts/comments and replaces them automatically.',
+    answer: 'Built-in profanity filtering is enabled by default. You can also add custom blocked words in Admin controls.',
   },
   {
     question: 'Can I upload images?',

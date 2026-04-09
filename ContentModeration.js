@@ -1,6 +1,6 @@
 import leoProfanity from 'leo-profanity';
 
-// Load the default dictionary once for the app runtime.
+// Load built-in profanity words once for the app runtime.
 leoProfanity.loadDictionary();
 
 const tokenizeWordRegex = /\b([a-zA-Z]+)\b/g;

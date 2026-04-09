@@ -7,7 +7,7 @@ import { moderateText } from './ContentModeration';
 import uuid from 'react-native-uuid';
 
 const FILTERS = ['Latest', 'Popular', 'Trending', 'Reported'];
-const DEFAULT_DICTIONARY_FILTER = ['spam', 'scam', 'hate'];
+const DEFAULT_CUSTOM_BLOCKED_WORDS = ['spam', 'scam', 'hate'];
 const DEFAULT_FORUM_ID = 'forum-general-discussion';
 const SAMPLE_USER_IDS = {
   varun: 'sample-user-varun',
@@ -118,7 +118,7 @@ export const useDiscussionViewModel = () => {
   const [mutedUsers, setMutedUsers] = useState({});
   const [bannedUsers, setBannedUsers] = useState({});
   const [deletedDiscussions, setDeletedDiscussions] = useState([]);
-  const [blockedWords, setBlockedWords] = useState(DEFAULT_DICTIONARY_FILTER);
+  const [blockedWords, setBlockedWords] = useState(DEFAULT_CUSTOM_BLOCKED_WORDS);
   const [clockTick, setClockTick] = useState(Date.now());
   const [forums, setForums] = useState([]);
   const [selectedForumID, setSelectedForumID] = useState(null);
@@ -849,7 +849,7 @@ export const useDiscussionViewModel = () => {
     if (!normalized) return;
     setBlockedWords((prev) => {
       if (prev.includes(normalized)) return prev;
-      enqueueNotification(`Added \"${normalized}\" to filter dictionary.`);
+      enqueueNotification(`Added \"${normalized}\" to custom blocked words.`);
       return [...prev, normalized];
     });
   }, [enqueueNotification, getPermissionSummary]);
@@ -863,7 +863,7 @@ export const useDiscussionViewModel = () => {
     const normalized = (word || '').trim().toLowerCase();
     setBlockedWords((prev) => {
       if (!prev.includes(normalized)) return prev;
-      enqueueNotification(`Removed \"${normalized}\" from filter dictionary.`);
+      enqueueNotification(`Removed \"${normalized}\" from custom blocked words.`);
       return prev.filter((item) => item !== normalized);
     });
   }, [enqueueNotification, getPermissionSummary]);
