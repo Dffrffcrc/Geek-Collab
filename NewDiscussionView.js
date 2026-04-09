@@ -10,6 +10,7 @@ import {
   StyleSheet,
   SafeAreaView,
 } from 'react-native';
+import Markdown from 'react-native-markdown-display';
 import MediaPicker from './MediaPicker';
 import { hasModerationMatch } from './ContentModeration';
 
@@ -17,6 +18,7 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [content, setContent] = useState('');
+  const [showMarkdownPreview, setShowMarkdownPreview] = useState(false);
   const [tags, setTags] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const initialOpenForumID = (viewModel.openForums && viewModel.openForums.length > 0)
@@ -128,15 +130,29 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
 
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>Content</Text>
+          <TouchableOpacity
+            style={styles.previewToggleButton}
+            onPress={() => setShowMarkdownPreview((prev) => !prev)}
+          >
+            <Text style={styles.previewToggleText}>{showMarkdownPreview ? 'Hide Markdown Preview' : 'Show Markdown Preview'}</Text>
+          </TouchableOpacity>
           <TextInput
             style={styles.textArea}
-            placeholder="Write your discussion content here..."
+            placeholder="Write your discussion content here... (Markdown supported)"
             placeholderTextColor="#B6BFCC"
             value={content}
             onChangeText={setContent}
             multiline
             textAlignVertical="top"
           />
+          {showMarkdownPreview ? (
+            <View style={styles.markdownPreviewCard}>
+              <Text style={styles.markdownPreviewLabel}>Preview</Text>
+              <Markdown style={styles.markdownBodyStyles}>
+                {content.trim() || '*Nothing to preview yet.*'}
+              </Markdown>
+            </View>
+          ) : null}
           {hasModerationMatch(content, viewModel.blockedWords) ? (
             <Text style={styles.validationText}>Blocked language detected in content.</Text>
           ) : null}
@@ -251,6 +267,35 @@ const styles = StyleSheet.create({
     fontSize: 15,
     minHeight: 120,
     backgroundColor: '#F9FAFB',
+  },
+  previewToggleButton: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  previewToggleText: { color: '#1D4ED8', fontSize: 12, fontWeight: '600' },
+  markdownPreviewCard: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    gap: 6,
+  },
+  markdownPreviewLabel: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
+  markdownBodyStyles: {
+    body: { color: '#374151', fontSize: 14, lineHeight: 21 },
+    heading1: { color: '#111827', fontSize: 24, fontWeight: '700' },
+    heading2: { color: '#111827', fontSize: 20, fontWeight: '700' },
+    bullet_list: { marginVertical: 2 },
+    ordered_list: { marginVertical: 2 },
+    code_inline: { backgroundColor: '#F3F4F6', color: '#111827', paddingHorizontal: 4 },
+    fence: { backgroundColor: '#111827', color: '#F9FAFB', borderRadius: 6, padding: 8 },
+    link: { color: '#2563EB' },
   },
   validationText: { fontSize: 12, color: '#DC2626' },
   imageAdded: { fontSize: 12, color: '#16A34A', marginTop: 4 },

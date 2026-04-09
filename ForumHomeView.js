@@ -45,6 +45,15 @@ const relativeDate = (dateStr) => {
   return `${Math.floor(interval / 86400)}d ago`;
 };
 
+const REPORT_REASON_OPTIONS = [
+  'Spam or scam',
+  'Harassment or hate',
+  'Violence or dangerous content',
+  'False information',
+  'Copyright or IP concern',
+  'Other',
+];
+
 const formatDateInputValue = (date) => date.toISOString().slice(0, 10);
 const formatTimeInputValue = (date) => date.toTimeString().slice(0, 5);
 const formatDisplayDate = (date) => date.toLocaleDateString();
@@ -208,6 +217,11 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const [showModPanel, setShowModPanel] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState({ id: null, name: '' });
+  const [showQuickReportModal, setShowQuickReportModal] = useState(false);
+  const [quickReportReason, setQuickReportReason] = useState(REPORT_REASON_OPTIONS[0]);
+  const [quickReportCustomText, setQuickReportCustomText] = useState('');
+  const [quickReportTarget, setQuickReportTarget] = useState(null);
+  const [reportedPostToView, setReportedPostToView] = useState(null);
   const [showNewForumModal, setShowNewForumModal] = useState(false);
   const [forumTitle, setForumTitle] = useState('');
   const [forumEndDate, setForumEndDate] = useState(() => formatDateInputValue(new Date(Date.now() + 30 * 60 * 1000)));
@@ -239,6 +253,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
     () => discussionVM.discussions.filter((item) => item.reports.length > 0),
     [discussionVM.discussions]
   );
+  const canSubmitQuickReport = quickReportReason !== 'Other' || Boolean(quickReportCustomText.trim());
 
   const permissions = useMemo(() => discussionVM.getPermissionSummary(currentUser), [discussionVM, currentUser]);
 
@@ -511,6 +526,19 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
     ]);
   };
 
+  const submitQuickReport = () => {
+    if (!quickReportTarget || !canSubmitQuickReport) return;
+    const trimmedCustom = quickReportCustomText.trim();
+    const finalReason = quickReportReason === 'Other'
+      ? `Other: ${trimmedCustom}`
+      : (trimmedCustom ? `${quickReportReason} (${trimmedCustom})` : quickReportReason);
+    discussionVM.reportDiscussion(quickReportTarget.id, currentUser.id, finalReason);
+    setShowQuickReportModal(false);
+    setQuickReportReason(REPORT_REASON_OPTIONS[0]);
+    setQuickReportCustomText('');
+    setQuickReportTarget(null);
+  };
+
   // Only show the "no forums" state after the view model has hydrated to avoid a flash
   const shouldShowNoForumsState = discussionVM.isHydrated && !discussionVM.activeForum && discussionVM.openForums.length === 0 && !showPastForumPosts;
 
@@ -625,7 +653,8 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
             <TouchableOpacity
               style={styles.moreMenuItem}
               onPress={() => {
-                discussionVM.reportDiscussion(overlayMenu.discussion.id, currentUser.id, 'User report');
+                setQuickReportTarget(overlayMenu.discussion);
+                setShowQuickReportModal(true);
                 setOverlayMenu({ visible: false });
               }}
             >
@@ -653,6 +682,66 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
 
       <Modal visible={showFAQ} animationType="slide" presentationStyle="pageSheet">
         <FAQView onClose={() => setShowFAQ(false)} />
+      </Modal>
+
+      <Modal visible={showQuickReportModal} animationType="slide" transparent>
+        <View style={styles.reportModalBackdrop}>
+          <View style={styles.reportModalCard}>
+            <Text style={styles.reportModalTitle}>Report Post</Text>
+            <Text style={styles.reportModalSubtitle}>Select a reason</Text>
+
+            <View style={styles.reasonChipsRow}>
+              {REPORT_REASON_OPTIONS.map((option) => {
+                const isActive = quickReportReason === option;
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.reasonChip, isActive && styles.reasonChipActive]}
+                    onPress={() => setQuickReportReason(option)}
+                  >
+                    <Text style={[styles.reasonChipText, isActive && styles.reasonChipTextActive]}>{option}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.reportCustomLabel}>Custom details (optional)</Text>
+            <TextInput
+              style={styles.reportCustomInput}
+              placeholder={quickReportReason === 'Other' ? 'Required for Other reason' : 'Add extra context'}
+              placeholderTextColor="#B6BFCC"
+              value={quickReportCustomText}
+              onChangeText={setQuickReportCustomText}
+              multiline
+              textAlignVertical="top"
+            />
+
+            {quickReportReason === 'Other' && !quickReportCustomText.trim() ? (
+              <Text style={styles.validationText}>Please provide a custom reason for Other.</Text>
+            ) : null}
+
+            <View style={styles.reportActionsRow}>
+              <TouchableOpacity
+                style={styles.reportCancelButton}
+                onPress={() => {
+                  setShowQuickReportModal(false);
+                  setQuickReportReason(REPORT_REASON_OPTIONS[0]);
+                  setQuickReportCustomText('');
+                  setQuickReportTarget(null);
+                }}
+              >
+                <Text style={styles.reportCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reportSubmitButton, !canSubmitQuickReport && styles.reportSubmitButtonDisabled]}
+                onPress={submitQuickReport}
+                disabled={!canSubmitQuickReport}
+              >
+                <Text style={styles.reportSubmitButtonText}>Submit Report</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={showPastForums} animationType="slide" presentationStyle="pageSheet">
@@ -764,6 +853,12 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                     <Text style={styles.panelTitle}>{item.title}</Text>
                     <Text style={styles.panelMeta}>Author: {item.authorName} · Reports: {item.reports.length}</Text>
                     <View style={styles.panelActionRow}>
+                      <TouchableOpacity
+                        style={styles.panelButton}
+                        onPress={() => setReportedPostToView(item)}
+                      >
+                        <Text style={styles.panelButtonText}>View Post</Text>
+                      </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.panelButton}
                         onPress={() =>
@@ -1265,6 +1360,18 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
           </View>
         </SafeAreaView>
       </Modal>
+
+      <Modal visible={Boolean(reportedPostToView)} animationType="slide" presentationStyle="pageSheet">
+        {reportedPostToView ? (
+          <DiscussionDetailView
+            discussion={reportedPostToView}
+            viewModel={discussionVM}
+            currentUser={currentUser}
+            onOpenProfile={openProfile}
+            onBack={() => setReportedPostToView(null)}
+          />
+        ) : null}
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1422,6 +1529,62 @@ const styles = StyleSheet.create({
     color: '#374151',
     fontWeight: '600',
   },
+  reportModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 24, 39, 0.45)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  reportModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
+  },
+  reportModalTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
+  reportModalSubtitle: { fontSize: 12, color: '#6B7280' },
+  reasonChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  reasonChip: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#F9FAFB',
+  },
+  reasonChipActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  reasonChipText: { fontSize: 12, color: '#374151' },
+  reasonChipTextActive: { color: '#1D4ED8', fontWeight: '700' },
+  reportCustomLabel: { fontSize: 12, color: '#6B7280' },
+  reportCustomInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 80,
+    fontSize: 14,
+    backgroundColor: '#F9FAFB',
+  },
+  reportActionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  reportCancelButton: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  reportCancelButtonText: { color: '#374151', fontSize: 12, fontWeight: '600' },
+  reportSubmitButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  reportSubmitButtonDisabled: { backgroundColor: '#93C5FD' },
+  reportSubmitButtonText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   viewLink: { fontSize: 12, color: '#2563EB', fontWeight: '500' },
   deleteLink: { fontSize: 12, color: '#DC2626', fontWeight: '600' },
   moderationRow: { flexDirection: 'row', gap: 8, marginTop: 4 },

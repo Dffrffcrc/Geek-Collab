@@ -11,8 +11,10 @@ import {
   SafeAreaView,
   Animated,
   Alert,
+  Modal,
   Platform,
 } from 'react-native';
+import Markdown from 'react-native-markdown-display';
 import { createComment } from './Models';
 import { hasModerationMatch } from './ContentModeration';
 import uuid from 'react-native-uuid';
@@ -38,11 +40,24 @@ const relativeDate = (dateStr) => {
   return `${Math.floor(interval / 86400)}d ago`;
 };
 
+const REPORT_REASON_OPTIONS = [
+  'Spam or scam',
+  'Harassment or hate',
+  'Violence or dangerous content',
+  'False information',
+  'Copyright or IP concern',
+  'Other',
+];
+
 const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOpenProfile }) => {
   const [newCommentText, setNewCommentText] = useState('');
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState(REPORT_REASON_OPTIONS[0]);
+  const [reportCustomText, setReportCustomText] = useState('');
   const permissions = viewModel.getPermissionSummary(currentUser);
   const commentHasBlockedLanguage = hasModerationMatch(newCommentText, viewModel.blockedWords);
   const canSendComment = Boolean(newCommentText.trim() && permissions.canPostOrComment && !commentHasBlockedLanguage);
+  const canSubmitReport = reportReason !== 'Other' || Boolean(reportCustomText.trim());
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -66,6 +81,18 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
     });
     viewModel.addComment(discussion.id, comment, currentUser);
     setNewCommentText('');
+  };
+
+  const submitReport = () => {
+    if (!canSubmitReport) return;
+    const trimmedCustom = reportCustomText.trim();
+    const finalReason = reportReason === 'Other'
+      ? `Other: ${trimmedCustom}`
+      : (trimmedCustom ? `${reportReason} (${trimmedCustom})` : reportReason);
+    viewModel.reportDiscussion(liveDiscussion.id, currentUser.id, finalReason);
+    setShowReportModal(false);
+    setReportReason(REPORT_REASON_OPTIONS[0]);
+    setReportCustomText('');
   };
 
   const confirmDeletePost = () => {
@@ -151,7 +178,9 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
         {/* Title & Content */}
         <View style={styles.section}>
           <Text style={styles.title}>{liveDiscussion.title}</Text>
-          <Text style={styles.content}>{liveDiscussion.content}</Text>
+          <Markdown style={styles.markdownContentStyles}>
+            {liveDiscussion.content || ''}
+          </Markdown>
         </View>
 
         {/* Image */}
@@ -179,7 +208,7 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
         <View style={styles.detailActionsRow}>
           <TouchableOpacity
             style={styles.outlineButton}
-            onPress={() => viewModel.reportDiscussion(liveDiscussion.id, currentUser.id, 'User report')}
+            onPress={() => setShowReportModal(true)}
           >
             <Text style={styles.outlineButtonText}>Report Post</Text>
           </TouchableOpacity>
@@ -212,6 +241,65 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
           ))}
         </View>
       </ScrollView>
+
+      <Modal visible={showReportModal} animationType="slide" transparent>
+        <View style={styles.reportModalBackdrop}>
+          <View style={styles.reportModalCard}>
+            <Text style={styles.reportModalTitle}>Report Post</Text>
+            <Text style={styles.reportModalSubtitle}>Select a reason</Text>
+
+            <View style={styles.reasonChipsRow}>
+              {REPORT_REASON_OPTIONS.map((option) => {
+                const isActive = reportReason === option;
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={[styles.reasonChip, isActive && styles.reasonChipActive]}
+                    onPress={() => setReportReason(option)}
+                  >
+                    <Text style={[styles.reasonChipText, isActive && styles.reasonChipTextActive]}>{option}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.reportCustomLabel}>Custom details (optional)</Text>
+            <TextInput
+              style={styles.reportCustomInput}
+              placeholder={reportReason === 'Other' ? 'Required for Other reason' : 'Add extra context'}
+              placeholderTextColor="#B6BFCC"
+              value={reportCustomText}
+              onChangeText={setReportCustomText}
+              multiline
+              textAlignVertical="top"
+            />
+
+            {reportReason === 'Other' && !reportCustomText.trim() ? (
+              <Text style={styles.validationText}>Please provide a custom reason for Other.</Text>
+            ) : null}
+
+            <View style={styles.reportActionsRow}>
+              <TouchableOpacity
+                style={styles.reportCancelButton}
+                onPress={() => {
+                  setShowReportModal(false);
+                  setReportReason(REPORT_REASON_OPTIONS[0]);
+                  setReportCustomText('');
+                }}
+              >
+                <Text style={styles.reportCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reportSubmitButton, !canSubmitReport && styles.reportSubmitButtonDisabled]}
+                onPress={submitReport}
+                disabled={!canSubmitReport}
+              >
+                <Text style={styles.reportSubmitButtonText}>Submit Report</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Comment Input */}
       <View style={styles.commentInputRow}>
@@ -272,7 +360,16 @@ const styles = StyleSheet.create({
   authorDate: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
   section: { gap: 8 },
   title: { fontSize: 20, fontWeight: 'bold' },
-  content: { fontSize: 15, lineHeight: 22, color: '#374151' },
+  markdownContentStyles: {
+    body: { color: '#374151', fontSize: 15, lineHeight: 22 },
+    heading1: { color: '#111827', fontSize: 26, fontWeight: '700', marginVertical: 6 },
+    heading2: { color: '#111827', fontSize: 22, fontWeight: '700', marginVertical: 6 },
+    heading3: { color: '#111827', fontSize: 18, fontWeight: '700', marginVertical: 4 },
+    blockquote: { borderLeftWidth: 3, borderLeftColor: '#D1D5DB', paddingLeft: 10, color: '#4B5563' },
+    code_inline: { backgroundColor: '#F3F4F6', color: '#111827', paddingHorizontal: 4 },
+    fence: { backgroundColor: '#111827', color: '#F9FAFB', borderRadius: 6, padding: 8 },
+    link: { color: '#2563EB' },
+  },
   postImage: {
     width: '100%',
     maxHeight: 420,
@@ -369,6 +466,62 @@ const styles = StyleSheet.create({
     backgroundColor: '#DC2626',
   },
   toastTopText: { color: '#F9FAFB', fontWeight: '800', fontSize: 19, textAlign: 'center' },
+  reportModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 24, 39, 0.45)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  reportModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
+  },
+  reportModalTitle: { fontSize: 17, fontWeight: '700', color: '#111827' },
+  reportModalSubtitle: { fontSize: 12, color: '#6B7280' },
+  reasonChipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  reasonChip: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#F9FAFB',
+  },
+  reasonChipActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  reasonChipText: { fontSize: 12, color: '#374151' },
+  reasonChipTextActive: { color: '#1D4ED8', fontWeight: '700' },
+  reportCustomLabel: { fontSize: 12, color: '#6B7280' },
+  reportCustomInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 80,
+    fontSize: 14,
+    backgroundColor: '#F9FAFB',
+  },
+  reportActionsRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  reportCancelButton: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  reportCancelButtonText: { color: '#374151', fontSize: 12, fontWeight: '600' },
+  reportSubmitButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  reportSubmitButtonDisabled: { backgroundColor: '#93C5FD' },
+  reportSubmitButtonText: { color: '#fff', fontSize: 12, fontWeight: '700' },
 });
 
 export default DiscussionDetailView;

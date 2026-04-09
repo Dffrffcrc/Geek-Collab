@@ -392,6 +392,14 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('Forum title contains blocked language.', 'danger');
       return false;
     }
+    const normalizedTitle = titleResult.sanitized.trim().replace(/\s+/g, ' ').toLowerCase();
+    const duplicateForum = forums.some(
+      (forum) => String(forum.title || '').trim().replace(/\s+/g, ' ').toLowerCase() === normalizedTitle
+    );
+    if (duplicateForum) {
+      enqueueNotification('A forum with this name already exists. Please choose a different title.', 'danger');
+      return false;
+    }
     const expiresAt = new Date(expiresAtMs).toISOString();
     const newForum = createForumConfig({
       id: uuid.v4(),
