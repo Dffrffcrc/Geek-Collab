@@ -7,6 +7,7 @@ import {
   getUser,
   getUserById,
   getUsersSyncStatus,
+  migrateDatabaseSchema,
   saveActiveSessionUserID,
   getActiveSessionUserID,
   clearActiveSessionUserID,
@@ -26,6 +27,7 @@ export const useAuthViewModel = () => {
   useEffect(() => {
     const restoreSession = async () => {
       try {
+        await migrateDatabaseSchema();
         const activeUserID = await getActiveSessionUserID();
         if (!activeUserID) return;
         const activeUser = await getUserById(activeUserID);
