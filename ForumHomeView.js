@@ -642,7 +642,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       )}
 
       {overlayMenu.visible && (
-        <View style={styles.overlayContainer} pointerEvents="box-none">
+        <View style={styles.overlayContainer}>
           <TouchableOpacity style={styles.overlayBackdrop} onPress={() => setOverlayMenu({ visible: false })} />
           <View
             style={[
@@ -1455,10 +1455,14 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.06)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.06,
+          shadowRadius: 4,
+        }),
     elevation: 2,
   },
   cardAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'space-between' },
@@ -1523,10 +1527,14 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     borderRadius: 8,
     paddingVertical: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.10)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+        }),
     elevation: 4,
     zIndex: 120,
   },
@@ -1618,10 +1626,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0px 4px 8px rgba(37, 99, 235, 0.35)' }
+      : {
+          shadowColor: '#2563EB',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.35,
+          shadowRadius: 8,
+        }),
     elevation: 6,
   },
   fabDisabled: { backgroundColor: '#93C5FD' },

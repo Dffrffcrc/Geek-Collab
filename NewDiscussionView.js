@@ -11,6 +11,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import Markdown from 'react-native-markdown-display';
+import LexicalMarkdownEditor from './LexicalMarkdownEditor';
 import MediaPicker from './MediaPicker';
 import { hasModerationMatch } from './ContentModeration';
 
@@ -136,14 +137,11 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
           >
             <Text style={styles.previewToggleText}>{showMarkdownPreview ? 'Hide Markdown Preview' : 'Show Markdown Preview'}</Text>
           </TouchableOpacity>
-          <TextInput
+          <LexicalMarkdownEditor
             style={styles.textArea}
-            placeholder="Write your discussion content here... (Markdown supported)"
-            placeholderTextColor="#B6BFCC"
+            placeholder="Enter some text..."
             value={content}
-            onChangeText={setContent}
-            multiline
-            textAlignVertical="top"
+            onChange={setContent}
           />
           {showMarkdownPreview ? (
             <View style={styles.markdownPreviewCard}>
