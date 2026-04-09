@@ -142,6 +142,9 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
   // Get the latest version of the discussion from viewModel
   const liveDiscussion =
     viewModel.discussions.find((d) => d.id === discussion.id) || discussion;
+  const userHasReported = Array.isArray(liveDiscussion.reports)
+    ? liveDiscussion.reports.some((report) => report.reporterID === currentUser.id)
+    : false;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -206,12 +209,21 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
         <View style={styles.divider} />
 
         <View style={styles.detailActionsRow}>
-          <TouchableOpacity
-            style={styles.outlineButton}
-            onPress={() => setShowReportModal(true)}
-          >
-            <Text style={styles.outlineButtonText}>Report Post</Text>
-          </TouchableOpacity>
+          {!userHasReported ? (
+            <TouchableOpacity
+              style={styles.outlineButton}
+              onPress={() => setShowReportModal(true)}
+            >
+              <Text style={styles.outlineButtonText}>Report Post</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.outlineButton}
+              onPress={() => viewModel.unreportDiscussion(liveDiscussion.id, currentUser.id)}
+            >
+              <Text style={styles.outlineButtonText}>Undo My Report</Text>
+            </TouchableOpacity>
+          )}
 
           {permissions.canModerate && (
             <TouchableOpacity

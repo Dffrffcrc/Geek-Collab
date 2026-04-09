@@ -585,6 +585,75 @@ export const useDiscussionViewModel = () => {
     return true;
   }, [enqueueNotification]);
 
+  const unreportDiscussion = useCallback((discussionID, reporterID) => {
+    if (!reporterID) {
+      enqueueNotification('You must be logged in to remove a report.', 'danger');
+      return false;
+    }
+
+    let removed = false;
+    setDiscussions((prev) =>
+      prev.map((discussion) => {
+        if (discussion.id !== discussionID) return discussion;
+        const reports = Array.isArray(discussion.reports) ? discussion.reports : [];
+        const nextReports = reports.filter((report) => report.reporterID !== reporterID);
+        if (nextReports.length === reports.length) {
+          return discussion;
+        }
+        removed = true;
+        return {
+          ...discussion,
+          reports: nextReports,
+          updatedAt: nowIso(),
+        };
+      })
+    );
+
+    if (!removed) {
+      enqueueNotification('You have not reported this post yet.', 'info');
+      return false;
+    }
+
+    enqueueNotification('Your report was removed.', 'info');
+    return true;
+  }, [enqueueNotification]);
+
+  const dismissReportsForDiscussion = useCallback((discussionID, actor) => {
+    const permissions = getPermissionSummary(actor);
+    if (!permissions.canModerate) {
+      enqueueNotification('Only moderators/admins can dismiss reports.', 'danger');
+      return false;
+    }
+
+    let dismissedCount = 0;
+    setDiscussions((prev) =>
+      prev.map((discussion) => {
+        if (discussion.id !== discussionID) return discussion;
+        const reports = Array.isArray(discussion.reports) ? discussion.reports : [];
+        dismissedCount = reports.length;
+        if (dismissedCount === 0) {
+          return discussion;
+        }
+        return {
+          ...discussion,
+          reports: [],
+          updatedAt: nowIso(),
+          lastReportDismissedAt: nowIso(),
+          lastReportDismissedByID: actor?.id || null,
+          lastReportDismissedByName: actor?.username || 'moderator',
+        };
+      })
+    );
+
+    if (dismissedCount === 0) {
+      enqueueNotification('No reports to dismiss on this post.', 'info');
+      return false;
+    }
+
+    enqueueNotification(`Dismissed ${dismissedCount} report(s) for this post.`, 'info');
+    return true;
+  }, [enqueueNotification, getPermissionSummary]);
+
   const deleteDiscussion = useCallback((discussionID, actor) => {
     const permissions = getPermissionSummary(actor);
     if (!permissions.canModerate) {
@@ -1033,6 +1102,8 @@ export const useDiscussionViewModel = () => {
     createForum,
     selectForum,
     reportDiscussion,
+    unreportDiscussion,
+    dismissReportsForDiscussion,
     deleteDiscussion,
     restoreDeletedDiscussion,
     purgeDeletedDiscussion,

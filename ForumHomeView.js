@@ -863,6 +863,18 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                         style={styles.panelButton}
                         onPress={() =>
                           confirmAction(
+                            'Dismiss Reports',
+                            'Clear all reports on this post without deleting it?',
+                            () => discussionVM.dismissReportsForDiscussion(item.id, currentUser)
+                          )
+                        }
+                      >
+                        <Text style={styles.panelButtonText}>Dismiss Reports</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.panelButton}
+                        onPress={() =>
+                          confirmAction(
                             'Delete Post',
                             'This will permanently remove this post.',
                             () => discussionVM.deleteDiscussion(item.id, currentUser)
