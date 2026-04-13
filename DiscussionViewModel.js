@@ -17,6 +17,17 @@ const SAMPLE_USER_IDS = {
   paul: 'sample-user-paul',
 };
 
+const ADMIN_IDS = [
+  'Varun',
+  'ekansh_mishra',
+  'si_yuan',
+  'zwe',
+  'paul',
+  'joel',
+  'julianteh',
+  'rogeryeo'
+];
+
 const nowIso = () => new Date().toISOString();
 const isForumExpired = (forum) => new Date(forum.expiresAt).getTime() <= Date.now();
 
@@ -337,6 +348,13 @@ export const useDiscussionViewModel = () => {
     });
   }, [discussions]);
 
+  const isUserAdmin = useCallback((userID) => {
+    if (!userID) return false;
+    const username = knownUsers[userID];
+    if (!username) return false;
+    return ADMIN_IDS.map((id) => id.toLowerCase()).includes(String(username).trim().toLowerCase());
+  }, [knownUsers]);
+
   const getPermissionSummary = useCallback((user) => {
     if (!user) {
       return {
@@ -351,8 +369,10 @@ export const useDiscussionViewModel = () => {
       };
     }
     const role = String(user?.role || 'user').trim().toLowerCase();
-    const isAdmin = role === 'admin';
-    const isModerator = role === 'moderator';
+    const username = String(user?.username || '').trim().toLowerCase();
+    const isAdmin = ADMIN_IDS.map((id) => id.toLowerCase()).includes(username);
+    const forumModerators = Array.isArray(user?.forumModerators) ? user.forumModerators : [];
+    const isModerator = selectedForum?.id ? forumModerators.includes(selectedForum.id) : false;
     const persistedMutedUntil = user?.mutedUntil || null;
     const inMemoryMutedUntil = user?.id ? mutedUsers[user.id] : null;
     const effectiveMutedUntil = inMemoryMutedUntil || persistedMutedUntil;
@@ -370,7 +390,7 @@ export const useDiscussionViewModel = () => {
       isMuted,
       isBanned,
     };
-  }, [bannedUsers, mutedUsers, forumIsReadOnly]);
+  }, [bannedUsers, mutedUsers, forumIsReadOnly, selectedForum?.id]);
 
   const createForum = useCallback((title, expiresAtISO, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -805,6 +825,10 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('Only admins can ban users.', 'danger');
       return false;
     }
+    if (isUserAdmin(userID)) {
+      enqueueNotification('Cannot ban admin users.', 'danger');
+      return false;
+    }
     setBannedUsers((prev) => ({ ...prev, [userID]: true }));
 
     try {
@@ -825,7 +849,7 @@ export const useDiscussionViewModel = () => {
       return prev.filter((discussion) => discussion.authorID !== userID);
     });
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, isUserAdmin]);
 
   const unbanUser = useCallback(async (userID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -856,56 +880,50 @@ export const useDiscussionViewModel = () => {
     return true;
   }, [enqueueNotification, getPermissionSummary]);
 
-  const promoteUserToModerator = useCallback(async (userID, actor) => {
+  const promoteUserToModeratorForForum = useCallback(async (userID, forumID, actor) => {
     const permissions = getPermissionSummary(actor);
     if (!permissions.isAdmin) {
-      enqueueNotification('Only admins can promote moderators.', 'danger');
+      enqueueNotification('Only admins can make moderators.', 'danger');
       return false;
     }
-    if (!userID) {
-      enqueueNotification('Invalid promote request.', 'danger');
+    if (!userID || !forumID) {
+      enqueueNotification('Invalid request.', 'danger');
+      return false;
+    }
+    if (isUserAdmin(userID)) {
+      enqueueNotification('Cannot modify admin status.', 'danger');
       return false;
     }
 
     try {
-      const updated = await updateUserRole(userID, 'moderator');
-      if (!updated) {
-        enqueueNotification('User not found for promotion.', 'info');
-        return false;
-      }
+      await updateUserRole(userID, 'user', { addForumModerator: forumID });
+      enqueueNotification('User made moderator for this forum.');
+      return true;
     } catch {
-      enqueueNotification('Failed to persist role update.', 'danger');
+      enqueueNotification('Failed to update user role.', 'danger');
       return false;
     }
+  }, [enqueueNotification, getPermissionSummary, isUserAdmin]);
 
-    enqueueNotification('User promoted to moderator.');
-    return true;
-  }, [enqueueNotification, getPermissionSummary]);
-
-  const demoteModeratorToUser = useCallback(async (userID, actor) => {
+  const demoteModeratorFromForum = useCallback(async (userID, forumID, actor) => {
     const permissions = getPermissionSummary(actor);
     if (!permissions.isAdmin) {
-      enqueueNotification('Only admins can demote moderators.', 'danger');
+      enqueueNotification('Only admins can remove moderators.', 'danger');
       return false;
     }
-    if (!userID) {
-      enqueueNotification('Invalid demote request.', 'danger');
+    if (!userID || !forumID) {
+      enqueueNotification('Invalid request.', 'danger');
       return false;
     }
 
     try {
-      const updated = await updateUserRole(userID, 'user');
-      if (!updated) {
-        enqueueNotification('User not found for demotion.', 'info');
-        return false;
-      }
+      await updateUserRole(userID, 'user', { removeForumModerator: forumID });
+      enqueueNotification('User removed as moderator for this forum.');
+      return true;
     } catch {
-      enqueueNotification('Failed to persist role update.', 'danger');
+      enqueueNotification('Failed to update user role.', 'danger');
       return false;
     }
-
-    enqueueNotification('Moderator demoted to user.');
-    return true;
   }, [enqueueNotification, getPermissionSummary]);
 
   const addBlockedWord = useCallback((word, actor) => {
@@ -1112,8 +1130,8 @@ export const useDiscussionViewModel = () => {
     unmuteUser,
     banUser,
     unbanUser,
-    promoteUserToModerator,
-    demoteModeratorToUser,
+    promoteUserToModeratorForForum,
+    demoteModeratorFromForum,
     restoreSamplePosts,
     getPostsByAuthor,
     getForumPostCount,

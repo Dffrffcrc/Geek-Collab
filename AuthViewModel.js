@@ -11,6 +11,7 @@ import {
   saveActiveSessionUserID,
   getActiveSessionUserID,
   clearActiveSessionUserID,
+  updateUserProfile,
 } from './StorageExtension';
 import { hasModerationMatch } from './ContentModeration';
 import uuid from 'react-native-uuid';
@@ -44,8 +45,9 @@ export const useAuthViewModel = () => {
     restoreSession();
   }, []);
 
-  const signUp = useCallback(async (username, password, confirmPassword, role = 'user') => {
+  const signUp = useCallback(async (username, displayName, password, confirmPassword) => {
     const normalizedUsername = String(username || '').trim();
+    const normalizedDisplayName = String(displayName || '').trim();
 
     if (!normalizedUsername || !password || !confirmPassword) {
       setAuthError('Please fill in all fields');
@@ -82,10 +84,12 @@ export const useAuthViewModel = () => {
     const newUser = createUser({
       id: uuid.v4(),
       username: normalizedUsername,
+      displayName: normalizedDisplayName,
       password,
-      role,
+      role: 'user',
       bio: '',
       profileImage: null,
+      forumModerators: [],
       createdAt: new Date().toISOString(),
     });
 
@@ -93,10 +97,11 @@ export const useAuthViewModel = () => {
     await saveActiveSessionUserID(newUser.id);
     setCurrentUser(newUser);
     setIsLoggedIn(true);
-    setNewUserNotice(`Welcome ${normalizedUsername}! Your role is ${role}.`);
+    setNewUserNotice(`Welcome ${normalizedUsername}!`);
     setIsLoading(false);
     setAuthError(null);
   }, []);
+
 
   const login = useCallback(async (username, password) => {
     if (!username || !password) {
@@ -146,6 +151,18 @@ export const useAuthViewModel = () => {
     setNewUserNotice('');
   }, []);
 
+  const updateProfile = useCallback(async (updates = {}) => {
+    if (!currentUser) return false;
+    const success = await updateUserProfile(currentUser.id, updates);
+    if (success) {
+      const updatedUser = await getUserById(currentUser.id);
+      if (updatedUser) {
+        setCurrentUser(updatedUser);
+      }
+    }
+    return success;
+  }, [currentUser]);
+
   return {
     currentUser,
     isLoggedIn,
@@ -158,5 +175,6 @@ export const useAuthViewModel = () => {
     login,
     logout,
     clearNewUserNotice,
+    updateProfile,
   };
 };

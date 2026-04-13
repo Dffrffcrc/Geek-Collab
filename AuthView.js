@@ -15,17 +15,17 @@ import { Ionicons } from '@expo/vector-icons';
 const AuthView = ({ authVM }) => {
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [role, setRole] = useState('user');
 
   const submitForm = () => {
     if (isLoginMode) {
       authVM.login(username, password);
     } else {
-      authVM.signUp(username, password, confirmPassword, role);
+      authVM.signUp(username, displayName, password, confirmPassword);
     }
   };
 
@@ -34,9 +34,9 @@ const AuthView = ({ authVM }) => {
     authVM.setAuthError(null);
     setPassword('');
     setConfirmPassword('');
+    setDisplayName('');
     setShowPassword(false);
     setShowConfirmPassword(false);
-    setRole('user');
   };
 
   return (
@@ -95,6 +95,22 @@ const AuthView = ({ authVM }) => {
             </View>
           </View>
 
+          {/* Display Name */}
+          {!isLoginMode && (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Display Name (Optional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., John Doe"
+                placeholderTextColor="#B6BFCC"
+                value={displayName}
+                onChangeText={setDisplayName}
+                autoCapitalize="words"
+                autoCorrect={false}
+              />
+            </View>
+          )}
+
           {/* Confirm Password */}
           {!isLoginMode && (
             <View style={styles.fieldGroup}>
@@ -121,25 +137,6 @@ const AuthView = ({ authVM }) => {
                     color="#2563EB"
                   />
                 </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {!isLoginMode && (
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Role</Text>
-              <View style={styles.roleRow}>
-                {['user', 'moderator', 'admin'].map((item) => (
-                  <TouchableOpacity
-                    key={item}
-                    style={[styles.roleChip, role === item && styles.roleChipActive]}
-                    onPress={() => setRole(item)}
-                  >
-                    <Text style={[styles.roleChipText, role === item && styles.roleChipTextActive]}>
-                      {item}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
               </View>
             </View>
           )}

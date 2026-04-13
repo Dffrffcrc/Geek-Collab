@@ -216,16 +216,31 @@ export const updateUserMuteStatus = async (userID, mutedUntil) => {
   }
 };
 
-export const updateUserRole = async (userID, role) => {
+export const updateUserRole = async (userID, role, options = {}) => {
   const normalizedRole = String(role || '').trim().toLowerCase();
   if (!userID || !normalizedRole) return false;
+
+  const { addForumModerator, removeForumModerator } = options;
 
   const users = await getAllUsers();
   let didUpdate = false;
   const nextUsers = users.map((user) => {
     if (user.id !== userID) return user;
     didUpdate = true;
-    return { ...user, role: normalizedRole };
+    
+    let forumModerators = Array.isArray(user.forumModerators) ? [...user.forumModerators] : [];
+    
+    if (addForumModerator) {
+      if (!forumModerators.includes(addForumModerator)) {
+        forumModerators.push(addForumModerator);
+      }
+    }
+    
+    if (removeForumModerator) {
+      forumModerators = forumModerators.filter((fid) => fid !== removeForumModerator);
+    }
+    
+    return { ...user, role: normalizedRole, forumModerators };
   });
   if (!didUpdate) return false;
 
@@ -236,6 +251,30 @@ export const updateUserRole = async (userID, role) => {
       await saveRemoteUsers(firestoreDb, nextUsers);
     } catch {
       // keep local role update even if remote fails
+    }
+  }
+  return true;
+};
+
+export const updateUserProfile = async (userID, updates = {}) => {
+  const { displayName, bio, profileImage } = updates;
+  const users = await getAllUsers();
+  const nextUsers = users.map((user) => {
+    if (user.id !== userID) return user;
+    const updated = { ...user };
+    if (displayName !== undefined) updated.displayName = displayName;
+    if (bio !== undefined) updated.bio = bio;
+    if (profileImage !== undefined) updated.profileImage = profileImage;
+    return updated;
+  });
+
+  await AsyncStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      await saveRemoteUsers(firestoreDb, nextUsers);
+    } catch {
+      // keep local profile update even if remote fails
     }
   }
   return true;

@@ -581,9 +581,13 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
           <TouchableOpacity onPress={goHome}>
             <Text style={styles.headerTitle}>GeekCollab</Text>
           </TouchableOpacity>
+          <Text style={styles.headerUsername}>{currentUser.displayName || currentUser.username}</Text>
           <Text style={styles.headerUsername}>@{currentUser.username} · {currentUser.role}</Text>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => setShowMyProfile(true)}>
+            <Text style={styles.headerActionText}>Profile</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowFAQ(true)}>
             <Text style={styles.headerActionText}>FAQ</Text>
           </TouchableOpacity>
@@ -1030,27 +1034,21 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                     <>
                       <TouchableOpacity
                         style={styles.panelButton}
-                        onPress={() =>
-                          confirmAction(
-                            'Close Forum',
-                            'Close this forum and switch it to read-only?',
-                            () => discussionVM.closeForum(forum.id, currentUser)
-                          )
-                        }
+                        onPress={() => {
+                          const isClosed = forum.isReadOnly;
+                          const title = isClosed ? 'Reopen Forum' : 'Close Forum';
+                          const message = isClosed
+                            ? 'Reopen this forum for posting?'
+                            : 'Close this forum and switch it to read-only?';
+                          const action = isClosed
+                            ? () => discussionVM.openForum(forum.id, currentUser)
+                            : () => discussionVM.closeForum(forum.id, currentUser);
+                          confirmAction(title, message, action);
+                        }}
                       >
-                        <Text style={styles.panelButtonText}>Close Forum</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.panelButton}
-                        onPress={() =>
-                          confirmAction(
-                            'Reopen Forum',
-                            'Reopen this forum for posting?',
-                            () => discussionVM.openForum(forum.id, currentUser)
-                          )
-                        }
-                      >
-                        <Text style={styles.panelButtonText}>Reopen Forum</Text>
+                        <Text style={styles.panelButtonText}>
+                          {forum.isReadOnly ? 'Reopen Forum' : 'Close Forum'}
+                        </Text>
                       </TouchableOpacity>
                       {permissions.isAdmin && (
                         <TouchableOpacity
@@ -1192,44 +1190,57 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                     </TouchableOpacity>
                   )}
 
-                  {permissions.isAdmin && (userItem.role || 'user') !== 'moderator' && (
-                    <TouchableOpacity
-                      style={styles.panelButton}
-                      onPress={() =>
-                        confirmAction(
-                          'Promote User',
-                          'Promote this user to moderator?',
-                          async () => {
-                            const results = await Promise.all(
-                              targetUserIDs.map((userID) => discussionVM.promoteUserToModerator(userID, currentUser))
+                  {permissions.isAdmin && (
+                    <>
+                      <TouchableOpacity
+                        style={styles.panelButton}
+                        onPress={() => {
+                          if (!discussionVM.selectedForumID) {
+                            confirmAction(
+                              'Select Forum First',
+                              'Please select a forum from the forums tab to manage mods.',
+                              null
                             );
-                            return results.some(Boolean);
+                            return;
                           }
-                        )
-                      }
-                    >
-                      <Text style={styles.panelButtonText}>Promote to Mod</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {permissions.isAdmin && (userItem.role || 'user') === 'moderator' && (
-                    <TouchableOpacity
-                      style={styles.panelButton}
-                      onPress={() =>
-                        confirmAction(
-                          'Demote Moderator',
-                          'Demote this moderator to regular user?',
-                          async () => {
-                            const results = await Promise.all(
-                              targetUserIDs.map((userID) => discussionVM.demoteModeratorToUser(userID, currentUser))
+                          confirmAction(
+                            'Make Moderator',
+                            `Make this user a moderator for the current forum?`,
+                            () => discussionVM.promoteUserToModeratorForForum(
+                              userItem.id,
+                              discussionVM.selectedForumID,
+                              currentUser
+                            )
+                          );
+                        }}
+                      >
+                        <Text style={styles.panelButtonText}>Make Mod for Forum</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.panelButton}
+                        onPress={() => {
+                          if (!discussionVM.selectedForumID) {
+                            confirmAction(
+                              'Select Forum First',
+                              'Please select a forum from the forums tab to manage mods.',
+                              null
                             );
-                            return results.some(Boolean);
+                            return;
                           }
-                        )
-                      }
-                    >
-                      <Text style={styles.panelButtonText}>Demote to User</Text>
-                    </TouchableOpacity>
+                          confirmAction(
+                            'Remove from Mod',
+                            `Remove this user as a moderator from the current forum?`,
+                            () => discussionVM.demoteModeratorFromForum(
+                              userItem.id,
+                              discussionVM.selectedForumID,
+                              currentUser
+                            )
+                          );
+                        }}
+                      >
+                        <Text style={styles.panelButtonText}>Remove as Mod from Forum</Text>
+                      </TouchableOpacity>
+                    </>
                   )}
                       </>
                     );

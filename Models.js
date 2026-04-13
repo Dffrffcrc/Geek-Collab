@@ -5,11 +5,13 @@
  * @property {string} id
  * @property {string} username
  * @property {string} password
- * @property {'admin'|'moderator'|'user'} role
+ * @property {'admin'|'user'} role
+ * @property {string} displayName - Display name for user
  * @property {string} bio
  * @property {string|null} profileImage - base64 encoded image
  * @property {boolean} isBanned
  * @property {string|null} mutedUntil - ISO date string
+ * @property {string[]} forumModerators - Array of forum IDs where user is a moderator
  * @property {string} createdAt - ISO date string
  */
 export const createUser = ({
@@ -17,20 +19,24 @@ export const createUser = ({
   username,
   password,
   role = 'user',
+  displayName = '',
   bio = '',
   profileImage = null,
   isBanned = false,
   mutedUntil = null,
+  forumModerators = [],
   createdAt,
 }) => ({
   id,
   username,
   password,
   role,
+  displayName: displayName || username,
   bio,
   profileImage,
   isBanned,
   mutedUntil,
+  forumModerators: Array.isArray(forumModerators) ? forumModerators : [],
   createdAt: createdAt || new Date().toISOString(),
 });
 
