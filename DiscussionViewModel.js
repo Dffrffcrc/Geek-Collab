@@ -1005,7 +1005,7 @@ export const useDiscussionViewModel = () => {
     return true;
   }, [enqueueNotification, getPermissionSummary]);
 
-  const closeForum = useCallback((forumID, actor) => {
+  const closeForum = useCallback((forumID, actor, expiresAtISO) => {
     const permissions = getPermissionSummary(actor);
     if (!permissions.canModerate) {
       enqueueNotification('Only moderators/admins can close forums.', 'danger');
@@ -1022,14 +1022,34 @@ export const useDiscussionViewModel = () => {
       return false;
     }
 
+    const nextExpiresAt = expiresAtISO || null;
+    if (nextExpiresAt) {
+      const expiresAtMs = new Date(nextExpiresAt).getTime();
+      if (Number.isNaN(expiresAtMs) || expiresAtMs <= Date.now()) {
+        enqueueNotification('Please choose a future date and time for the forum to become read-only.', 'danger');
+        return false;
+      }
+    }
+
     setForums((prev) =>
-      prev.map((forum) => (forum.id === forumID ? { ...forum, isReadOnly: true } : forum))
+      prev.map((forum) => {
+        if (forum.id !== forumID) return forum;
+        return {
+          ...forum,
+          isReadOnly: !nextExpiresAt,
+          expiresAt: nextExpiresAt || forum.expiresAt,
+        };
+      })
     );
-    enqueueNotification('Forum has been closed (read-only).');
+    enqueueNotification(
+      nextExpiresAt
+        ? `Forum will become read-only at ${new Date(nextExpiresAt).toLocaleString()}.`
+        : 'Forum has been closed (read-only).'
+    );
     return true;
   }, [enqueueNotification, getPermissionSummary, forums]);
 
-  const openForum = useCallback((forumID, actor) => {
+  const openForum = useCallback((forumID, actor, expiresAtISO) => {
     const permissions = getPermissionSummary(actor);
     if (!permissions.canModerate) {
       enqueueNotification('Only moderators/admins can reopen forums.', 'danger');
@@ -1042,10 +1062,16 @@ export const useDiscussionViewModel = () => {
       return false;
     }
 
+    const nextExpiresAt = expiresAtISO || new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const expiresAtMs = new Date(nextExpiresAt).getTime();
+    if (Number.isNaN(expiresAtMs) || expiresAtMs <= Date.now()) {
+      enqueueNotification('Please choose a future date and time for the forum to stay open.', 'danger');
+      return false;
+    }
+
     setForums((prev) =>
       prev.map((forum) => {
         if (forum.id !== forumID) return forum;
-        const nextExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
         return {
           ...forum,
           isReadOnly: false,
@@ -1053,7 +1079,7 @@ export const useDiscussionViewModel = () => {
         };
       })
     );
-    enqueueNotification('Forum reopened.');
+    enqueueNotification(`Forum reopened until ${new Date(nextExpiresAt).toLocaleString()}.`);
     return true;
   }, [enqueueNotification, getPermissionSummary, forums]);
 

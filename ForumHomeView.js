@@ -236,6 +236,19 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const [showModPanel, setShowModPanel] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState({ id: null, name: '' });
+  const [showCloseForumModal, setShowCloseForumModal] = useState(false);
+  const [closeForumTarget, setCloseForumTarget] = useState(null);
+  const [closeForumMode, setCloseForumMode] = useState('immediate');
+  const [closeForumEndDate, setCloseForumEndDate] = useState(() => formatDateInputValue(new Date(Date.now() + 60 * 60 * 1000)));
+  const [closeForumEndTime, setCloseForumEndTime] = useState(() => formatTimeInputValue(new Date(Date.now() + 60 * 60 * 1000)));
+  const [showCloseDatePicker, setShowCloseDatePicker] = useState(false);
+  const [showCloseTimePicker, setShowCloseTimePicker] = useState(false);
+  const [showReopenForumModal, setShowReopenForumModal] = useState(false);
+  const [reopenForumTarget, setReopenForumTarget] = useState(null);
+  const [reopenForumEndDate, setReopenForumEndDate] = useState(() => formatDateInputValue(new Date(Date.now() + 60 * 60 * 1000)));
+  const [reopenForumEndTime, setReopenForumEndTime] = useState(() => formatTimeInputValue(new Date(Date.now() + 60 * 60 * 1000)));
+  const [showReopenDatePicker, setShowReopenDatePicker] = useState(false);
+  const [showReopenTimePicker, setShowReopenTimePicker] = useState(false);
   const [showQuickReportModal, setShowQuickReportModal] = useState(false);
   const [quickReportReason, setQuickReportReason] = useState(REPORT_REASON_OPTIONS[0]);
   const [quickReportCustomText, setQuickReportCustomText] = useState('');
@@ -256,6 +269,10 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const webDateInputRef = useRef(null);
   const webTimeInputRef = useRef(null);
+  const webCloseDateInputRef = useRef(null);
+  const webCloseTimeInputRef = useRef(null);
+  const webReopenDateInputRef = useRef(null);
+  const webReopenTimeInputRef = useRef(null);
   const [overlayMenu, setOverlayMenu] = useState({ visible: false, x: 0, y: 0, discussion: null });
   const forumTitleHasBlockedLanguage = hasModerationMatch(forumTitle, discussionVM.blockedWords);
   const parsedForumEnd = useMemo(() => {
@@ -268,6 +285,20 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const canCreateForum = Boolean(
     forumTitle.trim() && isForumEndFuture && !forumTitleHasBlockedLanguage
   );
+  const parsedReopenForumEnd = useMemo(() => {
+    if (!reopenForumEndDate || !reopenForumEndTime) return null;
+    const dt = new Date(`${reopenForumEndDate}T${reopenForumEndTime}`);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt;
+  }, [reopenForumEndDate, reopenForumEndTime]);
+  const isReopenForumEndFuture = Boolean(parsedReopenForumEnd && parsedReopenForumEnd.getTime() > Date.now());
+  const parsedCloseForumEnd = useMemo(() => {
+    if (!closeForumEndDate || !closeForumEndTime) return null;
+    const dt = new Date(`${closeForumEndDate}T${closeForumEndTime}`);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt;
+  }, [closeForumEndDate, closeForumEndTime]);
+  const isCloseForumEndFuture = Boolean(parsedCloseForumEnd && parsedCloseForumEnd.getTime() > Date.now());
   const reportedPosts = useMemo(
     () => discussionVM.discussions.filter((item) => item.reports.length > 0),
     [discussionVM.discussions]
@@ -331,6 +362,57 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       setForumEndTime(formatTimeInputValue(nextDefault));
       setShowEndDatePicker(false);
       setShowEndTimePicker(false);
+    }
+  };
+
+  const openReopenForumModal = (forum) => {
+    const currentEnd = new Date(Date.now() + 60 * 60 * 1000);
+    setReopenForumTarget(forum);
+    setReopenForumEndDate(formatDateInputValue(currentEnd));
+    setReopenForumEndTime(formatTimeInputValue(currentEnd));
+    setShowReopenDatePicker(false);
+    setShowReopenTimePicker(false);
+    setShowReopenForumModal(true);
+  };
+
+  const openCloseForumModal = (forum) => {
+    const currentEnd = new Date(Date.now() + 60 * 60 * 1000);
+    setCloseForumTarget(forum);
+    setCloseForumMode('immediate');
+    setCloseForumEndDate(formatDateInputValue(currentEnd));
+    setCloseForumEndTime(formatTimeInputValue(currentEnd));
+    setShowCloseDatePicker(false);
+    setShowCloseTimePicker(false);
+    setShowCloseForumModal(true);
+  };
+
+  const submitForumClose = () => {
+    if (!closeForumTarget) return;
+    const nextExpiresAt = closeForumMode === 'scheduled' ? parsedCloseForumEnd?.toISOString() : null;
+    if (closeForumMode === 'scheduled' && (!parsedCloseForumEnd || !isCloseForumEndFuture)) return;
+    if (discussionVM.closeForum(closeForumTarget.id, currentUser, nextExpiresAt)) {
+      setShowCloseForumModal(false);
+      setCloseForumTarget(null);
+      setCloseForumMode('immediate');
+      const nextDefault = new Date(Date.now() + 60 * 60 * 1000);
+      setCloseForumEndDate(formatDateInputValue(nextDefault));
+      setCloseForumEndTime(formatTimeInputValue(nextDefault));
+      setShowCloseDatePicker(false);
+      setShowCloseTimePicker(false);
+    }
+  };
+
+  const submitForumReopen = () => {
+    if (!reopenForumTarget || !isReopenForumEndFuture || !parsedReopenForumEnd) return;
+    const nextExpiresAt = parsedReopenForumEnd.toISOString();
+    if (discussionVM.openForum(reopenForumTarget.id, currentUser, nextExpiresAt)) {
+      setShowReopenForumModal(false);
+      setReopenForumTarget(null);
+      const nextDefault = new Date(Date.now() + 60 * 60 * 1000);
+      setReopenForumEndDate(formatDateInputValue(nextDefault));
+      setReopenForumEndTime(formatTimeInputValue(nextDefault));
+      setShowReopenDatePicker(false);
+      setShowReopenTimePicker(false);
     }
   };
 
@@ -800,7 +882,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                     {permissions.canModerate && (
                       <TouchableOpacity
                         style={styles.panelButton}
-                        onPress={() => discussionVM.openForum(forum.id, currentUser)}
+                        onPress={() => openReopenForumModal(forum)}
                       >
                         <Text style={styles.panelButtonText}>Reopen</Text>
                       </TouchableOpacity>
@@ -1032,24 +1114,21 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
                   </TouchableOpacity>
                   {permissions.canModerate && (
                     <>
-                      <TouchableOpacity
-                        style={styles.panelButton}
-                        onPress={() => {
-                          const isClosed = forum.isReadOnly;
-                          const title = isClosed ? 'Reopen Forum' : 'Close Forum';
-                          const message = isClosed
-                            ? 'Reopen this forum for posting?'
-                            : 'Close this forum and switch it to read-only?';
-                          const action = isClosed
-                            ? () => discussionVM.openForum(forum.id, currentUser)
-                            : () => discussionVM.closeForum(forum.id, currentUser);
-                          confirmAction(title, message, action);
-                        }}
-                      >
-                        <Text style={styles.panelButtonText}>
-                          {forum.isReadOnly ? 'Reopen Forum' : 'Close Forum'}
-                        </Text>
-                      </TouchableOpacity>
+                      {forum.isReadOnly ? (
+                        <TouchableOpacity
+                          style={styles.panelButton}
+                          onPress={() => openReopenForumModal(forum)}
+                        >
+                          <Text style={styles.panelButtonText}>Reopen Forum</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.panelButton}
+                          onPress={() => openCloseForumModal(forum)}
+                        >
+                          <Text style={styles.panelButtonText}>Close Forum</Text>
+                        </TouchableOpacity>
+                      )}
                       {permissions.isAdmin && (
                         <TouchableOpacity
                           style={[styles.panelButton, styles.panelDangerButton]}
@@ -1404,6 +1483,227 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
         </SafeAreaView>
       </Modal>
 
+      <Modal visible={showReopenForumModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.navBar}>
+            <TouchableOpacity onPress={() => setShowReopenForumModal(false)}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.navTitle}>Reopen Forum</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <View style={styles.modalContent}>
+            <Text style={styles.label}>Forum</Text>
+            <Text style={styles.reopenForumName}>{reopenForumTarget?.title || 'Selected forum'}</Text>
+            <Text style={styles.reopenForumHint}>Choose when this forum should close again.</Text>
+
+            <Text style={styles.label}>End date</Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                ref={webReopenDateInputRef}
+                value={reopenForumEndDate}
+                onChange={(event) => setReopenForumEndDate(event.target.value)}
+                onClick={() => webReopenDateInputRef.current?.showPicker?.()}
+                onFocus={() => webReopenDateInputRef.current?.showPicker?.()}
+                style={webPickerInputStyle}
+              />
+            ) : (
+              <TouchableOpacity style={styles.pickerButton} onPress={() => setShowReopenDatePicker(true)}>
+                <Text style={styles.pickerButtonText}>{parsedReopenForumEnd ? formatDisplayDate(parsedReopenForumEnd) : 'Select end date'}</Text>
+              </TouchableOpacity>
+            )}
+
+            <Text style={styles.label}>End time (24h)</Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="time"
+                ref={webReopenTimeInputRef}
+                value={reopenForumEndTime}
+                onChange={(event) => setReopenForumEndTime(event.target.value)}
+                onClick={() => webReopenTimeInputRef.current?.showPicker?.()}
+                onFocus={() => webReopenTimeInputRef.current?.showPicker?.()}
+                style={webPickerInputStyle}
+              />
+            ) : (
+              <TouchableOpacity style={styles.pickerButton} onPress={() => setShowReopenTimePicker(true)}>
+                <Text style={styles.pickerButtonText}>{parsedReopenForumEnd ? formatDisplayTime(parsedReopenForumEnd) : 'Select end time'}</Text>
+              </TouchableOpacity>
+            )}
+
+            {!isReopenForumEndFuture ? (
+              <Text style={styles.validationText}>End date/time must be in the future.</Text>
+            ) : null}
+
+            {Platform.OS !== 'web' && showReopenDatePicker ? (
+              <DateTimePicker
+                value={parsedReopenForumEnd || new Date()}
+                mode="date"
+                display="default"
+                onChange={(_, selectedDate) => {
+                  setShowReopenDatePicker(false);
+                  if (selectedDate) {
+                    const current = parsedReopenForumEnd || new Date();
+                    const next = new Date(current);
+                    next.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+                    setReopenForumEndDate(formatDateInputValue(next));
+                    setReopenForumEndTime(formatTimeInputValue(next));
+                  }
+                }}
+              />
+            ) : null}
+
+            {Platform.OS !== 'web' && showReopenTimePicker ? (
+              <DateTimePicker
+                value={parsedReopenForumEnd || new Date()}
+                mode="time"
+                display="default"
+                onChange={(_, selectedDate) => {
+                  setShowReopenTimePicker(false);
+                  if (selectedDate) {
+                    const current = parsedReopenForumEnd || new Date();
+                    const next = new Date(current);
+                    next.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+                    setReopenForumEndDate(formatDateInputValue(next));
+                    setReopenForumEndTime(formatTimeInputValue(next));
+                  }
+                }}
+              />
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.createButton, (!reopenForumTarget || !isReopenForumEndFuture) && styles.createButtonDisabled]}
+              onPress={submitForumReopen}
+              disabled={!reopenForumTarget || !isReopenForumEndFuture}
+            >
+              <Text style={styles.createButtonText}>Reopen Forum</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal visible={showCloseForumModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.navBar}>
+            <TouchableOpacity onPress={() => setShowCloseForumModal(false)}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.navTitle}>Close Forum</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <View style={styles.modalContent}>
+            <Text style={styles.label}>Forum</Text>
+            <Text style={styles.reopenForumName}>{closeForumTarget?.title || 'Selected forum'}</Text>
+            <Text style={styles.reopenForumHint}>Choose when this forum should become read-only.</Text>
+
+            <View style={styles.modeToggleRow}>
+              <TouchableOpacity
+                style={[styles.modeToggleButton, closeForumMode === 'immediate' && styles.modeToggleButtonActive]}
+                onPress={() => setCloseForumMode('immediate')}
+              >
+                <Text style={[styles.modeToggleText, closeForumMode === 'immediate' && styles.modeToggleTextActive]}>Read-only immediately</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeToggleButton, closeForumMode === 'scheduled' && styles.modeToggleButtonActive]}
+                onPress={() => setCloseForumMode('scheduled')}
+              >
+                <Text style={[styles.modeToggleText, closeForumMode === 'scheduled' && styles.modeToggleTextActive]}>After set time</Text>
+              </TouchableOpacity>
+            </View>
+
+            {closeForumMode === 'scheduled' ? (
+              <>
+                <Text style={styles.label}>End date</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="date"
+                    ref={webCloseDateInputRef}
+                    value={closeForumEndDate}
+                    onChange={(event) => setCloseForumEndDate(event.target.value)}
+                    onClick={() => webCloseDateInputRef.current?.showPicker?.()}
+                    onFocus={() => webCloseDateInputRef.current?.showPicker?.()}
+                    style={webPickerInputStyle}
+                  />
+                ) : (
+                  <TouchableOpacity style={styles.pickerButton} onPress={() => setShowCloseDatePicker(true)}>
+                    <Text style={styles.pickerButtonText}>{parsedCloseForumEnd ? formatDisplayDate(parsedCloseForumEnd) : 'Select end date'}</Text>
+                  </TouchableOpacity>
+                )}
+
+                <Text style={styles.label}>End time (24h)</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="time"
+                    ref={webCloseTimeInputRef}
+                    value={closeForumEndTime}
+                    onChange={(event) => setCloseForumEndTime(event.target.value)}
+                    onClick={() => webCloseTimeInputRef.current?.showPicker?.()}
+                    onFocus={() => webCloseTimeInputRef.current?.showPicker?.()}
+                    style={webPickerInputStyle}
+                  />
+                ) : (
+                  <TouchableOpacity style={styles.pickerButton} onPress={() => setShowCloseTimePicker(true)}>
+                    <Text style={styles.pickerButtonText}>{parsedCloseForumEnd ? formatDisplayTime(parsedCloseForumEnd) : 'Select end time'}</Text>
+                  </TouchableOpacity>
+                )}
+                {!isCloseForumEndFuture ? (
+                  <Text style={styles.validationText}>End date/time must be in the future.</Text>
+                ) : null}
+
+                {Platform.OS !== 'web' && showCloseDatePicker ? (
+                  <DateTimePicker
+                    value={parsedCloseForumEnd || new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={(_, selectedDate) => {
+                      setShowCloseDatePicker(false);
+                      if (selectedDate) {
+                        const current = parsedCloseForumEnd || new Date();
+                        const next = new Date(current);
+                        next.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+                        setCloseForumEndDate(formatDateInputValue(next));
+                        setCloseForumEndTime(formatTimeInputValue(next));
+                      }
+                    }}
+                  />
+                ) : null}
+
+                {Platform.OS !== 'web' && showCloseTimePicker ? (
+                  <DateTimePicker
+                    value={parsedCloseForumEnd || new Date()}
+                    mode="time"
+                    display="default"
+                    onChange={(_, selectedDate) => {
+                      setShowCloseTimePicker(false);
+                      if (selectedDate) {
+                        const current = parsedCloseForumEnd || new Date();
+                        const next = new Date(current);
+                        next.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+                        setCloseForumEndDate(formatDateInputValue(next));
+                        setCloseForumEndTime(formatTimeInputValue(next));
+                      }
+                    }}
+                  />
+                ) : null}
+              </>
+            ) : null}
+
+            <TouchableOpacity
+              style={[
+                styles.createButton,
+                (closeForumMode === 'scheduled' && !isCloseForumEndFuture) && styles.createButtonDisabled,
+              ]}
+              onPress={submitForumClose}
+              disabled={closeForumMode === 'scheduled' && !isCloseForumEndFuture}
+            >
+              <Text style={styles.createButtonText}>Close Forum</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
       <Modal visible={Boolean(reportedPostToView)} animationType="slide" presentationStyle="pageSheet">
         {reportedPostToView ? (
           <DiscussionDetailView
@@ -1683,6 +1983,35 @@ const styles = StyleSheet.create({
   navTitle: { fontWeight: '600', fontSize: 16 },
   modalContent: { padding: 16, gap: 12 },
   label: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
+  reopenForumName: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  reopenForumHint: { fontSize: 13, color: '#6B7280', lineHeight: 18 },
+  modeToggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modeToggleButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+  },
+  modeToggleButtonActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  modeToggleText: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  modeToggleTextActive: {
+    color: '#1D4ED8',
+  },
   input: {
     borderWidth: 1,
     borderColor: '#D1D5DB',
