@@ -17,6 +17,7 @@ const ContentView = () => {
       ) : authVM.isLoggedIn && authVM.currentUser ? (
         <ForumHomeView
           currentUser={authVM.currentUser}
+          authVM={authVM}
           onLogout={authVM.logout}
           newUserNotice={authVM.newUserNotice}
           clearNewUserNotice={authVM.clearNewUserNotice}

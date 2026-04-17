@@ -21,6 +21,8 @@ import DiscussionDetailView from './DiscussionDetailView';
 import NewDiscussionView from './NewDiscussionView';
 import FAQView from './FAQView';
 import UserProfileView from './UserProfileView';
+import ProfileEditView from './ProfileEditView';
+import SideMenuDrawer from './SideMenuDrawer';
 import { getAllUsers } from './StorageExtension';
 import { hasModerationMatch } from './ContentModeration';
 
@@ -228,7 +230,7 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
   );
 };
 
-const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotice }) => {
+const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewUserNotice }) => {
   const discussionVM = useDiscussionViewModel();
   const [showNewDiscussion, setShowNewDiscussion] = useState(false);
   const [showFAQ, setShowFAQ] = useState(false);
@@ -236,6 +238,8 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const [showModPanel, setShowModPanel] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState({ id: null, name: '' });
+  const [showSideMenu, setShowSideMenu] = useState(false);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [showQuickReportModal, setShowQuickReportModal] = useState(false);
   const [quickReportReason, setQuickReportReason] = useState(REPORT_REASON_OPTIONS[0]);
   const [quickReportCustomText, setQuickReportCustomText] = useState('');
@@ -577,61 +581,27 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       ) : null}
 
       <View style={styles.header}>
-        <View>
-          <TouchableOpacity onPress={goHome}>
-            <Text style={styles.headerTitle}>GeekCollab</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerUsername}>{currentUser.displayName || currentUser.username}</Text>
-          <Text style={styles.headerUsername}>@{currentUser.username} · {currentUser.role}</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => setShowMyProfile(true)}>
-            <Text style={styles.headerActionText}>Profile</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowFAQ(true)}>
-            <Text style={styles.headerActionText}>FAQ</Text>
-          </TouchableOpacity>
-          {permissions.canModerate && (
-            <TouchableOpacity onPress={() => setShowModPanel(true)}>
-              <Text style={styles.headerActionText}>Panel</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={onLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutIcon}>⬤→</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity onPress={() => setShowSideMenu(true)} style={styles.menuButton}>
+          <Ionicons name="menu" size={24} color="#2563EB" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={goHome}>
+          <Text style={styles.headerTitle}>GeekCollab</Text>
+        </TouchableOpacity>
+        <View style={{ width: 40 }} />
       </View>
 
       <View style={styles.forumBanner}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.forumTitle}>You are currently viewing:</Text>
-          <Text style={styles.forumTitleValue}>{discussionVM.activeForum?.title || (shouldShowNoForumsState ? 'No forum selected' : 'No forum selected')}</Text>
-          {discussionVM.openForums && discussionVM.openForums.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
-              <View style={styles.forumSelectRow}>
-                {discussionVM.openForums.map((forum) => {
-                  const isActive = discussionVM.activeForum?.id === forum.id;
-                  return (
-                    <TouchableOpacity
-                      key={forum.id}
-                      style={[styles.forumSelectChip, isActive && styles.forumSelectChipActive]}
-                      onPress={() => discussionVM.selectForum(forum.id)}
-                    >
-                      <Text style={[styles.forumSelectText, isActive && styles.forumSelectTextActive]}>{forum.title}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          ) : null}
+          <Text style={styles.forumTitle}>Current Forum</Text>
+          <Text style={styles.forumTitleValue}>{discussionVM.activeForum?.title || 'No forum selected'}</Text>
         </View>
         <View style={styles.forumBannerActions}>
           <TouchableOpacity style={styles.secondaryForumButton} onPress={() => setShowPastForums(true)}>
-            <Text style={styles.secondaryForumButtonText}>Past Forums</Text>
+            <Text style={styles.secondaryForumButtonText}>Past</Text>
           </TouchableOpacity>
           {permissions.canCreateForums && (
             <TouchableOpacity style={styles.createForumButton} onPress={() => setShowNewForumModal(true)}>
-              <Text style={styles.createForumButtonText}>Create Forum</Text>
+              <Text style={styles.createForumButtonText}>Create</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1305,6 +1275,32 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
         />
       </Modal>
 
+      <Modal visible={showProfileEdit} animationType="slide" presentationStyle="pageSheet">
+        <ProfileEditView
+          currentUser={currentUser}
+          authVM={authVM}
+          onClose={() => setShowProfileEdit(false)}
+          onSaveProfile={() => {
+            // Profile saved, can refresh if needed
+          }}
+        />
+      </Modal>
+
+      <SideMenuDrawer
+        visible={showSideMenu}
+        onClose={() => setShowSideMenu(false)}
+        currentUser={currentUser}
+        forums={discussionVM.openForums}
+        activeForum={discussionVM.activeForum}
+        onSelectForum={(forumID) => discussionVM.selectForum(forumID)}
+        onEditProfile={() => {
+          setShowSideMenu(false);
+          setShowProfileEdit(true);
+        }}
+        onLogout={onLogout}
+        permissions={permissions}
+      />
+
       <Modal visible={showNewForumModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.navBar}>
@@ -1431,12 +1427,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
+  menuButton: { padding: 8 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#2563EB' },
-  headerUsername: { fontSize: 12, color: '#9CA3AF', textTransform: 'capitalize' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerActionText: { color: '#2563EB', fontWeight: '600' },
-  logoutButton: { padding: 8 },
-  logoutIcon: { fontSize: 18, color: '#2563EB' },
   forumBanner: {
     backgroundColor: '#fff',
     borderBottomWidth: 1,
@@ -1462,23 +1454,23 @@ const styles = StyleSheet.create({
     color: '#111827',
     textAlign: 'center',
   },
-  forumBannerActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  forumBannerActions: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   secondaryForumButton: {
     backgroundColor: '#EFF6FF',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#BFDBFE',
   },
-  secondaryForumButtonText: { color: '#1D4ED8', fontWeight: '600', fontSize: 12 },
+  secondaryForumButtonText: { color: '#1D4ED8', fontWeight: '600', fontSize: 11 },
   createForumButton: {
     backgroundColor: '#2563EB',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 6,
   },
-  createForumButtonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+  createForumButtonText: { color: '#fff', fontWeight: '600', fontSize: 11 },
   listContent: { padding: 12, gap: 12 },
   card: {
     backgroundColor: '#fff',
@@ -1861,4 +1853,6 @@ const styles = StyleSheet.create({
   toastTopText: { color: '#F9FAFB', fontWeight: '800', fontSize: 19, textAlign: 'center' },
 });
 
+// Re-export with authVM prop passed from parent
+export const ForumHomeViewWithAuth = (props) => <ForumHomeView {...props} />;
 export default ForumHomeView;
