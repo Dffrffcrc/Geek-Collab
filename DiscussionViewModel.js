@@ -31,6 +31,12 @@ const ADMIN_IDS = [
 const nowIso = () => new Date().toISOString();
 const isForumExpired = (forum) => new Date(forum.expiresAt).getTime() <= Date.now();
 
+const getProfileName = (user) => String(user?.displayName || user?.username || '').trim();
+
+const getProfileUsername = (user) => String(user?.username || '').trim();
+
+const getProfileImage = (user) => user?.profileImage ?? null;
+
 const applyFilter = (discussions, filter) => {
   switch (filter) {
     case 'Latest':
@@ -477,7 +483,10 @@ export const useDiscussionViewModel = () => {
     const newDiscussion = createDiscussion({
       id: uuid.v4(),
       authorID: author.id,
-      authorName: author.username,
+      authorName: getProfileName(author) || author.username,
+      authorDisplayName: getProfileName(author) || author.username,
+      authorUsername: getProfileUsername(author) || author.username,
+      authorProfileImage: getProfileImage(author),
       title: titleResult.sanitized,
       description: descriptionResult.sanitized,
       content: contentResult.sanitized,
@@ -514,6 +523,10 @@ export const useDiscussionViewModel = () => {
     }
     const safeComment = {
       ...comment,
+      authorName: getProfileName(author) || author.username,
+      authorDisplayName: getProfileName(author) || author.username,
+      authorUsername: getProfileUsername(author) || author.username,
+      authorProfileImage: getProfileImage(author),
       text: textResult.sanitized,
     };
 
@@ -966,6 +979,71 @@ export const useDiscussionViewModel = () => {
     enqueueNotification('Sample posts restored.');
   }, [enqueueNotification, getPermissionSummary, selectedForum?.id, forums]);
 
+  const updateAuthorProfileInContent = useCallback((updatedUser) => {
+    if (!updatedUser?.id) return false;
+
+    const nextDisplayName = getProfileName(updatedUser) || updatedUser.username || '';
+    const nextUsername = getProfileUsername(updatedUser) || updatedUser.username || '';
+    const nextProfileImage = getProfileImage(updatedUser);
+
+    const updateRecord = (record) => {
+      if (!record) return record;
+      const nextRecord = { ...record };
+
+      if (nextRecord.authorID === updatedUser.id) {
+        nextRecord.authorName = nextDisplayName;
+        nextRecord.authorDisplayName = nextDisplayName;
+        nextRecord.authorUsername = nextUsername;
+        nextRecord.authorProfileImage = nextProfileImage;
+      }
+
+      if (Array.isArray(nextRecord.comments)) {
+        nextRecord.comments = nextRecord.comments.map((comment) => {
+          if (comment.authorID !== updatedUser.id) return comment;
+          return {
+            ...comment,
+            authorName: nextDisplayName,
+            authorDisplayName: nextDisplayName,
+            authorUsername: nextUsername,
+            authorProfileImage: nextProfileImage,
+          };
+        });
+      }
+
+      if (nextRecord.createdByID === updatedUser.id) {
+        nextRecord.createdByName = nextDisplayName;
+        nextRecord.createdByDisplayName = nextDisplayName;
+        nextRecord.createdByUsername = nextUsername;
+        nextRecord.createdByProfileImage = nextProfileImage;
+      }
+
+      if (nextRecord.deletedByID === updatedUser.id) {
+        nextRecord.deletedByName = nextDisplayName;
+        nextRecord.deletedByDisplayName = nextDisplayName;
+        nextRecord.deletedByUsername = nextUsername;
+        nextRecord.deletedByProfileImage = nextProfileImage;
+      }
+
+      if (nextRecord.lastReportDismissedByID === updatedUser.id) {
+        nextRecord.lastReportDismissedByName = nextDisplayName;
+        nextRecord.lastReportDismissedByDisplayName = nextDisplayName;
+        nextRecord.lastReportDismissedByUsername = nextUsername;
+        nextRecord.lastReportDismissedByProfileImage = nextProfileImage;
+      }
+
+      return nextRecord;
+    };
+
+    setDiscussions((prev) => prev.map(updateRecord));
+    setDeletedDiscussions((prev) => prev.map(updateRecord));
+    setForums((prev) => prev.map(updateRecord));
+    setKnownUsers((prev) => ({
+      ...prev,
+      [updatedUser.id]: nextUsername || nextDisplayName,
+    }));
+    return true;
+  }, []);
+
   const getPostsByAuthor = useCallback((authorID) => {
     return discussions
       .filter((discussion) => discussion.authorID === authorID)
@@ -1168,6 +1246,7 @@ export const useDiscussionViewModel = () => {
     addBlockedWord,
     removeBlockedWord,
     getPermissionSummary,
+    updateAuthorProfile: updateAuthorProfileInContent,
     dismissNotification,
   };
 };

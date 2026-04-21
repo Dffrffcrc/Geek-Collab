@@ -22,6 +22,7 @@ import uuid from 'react-native-uuid';
 const toImageURI = (image) => {
   if (!image) return null;
   if (typeof image === 'string') return `data:image/jpeg;base64,${image}`;
+  if (image.uri) return image.uri;
   if (image.base64) return `data:image/jpeg;base64,${image.base64}`;
   return null;
 };
@@ -142,6 +143,8 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
   // Get the latest version of the discussion from viewModel
   const liveDiscussion =
     viewModel.discussions.find((d) => d.id === discussion.id) || discussion;
+  const authorLabel = liveDiscussion.authorDisplayName || liveDiscussion.authorName || liveDiscussion.authorUsername || 'User';
+  const authorHandle = liveDiscussion.authorUsername ? `@${liveDiscussion.authorUsername}` : '';
   const userHasReported = Array.isArray(liveDiscussion.reports)
     ? liveDiscussion.reports.some((report) => report.reporterID === currentUser.id)
     : false;
@@ -172,9 +175,21 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* Author */}
         <View style={styles.authorBox}>
-          <TouchableOpacity onPress={() => onOpenProfile?.(liveDiscussion.authorID, liveDiscussion.authorName)}>
-            <Text style={styles.authorName}>{liveDiscussion.authorName}</Text>
-          </TouchableOpacity>
+          <View style={styles.authorRow}>
+            <View style={styles.authorAvatar}>
+              {liveDiscussion.authorProfileImage ? (
+                <Image source={{ uri: toImageURI(liveDiscussion.authorProfileImage) }} style={styles.authorAvatarImage} />
+              ) : (
+                <Text style={styles.authorAvatarText}>{authorLabel[0].toUpperCase()}</Text>
+              )}
+            </View>
+            <View>
+              <TouchableOpacity onPress={() => onOpenProfile?.(liveDiscussion.authorID, liveDiscussion.authorName)}>
+                <Text style={styles.authorName}>{authorLabel}</Text>
+              </TouchableOpacity>
+              {authorHandle ? <Text style={styles.authorHandle}>{authorHandle}</Text> : null}
+            </View>
+          </View>
           <Text style={styles.authorDate}>{relativeDate(liveDiscussion.createdAt)}</Text>
         </View>
 
@@ -243,9 +258,21 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
           {liveDiscussion.comments.map((comment) => (
             <View key={comment.id} style={styles.commentCard}>
               <View style={styles.commentHeader}>
-                <TouchableOpacity onPress={() => onOpenProfile?.(comment.authorID, comment.authorName)}>
-                  <Text style={styles.commentAuthor}>{comment.authorName}</Text>
-                </TouchableOpacity>
+                <View style={styles.commentAuthorRow}>
+                  <View style={styles.commentAvatar}>
+                    {comment.authorProfileImage ? (
+                      <Image source={{ uri: toImageURI(comment.authorProfileImage) }} style={styles.commentAvatarImage} />
+                    ) : (
+                      <Text style={styles.commentAvatarText}>{(comment.authorDisplayName || comment.authorName || 'U')[0].toUpperCase()}</Text>
+                    )}
+                  </View>
+                  <View>
+                    <TouchableOpacity onPress={() => onOpenProfile?.(comment.authorID, comment.authorName)}>
+                      <Text style={styles.commentAuthor}>{comment.authorDisplayName || comment.authorName || comment.authorUsername || 'User'}</Text>
+                    </TouchableOpacity>
+                    {comment.authorUsername ? <Text style={styles.commentHandle}>@{comment.authorUsername}</Text> : null}
+                  </View>
+                </View>
                 <Text style={styles.commentDate}>{relativeDate(comment.createdAt)}</Text>
               </View>
               <Text style={styles.commentText}>{comment.text}</Text>
@@ -367,8 +394,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
     padding: 12,
     borderRadius: 8,
+    gap: 6,
   },
+  authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  authorAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  authorAvatarImage: { width: '100%', height: '100%' },
+  authorAvatarText: { fontSize: 16, fontWeight: '700', color: '#2563EB' },
   authorName: { fontWeight: '600', fontSize: 14 },
+  authorHandle: { fontSize: 11, color: '#6B7280' },
   authorDate: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
   section: { gap: 8 },
   title: { fontSize: 20, fontWeight: 'bold' },
@@ -428,7 +469,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  commentAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  commentAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  commentAvatarImage: { width: '100%', height: '100%' },
+  commentAvatarText: { fontSize: 11, fontWeight: '700', color: '#2563EB' },
   commentAuthor: { fontWeight: '600', fontSize: 12 },
+  commentHandle: { fontSize: 10, color: '#6B7280' },
   commentDate: { fontSize: 11, color: '#9CA3AF' },
   commentText: { fontSize: 14, color: '#374151' },
   commentInputRow: {

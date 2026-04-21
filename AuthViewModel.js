@@ -6,12 +6,13 @@ import {
   userExists,
   getUser,
   getUserById,
+  updateUserProfile,
+  isUsernameAvailable,
   getUsersSyncStatus,
   migrateDatabaseSchema,
   saveActiveSessionUserID,
   getActiveSessionUserID,
   clearActiveSessionUserID,
-  updateUserProfile,
 } from './StorageExtension';
 import { hasModerationMatch } from './ContentModeration';
 import uuid from 'react-native-uuid';
@@ -49,8 +50,12 @@ export const useAuthViewModel = () => {
     const normalizedUsername = String(username || '').trim();
     const normalizedDisplayName = String(displayName || '').trim();
 
-    if (!normalizedUsername || !password || !confirmPassword) {
+    if (!normalizedUsername || !normalizedDisplayName || !password || !confirmPassword) {
       setAuthError('Please fill in all fields');
+      return;
+    }
+    if (normalizedDisplayName.length < 2) {
+      setAuthError('Display name must be at least 2 characters');
       return;
     }
     if (normalizedUsername.length < 3) {
@@ -102,6 +107,50 @@ export const useAuthViewModel = () => {
     setAuthError(null);
   }, []);
 
+  const updateCurrentUserDetails = useCallback(async (updates = {}) => {
+    if (!currentUser?.id) return null;
+
+    setIsLoading(true);
+    setAuthError(null);
+
+    try {
+      const nextUsername = updates.username !== undefined
+        ? String(updates.username || '').trim()
+        : currentUser.username;
+      const nextDisplayName = updates.displayName !== undefined
+        ? String(updates.displayName || '').trim()
+        : currentUser.displayName;
+
+      if (updates.username !== undefined) {
+        if (nextUsername.length < 3) {
+          setAuthError('Username must be at least 3 characters');
+          return null;
+        }
+        const available = await isUsernameAvailable(nextUsername, currentUser.id);
+        if (!available) {
+          setAuthError('Username already taken');
+          return null;
+        }
+      }
+
+      if (updates.displayName !== undefined && nextDisplayName.length < 2) {
+        setAuthError('Display name must be at least 2 characters');
+        return null;
+      }
+
+      const updatedUser = await updateUserProfile(currentUser.id, updates);
+      if (!updatedUser) {
+        setAuthError('Unable to update profile right now.');
+        return null;
+      }
+
+      setCurrentUser(updatedUser);
+      await saveActiveSessionUserID(updatedUser.id);
+      return updatedUser;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentUser]);
 
   const login = useCallback(async (username, password) => {
     if (!username || !password) {
@@ -153,14 +202,12 @@ export const useAuthViewModel = () => {
 
   const updateProfile = useCallback(async (updates = {}) => {
     if (!currentUser) return false;
-    const success = await updateUserProfile(currentUser.id, updates);
-    if (success) {
-      const updatedUser = await getUserById(currentUser.id);
-      if (updatedUser) {
-        setCurrentUser(updatedUser);
-      }
+    const updatedUser = await updateUserProfile(currentUser.id, updates);
+    if (updatedUser) {
+      setCurrentUser(updatedUser);
+      return true;
     }
-    return success;
+    return false;
   }, [currentUser]);
 
   return {
@@ -176,5 +223,6 @@ export const useAuthViewModel = () => {
     logout,
     clearNewUserNotice,
     updateProfile,
+    updateCurrentUserDetails,
   };
 };

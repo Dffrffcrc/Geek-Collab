@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,23 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  Modal,
+  TextInput,
+  Image,
   useWindowDimensions,
 } from 'react-native';
+import MediaPicker from './MediaPicker';
+
+const toImageURI = (image) => {
+  if (!image) return null;
+  if (typeof image === 'string') return image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
+  if (image.uri) return image.uri;
+  if (image.base64) {
+    const mimeType = image.mimeType || 'image/jpeg';
+    return `data:${mimeType};base64,${image.base64}`;
+  }
+  return null;
+};
 
 const relativeDate = (dateStr) => {
   const interval = (Date.now() - new Date(dateStr).getTime()) / 1000;
@@ -16,12 +31,53 @@ const relativeDate = (dateStr) => {
   return `${Math.floor(interval / 86400)}d ago`;
 };
 
-const UserProfileView = ({ userID, userName, viewModel, onClose }) => {
+const UserProfileView = ({
+  userID,
+  userName,
+  profileUser,
+  currentUser,
+  viewModel,
+  onProfileUpdated,
+  profileUpdateError,
+  profileUpdateLoading,
+  onClose,
+}) => {
   const [activeTab, setActiveTab] = useState('posts');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editBio, setEditBio] = useState('');
+  const [editProfileImage, setEditProfileImage] = useState(null);
   const { width } = useWindowDimensions();
   const posts = useMemo(() => viewModel.getPostsByAuthor(userID), [viewModel, userID]);
   const totalLikes = useMemo(() => posts.reduce((sum, post) => sum + (post.likes || 0), 0), [posts]);
   const totalComments = useMemo(() => posts.reduce((sum, post) => sum + (post.comments?.length || 0), 0), [posts]);
+  const displayName = profileUser?.displayName || profileUser?.name || profileUser?.username || userName || 'User';
+  const username = profileUser?.username || userName || '';
+  const bio = String(profileUser?.bio || '').trim();
+  const profileImage = profileUser?.profileImage || null;
+  const canEditProfile = Boolean(currentUser?.id && currentUser.id === userID);
+
+  useEffect(() => {
+    if (!showEditModal) return;
+    setEditDisplayName(profileUser?.displayName || profileUser?.name || profileUser?.username || '');
+    setEditUsername(profileUser?.username || userName || '');
+    setEditBio(String(profileUser?.bio || ''));
+    setEditProfileImage(profileUser?.profileImage || null);
+  }, [showEditModal, profileUser, userName]);
+
+  const submitProfileUpdate = async () => {
+    const updatedUser = await onProfileUpdated?.({
+      displayName: editDisplayName,
+      username: editUsername,
+      bio: editBio,
+      profileImage: editProfileImage,
+    });
+    if (updatedUser) {
+      viewModel.updateAuthorProfile?.(updatedUser);
+      setShowEditModal(false);
+    }
+  };
 
   const tabs = ['active posts', 'about', 'stats'];
   const isDesktop = width >= 900;
@@ -41,19 +97,21 @@ const UserProfileView = ({ userID, userName, viewModel, onClose }) => {
           <View style={styles.profileCard}>
             <View style={styles.profileTopRow}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarInitial}>{(userName || 'U').charAt(0).toUpperCase()}</Text>
-              </View>
-              <View style={styles.onlineBadge}>
-                <Text style={styles.onlineText}>Online</Text>
+                {toImageURI(profileImage) ? (
+                  <Image source={{ uri: toImageURI(profileImage) }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.avatarInitial}>{(displayName || 'U').charAt(0).toUpperCase()}</Text>
+                )}
               </View>
             </View>
 
-            <Text style={styles.userName}>{userName}</Text>
-            <Text style={styles.userHandle}>@{(userName || '').replace(/\s+/g, '').toLowerCase()}</Text>
+            <Text style={styles.userName}>{displayName}</Text>
+            <Text style={styles.userHandle}>@{username || (displayName || '').replace(/\s+/g, '').toLowerCase()}</Text>
 
-            <TouchableOpacity style={styles.profileActionButton}>
-              <Text style={styles.profileActionText}>Preview Public Profile</Text>
-            </TouchableOpacity>
+            <View style={styles.bioCard}>
+              <Text style={styles.bioLabel}>Description</Text>
+              <Text style={styles.bioText}>{bio || 'No description added yet.'}</Text>
+            </View>
 
             <View style={styles.quickStatsRow}>
               <View style={styles.quickStatPill}>
@@ -66,9 +124,11 @@ const UserProfileView = ({ userID, userName, viewModel, onClose }) => {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.editButton}>
-              <Text style={styles.editButtonText}>Edit</Text>
-            </TouchableOpacity>
+            {canEditProfile ? (
+              <TouchableOpacity style={styles.editButton} onPress={() => setShowEditModal(true)}>
+                <Text style={styles.editButtonText}>Edit Profile</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
@@ -106,9 +166,9 @@ const UserProfileView = ({ userID, userName, viewModel, onClose }) => {
 
           {activeTab === 'about' && (
             <View style={styles.infoPanel}>
-              <Text style={styles.infoTitle}>About {userName}</Text>
+              <Text style={styles.infoTitle}>About {displayName}</Text>
               <Text style={styles.infoBody}>
-                Passionate collaborator building thoughtful projects and participating in community-driven discussions.
+                {bio || 'This user has not added a description yet.'}
               </Text>
             </View>
           )}
@@ -131,25 +191,97 @@ const UserProfileView = ({ userID, userName, viewModel, onClose }) => {
           )}
         </View>
       </View>
+
+      <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.navBar}>
+            <TouchableOpacity onPress={() => setShowEditModal(false)}>
+              <Text style={styles.closeText}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.navTitle}>Edit Profile</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          <View style={styles.editContent}>
+            <View style={styles.editImageCard}>
+              <View style={styles.editAvatarPreview}>
+                {editProfileImage ? (
+                  <Image source={{ uri: toImageURI(editProfileImage) }} style={styles.editAvatarImage} />
+                ) : (
+                  <Text style={styles.editAvatarInitial}>{(editDisplayName || 'U').charAt(0).toUpperCase()}</Text>
+                )}
+              </View>
+                <MediaPicker
+                  onImageSelected={(image) => setEditProfileImage(image)}
+                  onCancel={() => {}}
+                  buttonText={editProfileImage ? '📷  Change Photo' : '📷  Upload Photo'}
+                  buttonStyle={styles.uploadButton}
+                  buttonTextStyle={styles.uploadButtonText}
+                />
+            </View>
+
+            <Text style={styles.label}>Display Name</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editDisplayName}
+              onChangeText={setEditDisplayName}
+              placeholder="Enter display name"
+              placeholderTextColor="#9CA3AF"
+            />
+
+            <Text style={styles.label}>Username</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editUsername}
+              onChangeText={setEditUsername}
+              placeholder="Enter username"
+              placeholderTextColor="#9CA3AF"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={styles.label}>Description</Text>
+            <TextInput
+              style={[styles.editInput, styles.editBioInput]}
+              value={editBio}
+              onChangeText={setEditBio}
+              placeholder="Write a short description"
+              placeholderTextColor="#9CA3AF"
+              multiline
+              textAlignVertical="top"
+            />
+
+            {profileUpdateError ? <Text style={styles.errorText}>{profileUpdateError}</Text> : null}
+
+            <TouchableOpacity
+              style={[styles.saveButton, profileUpdateLoading && styles.saveButtonDisabled]}
+              onPress={submitProfileUpdate}
+              disabled={profileUpdateLoading}
+            >
+              <Text style={styles.saveButtonText}>{profileUpdateLoading ? 'Saving...' : 'Save Changes'}</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4F4F5' },
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
   navBar: {
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#D4D4D8',
+    borderBottomColor: '#DBEAFE',
     paddingHorizontal: 20,
     paddingVertical: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  closeText: { color: '#0F766E', fontWeight: '700' },
-  navTitle: { fontWeight: '700', fontSize: 17, color: '#111827' },
+  closeText: { color: '#2563EB', fontWeight: '700' },
+  navTitle: { fontWeight: '700', fontSize: 17, color: '#1D4ED8' },
   pageBody: {
     flex: 1,
     flexDirection: 'row',
@@ -170,8 +302,8 @@ const styles = StyleSheet.create({
   profileCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E4E4E7',
-    borderRadius: 4,
+    borderColor: '#DBEAFE',
+    borderRadius: 14,
     padding: 16,
     gap: 12,
   },
@@ -184,42 +316,29 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: '#D4D4D8',
+    backgroundColor: '#DBEAFE',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarImage: { width: '100%', height: '100%' },
   avatarInitial: {
     fontSize: 38,
     fontWeight: '700',
-    color: '#3F3F46',
+    color: '#2563EB',
   },
-  onlineBadge: {
+  userName: { fontSize: 30, fontWeight: '700', color: '#111827' },
+  userHandle: { fontSize: 15, color: '#6B7280' },
+  bioCard: {
+    backgroundColor: '#EFF6FF',
     borderWidth: 1,
-    borderColor: '#34D399',
+    borderColor: '#BFDBFE',
     borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: '#ECFDF5',
+    padding: 12,
+    gap: 4,
   },
-  onlineText: {
-    color: '#047857',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  userName: { fontSize: 30, fontWeight: '700', color: '#18181B' },
-  userHandle: { fontSize: 15, color: '#71717A' },
-  profileActionButton: {
-    borderWidth: 1,
-    borderColor: '#A1A1AA',
-    borderRadius: 4,
-    alignItems: 'center',
-    paddingVertical: 10,
-    marginTop: 4,
-  },
-  profileActionText: {
-    color: '#3F3F46',
-    fontWeight: '600',
-  },
+  bioLabel: { color: '#1D4ED8', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  bioText: { color: '#1F2937', fontSize: 14, lineHeight: 20 },
   quickStatsRow: {
     flexDirection: 'row',
     gap: 8,
@@ -228,35 +347,63 @@ const styles = StyleSheet.create({
   quickStatPill: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#E4E4E7',
-    borderRadius: 4,
+    borderColor: '#BFDBFE',
+    borderRadius: 12,
     paddingVertical: 10,
     alignItems: 'center',
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#EFF6FF',
     gap: 2,
   },
   quickStatValue: {
-    color: '#18181B',
+    color: '#1D4ED8',
     fontWeight: '700',
     fontSize: 17,
   },
   quickStatLabel: {
-    color: '#71717A',
+    color: '#4B5563',
     fontSize: 12,
     fontWeight: '600',
   },
   editButton: {
     borderWidth: 1,
-    borderColor: '#A1A1AA',
-    borderRadius: 4,
+    borderColor: '#2563EB',
+    borderRadius: 12,
     alignItems: 'center',
     paddingVertical: 10,
     marginTop: 8,
+    backgroundColor: '#FFFFFF',
   },
   editButtonText: {
-    color: '#3F3F46',
+    color: '#2563EB',
     fontWeight: '600',
   },
+  modalContainer: { flex: 1, backgroundColor: '#F9FAFB' },
+  editContent: { padding: 18, gap: 12 },
+  editImageCard: {
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+  },
+  editAvatarPreview: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  editAvatarImage: { width: '100%', height: '100%' },
+  editAvatarInitial: { color: '#2563EB', fontSize: 44, fontWeight: '700' },
+  uploadButton: {
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  uploadButtonText: { color: '#2563EB', fontWeight: '700' },
   rightContent: {
     flex: 1,
     minHeight: 360,
@@ -264,12 +411,12 @@ const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E4E4E7',
+    borderColor: '#DBEAFE',
     borderBottomWidth: 1,
-    borderBottomColor: '#D4D4D8',
+    borderBottomColor: '#DBEAFE',
     flexDirection: 'row',
     paddingHorizontal: 12,
-    borderRadius: 4,
+    borderRadius: 12,
   },
   tabButton: {
     flex: 0,
@@ -283,51 +430,74 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#71717A',
+    color: '#6B7280',
     letterSpacing: 0.6,
   },
   tabTextActive: {
-    color: '#111827',
+    color: '#1D4ED8',
   },
   tabIndicator: {
     position: 'absolute',
     bottom: 0,
     height: 2,
-    backgroundColor: '#10B981',
+    backgroundColor: '#2563EB',
     width: '100%',
   },
   listContent: { paddingBottom: 20, gap: 10, paddingTop: 14 },
   postCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 4,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E4E4E7',
+    borderColor: '#DBEAFE',
     padding: 14,
     gap: 6,
   },
   postTitle: { fontWeight: '700', color: '#111827', fontSize: 16 },
-  postDescription: { color: '#52525B', fontSize: 13 },
-  postMeta: { color: '#71717A', fontSize: 12 },
-  emptyText: { color: '#71717A', textAlign: 'center', marginTop: 20 },
+  postDescription: { color: '#4B5563', fontSize: 13 },
+  postMeta: { color: '#6B7280', fontSize: 12 },
+  emptyText: { color: '#6B7280', textAlign: 'center', marginTop: 20 },
   infoPanel: {
     marginTop: 14,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E4E4E7',
-    borderRadius: 4,
+    borderColor: '#DBEAFE',
+    borderRadius: 12,
     padding: 16,
     gap: 8,
   },
   infoTitle: {
-    color: '#111827',
+    color: '#1D4ED8',
     fontSize: 18,
     fontWeight: '700',
   },
   infoBody: {
-    color: '#52525B',
+    color: '#374151',
     fontSize: 14,
     lineHeight: 20,
   },
+  label: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
+  editInput: {
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 15,
+    backgroundColor: '#FFFFFF',
+  },
+  editBioInput: {
+    minHeight: 100,
+  },
+  saveButton: {
+    marginTop: 8,
+    backgroundColor: '#2563EB',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  saveButtonDisabled: { opacity: 0.7 },
+  saveButtonText: { color: '#FFFFFF', fontWeight: '700' },
+  errorText: { color: '#DC2626', fontSize: 12 },
   statsGrid: {
     marginTop: 14,
     flexDirection: 'row',
@@ -337,19 +507,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E4E4E7',
-    borderRadius: 4,
+    borderColor: '#DBEAFE',
+    borderRadius: 12,
     paddingVertical: 18,
     alignItems: 'center',
     gap: 4,
   },
   statValue: {
-    color: '#111827',
+    color: '#1D4ED8',
     fontSize: 26,
     fontWeight: '700',
   },
   statLabel: {
-    color: '#71717A',
+    color: '#4B5563',
     fontSize: 12,
     fontWeight: '600',
   },

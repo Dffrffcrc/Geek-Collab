@@ -32,6 +32,7 @@ const AuthView = ({ authVM }) => {
   const toggleMode = () => {
     setIsLoginMode((prev) => !prev);
     authVM.setAuthError(null);
+    setDisplayName('');
     setPassword('');
     setConfirmPassword('');
     setDisplayName('');
@@ -53,6 +54,20 @@ const AuthView = ({ authVM }) => {
 
         {/* Form */}
         <View style={styles.form}>
+          {/* Display Name */}
+          {!isLoginMode && (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Display Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter display name"
+                placeholderTextColor="#B6BFCC"
+                value={displayName}
+                onChangeText={setDisplayName}
+              />
+            </View>
+          )}
+
           {/* Username */}
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Username</Text>
