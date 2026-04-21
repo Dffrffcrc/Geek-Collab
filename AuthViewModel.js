@@ -6,6 +6,8 @@ import {
   userExists,
   getUser,
   getUserById,
+  updateUserProfile,
+  isUsernameAvailable,
   getUsersSyncStatus,
   migrateDatabaseSchema,
   saveActiveSessionUserID,
@@ -44,11 +46,16 @@ export const useAuthViewModel = () => {
     restoreSession();
   }, []);
 
-  const signUp = useCallback(async (username, password, confirmPassword, role = 'user') => {
+  const signUp = useCallback(async (username, displayName, password, confirmPassword, role = 'user') => {
     const normalizedUsername = String(username || '').trim();
+    const normalizedDisplayName = String(displayName || '').trim();
 
-    if (!normalizedUsername || !password || !confirmPassword) {
+    if (!normalizedUsername || !normalizedDisplayName || !password || !confirmPassword) {
       setAuthError('Please fill in all fields');
+      return;
+    }
+    if (normalizedDisplayName.length < 2) {
+      setAuthError('Display name must be at least 2 characters');
       return;
     }
     if (normalizedUsername.length < 3) {
@@ -82,6 +89,7 @@ export const useAuthViewModel = () => {
     const newUser = createUser({
       id: uuid.v4(),
       username: normalizedUsername,
+      displayName: normalizedDisplayName,
       password,
       role,
       bio: '',
@@ -93,10 +101,55 @@ export const useAuthViewModel = () => {
     await saveActiveSessionUserID(newUser.id);
     setCurrentUser(newUser);
     setIsLoggedIn(true);
-    setNewUserNotice(`Welcome ${normalizedUsername}! Your role is ${role}.`);
+    setNewUserNotice(`Welcome ${normalizedDisplayName}! Your role is ${role}.`);
     setIsLoading(false);
     setAuthError(null);
   }, []);
+
+  const updateCurrentUserDetails = useCallback(async (updates = {}) => {
+    if (!currentUser?.id) return null;
+
+    setIsLoading(true);
+    setAuthError(null);
+
+    try {
+      const nextUsername = updates.username !== undefined
+        ? String(updates.username || '').trim()
+        : currentUser.username;
+      const nextDisplayName = updates.displayName !== undefined
+        ? String(updates.displayName || '').trim()
+        : currentUser.displayName;
+
+      if (updates.username !== undefined) {
+        if (nextUsername.length < 3) {
+          setAuthError('Username must be at least 3 characters');
+          return null;
+        }
+        const available = await isUsernameAvailable(nextUsername, currentUser.id);
+        if (!available) {
+          setAuthError('Username already taken');
+          return null;
+        }
+      }
+
+      if (updates.displayName !== undefined && nextDisplayName.length < 2) {
+        setAuthError('Display name must be at least 2 characters');
+        return null;
+      }
+
+      const updatedUser = await updateUserProfile(currentUser.id, updates);
+      if (!updatedUser) {
+        setAuthError('Unable to update profile right now.');
+        return null;
+      }
+
+      setCurrentUser(updatedUser);
+      await saveActiveSessionUserID(updatedUser.id);
+      return updatedUser;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentUser]);
 
   const login = useCallback(async (username, password) => {
     if (!username || !password) {
@@ -158,5 +211,6 @@ export const useAuthViewModel = () => {
     login,
     logout,
     clearNewUserNotice,
+    updateCurrentUserDetails,
   };
 };

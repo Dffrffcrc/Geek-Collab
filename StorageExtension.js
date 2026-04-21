@@ -175,6 +175,17 @@ export const userExists = async (username) => {
   return users.some((u) => u.username.toLowerCase() === username.toLowerCase());
 };
 
+export const isUsernameAvailable = async (username, excludeUserID = null) => {
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  if (!normalizedUsername) return false;
+  const users = await getAllUsers();
+  return !users.some((user) => {
+    if (!user?.username) return false;
+    if (excludeUserID && user.id === excludeUserID) return false;
+    return String(user.username).trim().toLowerCase() === normalizedUsername;
+  });
+};
+
 export const getUser = async (username, password) => {
   const users = await getAllUsers();
   return users.find(
@@ -239,6 +250,40 @@ export const updateUserRole = async (userID, role) => {
     }
   }
   return true;
+};
+
+export const updateUserProfile = async (userID, updates = {}) => {
+  if (!userID) return null;
+
+  const users = await getAllUsers();
+  let updatedUser = null;
+  const nextUsers = users.map((user) => {
+    if (user.id !== userID) return user;
+    const nextUsername = updates.username !== undefined ? String(updates.username).trim() : user.username;
+    updatedUser = {
+      ...user,
+      ...updates,
+      username: nextUsername,
+      displayName: updates.displayName !== undefined ? String(updates.displayName).trim() : user.displayName,
+      bio: updates.bio !== undefined ? String(updates.bio).trim() : user.bio,
+      profileImage: updates.profileImage !== undefined ? updates.profileImage : user.profileImage,
+    };
+    return updatedUser;
+  });
+
+  if (!updatedUser) return null;
+
+  await AsyncStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
+  const firestoreDb = getFirestoreDb();
+  if (firestoreDb) {
+    try {
+      await saveRemoteUsers(firestoreDb, nextUsers);
+    } catch {
+      // keep local update even if remote fails
+    }
+  }
+
+  return updatedUser;
 };
 
 export const getUserById = async (id) => {

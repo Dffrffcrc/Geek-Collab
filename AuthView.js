@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 const AuthView = ({ authVM }) => {
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -25,13 +26,14 @@ const AuthView = ({ authVM }) => {
     if (isLoginMode) {
       authVM.login(username, password);
     } else {
-      authVM.signUp(username, password, confirmPassword, role);
+      authVM.signUp(username, displayName, password, confirmPassword, role);
     }
   };
 
   const toggleMode = () => {
     setIsLoginMode((prev) => !prev);
     authVM.setAuthError(null);
+    setDisplayName('');
     setPassword('');
     setConfirmPassword('');
     setShowPassword(false);
@@ -53,6 +55,20 @@ const AuthView = ({ authVM }) => {
 
         {/* Form */}
         <View style={styles.form}>
+          {/* Display Name */}
+          {!isLoginMode && (
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Display Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter display name"
+                placeholderTextColor="#B6BFCC"
+                value={displayName}
+                onChangeText={setDisplayName}
+              />
+            </View>
+          )}
+
           {/* Username */}
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Username</Text>

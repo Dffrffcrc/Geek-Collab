@@ -12,7 +12,7 @@ import { launchImageLibrary } from 'react-native-image-picker';
  *   onCancel: () => void
  *   children: optional custom trigger element
  */
-const MediaPicker = ({ onImageSelected, onCancel, children }) => {
+const MediaPicker = ({ onImageSelected, onCancel, children, buttonText = '📷  Add Image', buttonStyle, buttonTextStyle }) => {
   const openPicker = () => {
     launchImageLibrary(
       {
@@ -53,8 +53,8 @@ const MediaPicker = ({ onImageSelected, onCancel, children }) => {
   }
 
   return (
-    <Pressable style={styles.button} onPress={openPicker}>
-      <Text style={styles.buttonText}>📷  Add Image</Text>
+    <Pressable style={[styles.button, buttonStyle]} onPress={openPicker}>
+      <Text style={[styles.buttonText, buttonTextStyle]}>{buttonText}</Text>
     </Pressable>
   );
 };

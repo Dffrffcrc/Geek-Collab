@@ -4,6 +4,7 @@
  * @typedef {Object} User
  * @property {string} id
  * @property {string} username
+ * @property {string} displayName
  * @property {string} password
  * @property {'admin'|'moderator'|'user'} role
  * @property {string} bio
@@ -15,6 +16,7 @@
 export const createUser = ({
   id,
   username,
+  displayName = '',
   password,
   role = 'user',
   bio = '',
@@ -25,6 +27,7 @@ export const createUser = ({
 }) => ({
   id,
   username,
+  displayName,
   password,
   role,
   bio,
@@ -39,13 +42,28 @@ export const createUser = ({
  * @property {string} id
  * @property {string} authorID
  * @property {string} authorName
+ * @property {string} authorDisplayName
+ * @property {string} authorUsername
+ * @property {string|null} authorProfileImage
  * @property {string} text
  * @property {string} createdAt - ISO date string
  */
-export const createComment = ({ id, authorID, authorName, text, createdAt }) => ({
+export const createComment = ({
   id,
   authorID,
   authorName,
+  authorDisplayName = authorName,
+  authorUsername = authorName,
+  authorProfileImage = null,
+  text,
+  createdAt,
+}) => ({
+  id,
+  authorID,
+  authorName,
+  authorDisplayName,
+  authorUsername,
+  authorProfileImage,
   text,
   createdAt: createdAt || new Date().toISOString(),
 });
@@ -55,6 +73,9 @@ export const createComment = ({ id, authorID, authorName, text, createdAt }) => 
  * @property {string} id
  * @property {string} authorID
  * @property {string} authorName
+ * @property {string} authorDisplayName
+ * @property {string} authorUsername
+ * @property {string|null} authorProfileImage
  * @property {string} title
  * @property {string} description
  * @property {string} content
@@ -73,6 +94,9 @@ export const createDiscussion = ({
   id,
   authorID,
   authorName,
+  authorDisplayName = authorName,
+  authorUsername = authorName,
+  authorProfileImage = null,
   title,
   description,
   content,
@@ -90,6 +114,9 @@ export const createDiscussion = ({
   id,
   authorID,
   authorName,
+  authorDisplayName,
+  authorUsername,
+  authorProfileImage,
   title,
   description,
   content,
@@ -111,6 +138,9 @@ export const createDiscussion = ({
  * @property {string} title
  * @property {string} createdByID
  * @property {string} createdByName
+ * @property {string} createdByDisplayName
+ * @property {string} createdByUsername
+ * @property {string|null} createdByProfileImage
  * @property {string} createdAt
  * @property {string} expiresAt
  * @property {boolean} isReadOnly
@@ -120,6 +150,9 @@ export const createForumConfig = ({
   title,
   createdByID,
   createdByName,
+  createdByDisplayName = createdByName,
+  createdByUsername = createdByName,
+  createdByProfileImage = null,
   createdAt,
   expiresAt,
   isReadOnly = false,
@@ -128,6 +161,9 @@ export const createForumConfig = ({
   title,
   createdByID,
   createdByName,
+  createdByDisplayName,
+  createdByUsername,
+  createdByProfileImage,
   createdAt: createdAt || new Date().toISOString(),
   expiresAt,
   isReadOnly,

@@ -92,6 +92,15 @@ const TouchableOpacity = ({ children, style, activeOpacity = 0.85, disabled, ...
 const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, confirmAction, openMenu }) => {
   const [showDetail, setShowDetail] = useState(false);
   const permissions = viewModel.getPermissionSummary(currentUser);
+  const authorLabel = discussion.authorDisplayName || discussion.authorName || discussion.authorUsername || 'User';
+  const authorHandle = discussion.authorUsername ? `@${discussion.authorUsername}` : '';
+
+  const openProfileFromDetail = (userID, userName) => {
+    setShowDetail(false);
+    setTimeout(() => {
+      onOpenProfile?.(userID, userName, { onClose: () => setShowDetail(true) });
+    }, 0);
+  };
 
   return (
     <>
@@ -99,14 +108,19 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
         <View style={styles.cardAuthorRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={styles.cardAuthorAvatar}>
-              <Text style={styles.cardAuthorAvatarText}>
-                {discussion.authorName[0].toUpperCase()}
-              </Text>
+              {discussion.authorProfileImage ? (
+                <Image source={{ uri: toImageURI(discussion.authorProfileImage) }} style={styles.cardAuthorAvatarImage} />
+              ) : (
+                <Text style={styles.cardAuthorAvatarText}>
+                  {authorLabel[0].toUpperCase()}
+                </Text>
+              )}
             </View>
             <View>
               <TouchableOpacity onPress={() => onOpenProfile(discussion.authorID, discussion.authorName)}>
-                <Text style={styles.cardAuthorName}>{discussion.authorName}</Text>
+                <Text style={styles.cardAuthorName}>{authorLabel}</Text>
               </TouchableOpacity>
+              {authorHandle ? <Text style={styles.cardAuthorHandle}>{authorHandle}</Text> : null}
               <Text style={styles.cardAuthorDate}>{relativeDate(discussion.createdAt)}</Text>
             </View>
           </View>
@@ -220,7 +234,7 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
           discussion={discussion}
           viewModel={viewModel}
           currentUser={currentUser}
-          onOpenProfile={onOpenProfile}
+          onOpenProfile={openProfileFromDetail}
           onBack={() => setShowDetail(false)}
         />
       </Modal>
@@ -228,7 +242,7 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
   );
 };
 
-const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotice }) => {
+const ForumHomeView = ({ authVM, currentUser, onLogout, newUserNotice, clearNewUserNotice }) => {
   const discussionVM = useDiscussionViewModel();
   const [showNewDiscussion, setShowNewDiscussion] = useState(false);
   const [showFAQ, setShowFAQ] = useState(false);
@@ -236,6 +250,7 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
   const [showModPanel, setShowModPanel] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState({ id: null, name: '' });
+  const [profileCloseHandler, setProfileCloseHandler] = useState(null);
   const [showCloseForumModal, setShowCloseForumModal] = useState(false);
   const [closeForumTarget, setCloseForumTarget] = useState(null);
   const [closeForumMode, setCloseForumMode] = useState('immediate');
@@ -432,8 +447,9 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
     setForumEndTime(formatTimeInputValue(next));
   };
 
-  const openProfile = (userID, userName) => {
+  const openProfile = (userID, userName, options = {}) => {
     setSelectedProfile({ id: userID, name: userName });
+    setProfileCloseHandler(() => (typeof options.onClose === 'function' ? options.onClose : null));
     setShowProfile(true);
   };
 
@@ -475,6 +491,9 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       map.set(user.id, {
         id: user.id,
         name: user.username,
+        displayName: user.displayName || user.username,
+        bio: user.bio || '',
+        profileImage: user.profileImage || null,
         role: String(user.role || 'user').toLowerCase(),
         posts: 0,
         isBanned: Boolean(user.isBanned || bannedMap[user.id]),
@@ -486,16 +505,23 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
       const current = map.get(currentUser.id) || {
         id: currentUser.id,
         name: currentUser.username,
+        displayName: currentUser.displayName || currentUser.username,
+        bio: currentUser.bio || '',
+        profileImage: currentUser.profileImage || null,
         role: String(currentUser.role || 'user').toLowerCase(),
         posts: 0,
         isBanned: false,
         isMuted: false,
       };
-      current.name = current.name || currentUser.username;
-      current.isBanned = Boolean(current.isBanned || bannedMap[currentUser.id]);
+      current.name = currentUser.username || current.name;
+      current.displayName = currentUser.displayName || currentUser.username || current.displayName;
+      current.bio = currentUser.bio || '';
+      current.profileImage = currentUser.profileImage ?? current.profileImage ?? null;
+      current.role = String(currentUser.role || current.role || 'user').toLowerCase();
+      current.isBanned = Boolean(bannedMap[currentUser.id] || current.isBanned);
       current.isMuted = Boolean(
-        current.isMuted ||
-        (mutedMap[currentUser.id] && new Date(mutedMap[currentUser.id]).getTime() > now)
+        (mutedMap[currentUser.id] && new Date(mutedMap[currentUser.id]).getTime() > now) ||
+        current.isMuted
       );
       map.set(currentUser.id, current);
     }
@@ -1359,8 +1385,22 @@ const ForumHomeView = ({ currentUser, onLogout, newUserNotice, clearNewUserNotic
         <UserProfileView
           userID={selectedProfile.id}
           userName={selectedProfile.name}
+          profileUser={userSummaries.find((userItem) => userItem.id === selectedProfile.id) || null}
+          currentUser={currentUser}
           viewModel={discussionVM}
-          onClose={() => setShowProfile(false)}
+          profileUpdateError={authVM?.authError}
+          profileUpdateLoading={authVM?.isLoading}
+          onProfileUpdated={authVM?.updateCurrentUserDetails}
+          onClose={() => {
+            setShowProfile(false);
+            const onCloseHandler = profileCloseHandler;
+            setProfileCloseHandler(null);
+            if (typeof onCloseHandler === 'function') {
+              setTimeout(() => {
+                onCloseHandler();
+              }, 0);
+            }
+          }}
         />
       </Modal>
 
@@ -1784,9 +1824,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#DBEAFE',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
+  cardAuthorAvatarImage: { width: '100%', height: '100%' },
   cardAuthorAvatarText: { color: '#2563EB', fontWeight: '700', fontSize: 15 },
   cardAuthorName: { fontWeight: '600', fontSize: 14 },
+  cardAuthorHandle: { fontSize: 11, color: '#6B7280' },
   cardAuthorDate: { fontSize: 11, color: '#9CA3AF' },
   cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
   cardDescription: { fontSize: 13, color: '#6B7280' },
