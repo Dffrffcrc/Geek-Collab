@@ -21,7 +21,6 @@ export const createUser = ({
   displayName = '',
   password,
   role = 'user',
-  displayName = '',
   bio = '',
   profileImage = null,
   isBanned = false,
