@@ -51,6 +51,23 @@ const relativeDate = (dateStr) => {
   return `${Math.floor(interval / 86400)}d ago`;
 };
 
+const formatMutedTime = (mutedUntilISO) => {
+  if (!mutedUntilISO) return null;
+  const mutedUntil = new Date(mutedUntilISO).getTime();
+  const now = Date.now();
+  if (mutedUntil <= now) return null;
+  
+  const diffMs = mutedUntil - now;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  
+  if (diffMins < 1) return 'Muted for < 1 min';
+  if (diffMins < 60) return `Muted for ${diffMins} min`;
+  if (diffHours < 24) return `Muted for ${diffHours}h ${diffMins % 60}m`;
+  return `Muted for ${diffDays}d`;
+};
+
 const REPORT_REASON_OPTIONS = [
   'Spam or scam',
   'Harassment or hate',
@@ -91,7 +108,7 @@ const TouchableOpacity = ({ children, style, activeOpacity = 0.85, disabled, ...
   );
 };
 
-const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, confirmAction, openMenu }) => {
+const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, confirmAction, openMenu, onOpenMuteModal }) => {
   const [showDetail, setShowDetail] = useState(false);
   const permissions = viewModel.getPermissionSummary(currentUser);
 
@@ -195,9 +212,9 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
           <View style={styles.moderationRow}>
             <TouchableOpacity
               style={styles.moderationButton}
-              onPress={() => viewModel.muteUser(discussion.authorID, 30, currentUser)}
+              onPress={() => onOpenMuteModal(discussion.authorID, discussion.authorName || discussion.authorID)}
             >
-              <Text style={styles.moderationButtonText}>Mute 30m</Text>
+              <Text style={styles.moderationButtonText}>Mute</Text>
             </TouchableOpacity>
             {permissions.isAdmin && (
               <TouchableOpacity
@@ -251,12 +268,30 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
   const [forumEndTime, setForumEndTime] = useState(() => formatTimeInputValue(new Date(Date.now() + 30 * 60 * 1000)));
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [selectedForumModerators, setSelectedForumModerators] = useState([]);
+  const [showMuteModal, setShowMuteModal] = useState(false);
+  const [muteTargetUser, setMuteTargetUser] = useState(null);
+  const [muteTargetName, setMuteTargetName] = useState('');
+  const [muteDurationMinutes, setMuteDurationMinutes] = useState(30);
+  const [muteError, setMuteError] = useState('');
   const [filterWordInput, setFilterWordInput] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
-  const [modTab, setModTab] = useState('reports');
+  const [reportsSearchQuery, setReportsSearchQuery] = useState('');
+  const [deletedSearchQuery, setDeletedSearchQuery] = useState('');
+  const [forumsSearchQuery, setForumsSearchQuery] = useState('');
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [selectedReports, setSelectedReports] = useState(new Set());
+  const [forumModInput, setForumModInput] = useState('');
+  const [modTab, setModTab] = useState('dashboard');
   const [showPastForumPosts, setShowPastForumPosts] = useState(false);
   const [registeredUsers, setRegisteredUsers] = useState([]);
   const [deletedForumID, setDeletedForumID] = useState(null);
+  const [reportsLimit, setReportsLimit] = useState(10);
+  const [deletedLimit, setDeletedLimit] = useState(10);
+  const [usersLimit, setUsersLimit] = useState(10);
+  const [activityLimit, setActivityLimit] = useState(20);
+  const [quarantinedPosts, setQuarantinedPosts] = useState([]);
+  const [userActivity, setUserActivity] = useState({});
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const webDateInputRef = useRef(null);
   const webTimeInputRef = useRef(null);
@@ -276,6 +311,29 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
     () => discussionVM.discussions.filter((item) => item.reports.length > 0),
     [discussionVM.discussions]
   );
+  const filteredReportedPosts = useMemo(() => {
+    if (!reportsSearchQuery.trim()) return reportedPosts;
+    const query = reportsSearchQuery.toLowerCase();
+    return reportedPosts.filter((item) =>
+      item.title.toLowerCase().includes(query) ||
+      item.authorName.toLowerCase().includes(query)
+    );
+  }, [reportedPosts, reportsSearchQuery]);
+  const filteredDeletedDiscussions = useMemo(() => {
+    if (!deletedSearchQuery.trim()) return discussionVM.deletedDiscussions;
+    const query = deletedSearchQuery.toLowerCase();
+    return discussionVM.deletedDiscussions.filter((item) =>
+      item.title.toLowerCase().includes(query) ||
+      item.authorName.toLowerCase().includes(query)
+    );
+  }, [discussionVM.deletedDiscussions, deletedSearchQuery]);
+  const filteredForums = useMemo(() => {
+    if (!forumsSearchQuery.trim()) return discussionVM.forums;
+    const query = forumsSearchQuery.toLowerCase();
+    return discussionVM.forums.filter((forum) =>
+      forum.title.toLowerCase().includes(query)
+    );
+  }, [discussionVM.forums, forumsSearchQuery]);
   const canSubmitQuickReport = quickReportReason !== 'Other' || Boolean(quickReportCustomText.trim());
 
   const permissions = useMemo(() => discussionVM.getPermissionSummary(currentUser), [discussionVM, currentUser]);
@@ -324,10 +382,52 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
     };
   }, [discussionVM.discussions, discussionVM.toast?.id, showModPanel]);
 
+  useEffect(() => {
+    const activity = {};
+    const now = Date.now();
+    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+
+    registeredUsers.forEach(user => {
+      const userPosts = discussionVM.discussions.filter(d => d.authorID === user.id);
+      const userComments = discussionVM.discussions.flatMap(d => d.comments).filter(c => c.authorID === user.id);
+
+      const lastPost = userPosts.length > 0 ? Math.max(...userPosts.map(p => new Date(p.createdAt).getTime())) : null;
+      const lastComment = userComments.length > 0 ? Math.max(...userComments.map(c => new Date(c.createdAt).getTime())) : null;
+      const lastActivity = Math.max(lastPost || 0, lastComment || 0) || null;
+
+      const recentPosts = userPosts.filter(p => new Date(p.createdAt).getTime() > sevenDaysAgo).length;
+      const recentComments = userComments.filter(c => new Date(c.createdAt).getTime() > sevenDaysAgo).length;
+
+      activity[user.id] = {
+        totalPosts: userPosts.length,
+        totalComments: userComments.length,
+        lastPost: lastPost ? new Date(lastPost).toLocaleDateString() : 'Never',
+        lastComment: lastComment ? new Date(lastComment).toLocaleDateString() : 'Never',
+        lastActivity: lastActivity ? new Date(lastActivity).toLocaleDateString() : 'Never',
+        recentPosts,
+        recentComments,
+        recentActivity: recentPosts + recentComments,
+      };
+    });
+
+    setUserActivity(activity);
+  }, [registeredUsers, discussionVM.discussions]);
+
+  useEffect(() => {
+    // Auto-quarantine posts with blocked words
+    const quarantined = discussionVM.discussions.filter(discussion => {
+      const hasBlockedWords = hasModerationMatch(discussion.title, discussionVM.blockedWords) ||
+                             hasModerationMatch(discussion.content, discussionVM.blockedWords) ||
+                             discussion.comments.some(comment => hasModerationMatch(comment.text, discussionVM.blockedWords));
+      return hasBlockedWords && !discussionVM.deletedDiscussions.some(del => del.id === discussion.id);
+    });
+    setQuarantinedPosts(quarantined);
+  }, [discussionVM.discussions, discussionVM.blockedWords, discussionVM.deletedDiscussions]);
+
   const submitForumCreation = () => {
     if (!canCreateForum) return;
     const nextExpiresAt = parsedForumEnd.toISOString();
-    if (discussionVM.createForum(forumTitle, nextExpiresAt, currentUser)) {
+    if (discussionVM.createForum(forumTitle, nextExpiresAt, currentUser, selectedForumModerators)) {
       setShowNewForumModal(false);
       setForumTitle('');
       const nextDefault = new Date(Date.now() + 30 * 60 * 1000);
@@ -335,6 +435,36 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
       setForumEndTime(formatTimeInputValue(nextDefault));
       setShowEndDatePicker(false);
       setShowEndTimePicker(false);
+      setSelectedForumModerators([]);
+    }
+  };
+
+  const openMuteModal = (userID, userName, defaultMinutes = 30) => {
+    setMuteTargetUser(userID);
+    setMuteTargetName(userName || 'User');
+    setMuteDurationMinutes(defaultMinutes);
+    setMuteError('');
+    setShowMuteModal(true);
+  };
+
+  const closeMuteModal = () => {
+    setShowMuteModal(false);
+    setMuteTargetUser(null);
+    setMuteTargetName('');
+    setMuteDurationMinutes(30);
+    setMuteError('');
+  };
+
+  const confirmMute = async () => {
+    if (!muteTargetUser || !Number.isFinite(muteDurationMinutes) || muteDurationMinutes <= 0) {
+      setMuteError('Please enter a valid mute duration in minutes.');
+      return;
+    }
+    const result = await discussionVM.muteUser(muteTargetUser, muteDurationMinutes, currentUser);
+    if (result) {
+      closeMuteModal();
+    } else {
+      setMuteError('Unable to apply mute. Please try again.');
     }
   };
 
@@ -382,25 +512,30 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
 
     Object.entries(knownUsersMap).forEach(([userID, userName]) => {
       if (!userID || !userName) return;
+      const mutedUntilTime = mutedMap[userID] ? new Date(mutedMap[userID]).getTime() : 0;
       map.set(userID, {
         id: userID,
         name: userName,
         role: 'user',
         posts: 0,
         isBanned: Boolean(bannedMap[userID]),
-        isMuted: Boolean(mutedMap[userID] && new Date(mutedMap[userID]).getTime() > now),
+        isMuted: Boolean(mutedUntilTime > now),
+        mutedUntil: mutedUntilTime > now ? mutedMap[userID] : null,
       });
     });
 
     registeredUsers.forEach((user) => {
-      const mutedUntil = user.mutedUntil ? new Date(user.mutedUntil).getTime() : 0;
+      const mutedUntilTime = user.mutedUntil ? new Date(user.mutedUntil).getTime() : 0;
+      const inMemoryMutedTime = mutedMap[user.id] ? new Date(mutedMap[user.id]).getTime() : 0;
+      const effectiveMutedTime = Math.max(mutedUntilTime, inMemoryMutedTime);
       map.set(user.id, {
         id: user.id,
         name: user.username,
         role: String(user.role || 'user').toLowerCase(),
         posts: 0,
         isBanned: Boolean(user.isBanned || bannedMap[user.id]),
-        isMuted: (mutedUntil > now) || Boolean(mutedMap[user.id] && new Date(mutedMap[user.id]).getTime() > now),
+        isMuted: effectiveMutedTime > now,
+        mutedUntil: effectiveMutedTime > now ? new Date(effectiveMutedTime).toISOString() : null,
       });
     });
 
@@ -412,13 +547,16 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
         posts: 0,
         isBanned: false,
         isMuted: false,
+        mutedUntil: null,
       };
       current.name = current.name || currentUser.username;
       current.isBanned = Boolean(current.isBanned || bannedMap[currentUser.id]);
+      const mutedTime = mutedMap[currentUser.id] ? new Date(mutedMap[currentUser.id]).getTime() : 0;
       current.isMuted = Boolean(
         current.isMuted ||
-        (mutedMap[currentUser.id] && new Date(mutedMap[currentUser.id]).getTime() > now)
+        (mutedTime > now)
       );
+      current.mutedUntil = mutedTime > now ? mutedMap[currentUser.id] : null;
       map.set(currentUser.id, current);
     }
 
@@ -427,10 +565,12 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
       if (!current) return;
       current.posts += 1;
       current.isBanned = Boolean(current.isBanned || bannedMap[post.authorID]);
+      const mutedTime = mutedMap[post.authorID] ? new Date(mutedMap[post.authorID]).getTime() : 0;
       current.isMuted = Boolean(
         current.isMuted ||
-        (mutedMap[post.authorID] && new Date(mutedMap[post.authorID]).getTime() > now)
+        (mutedTime > now)
       );
+      if (mutedTime > now) current.mutedUntil = mutedMap[post.authorID];
       map.set(post.authorID, current);
     });
 
@@ -448,6 +588,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
       const current = map.get(userID);
       if (!current) return;
       current.isMuted = true;
+      current.mutedUntil = mutedUntil;
       map.set(userID, current);
     });
 
@@ -468,6 +609,9 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
       }
       existing.isBanned = Boolean(existing.isBanned || entry.isBanned);
       existing.isMuted = Boolean(existing.isMuted || entry.isMuted);
+      if (entry.mutedUntil && (!existing.mutedUntil || new Date(entry.mutedUntil).getTime() > new Date(existing.mutedUntil).getTime())) {
+        existing.mutedUntil = entry.mutedUntil;
+      }
       if (!existing.allIDs.includes(entry.id)) {
         existing.allIDs.push(entry.id);
       }
@@ -625,6 +769,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
               currentUser={currentUser}
               onOpenProfile={openProfile}
               confirmAction={confirmAction}
+              onOpenMuteModal={openMuteModal}
               openMenu={(discussion, x, y) => {
                 setOverlayMenu({ visible: true, x, y, discussion });
               }}
@@ -750,7 +895,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
 
           <ScrollView contentContainerStyle={styles.modalContent}>
             {discussionVM.pastForums.length === 0 ? (
-              <Text style={styles.emptyStateText}>No past forums yet.</Text>
+              <Text style={styles.emptyStateText}>No past forums yet - History will appear here! 📚</Text>
             ) : (
               discussionVM.pastForums.map((forum) => (
                 <View key={forum.id} style={styles.panelCard}>
@@ -793,58 +938,264 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
             <View style={{ width: 60 }} />
           </View>
 
-          <ScrollView contentContainerStyle={styles.modalContent}>
+          <View style={[styles.modalContent, styles.adminPanelContainer]}>
             <View style={styles.panelHeaderCard}>
               <Text style={styles.panelHeaderTitle}>
-                {permissions.isAdmin ? 'Admin Controls' : 'Moderator Controls'}
+                {permissions.isAdmin ? 'Admin Control Center' : 'Moderator Control Center'}
               </Text>
               <Text style={styles.panelHeaderSubtitle}>
-                Review reports and take moderation actions quickly.
+                {permissions.isAdmin
+                  ? 'Quickly access forums, users, reports, and controls from the top of this panel.'
+                  : 'Quickly access reports and moderation tools from the top of this panel.'}
               </Text>
+
+              <View style={styles.summaryStatsRow}>
+                <View style={styles.statBadge}>
+                  <Text style={styles.statLabel}>Reported Posts</Text>
+                  <Text style={styles.statValue}>{reportedPosts.length}</Text>
+                </View>
+                <View style={styles.statBadge}>
+                  <Text style={styles.statLabel}>Forums</Text>
+                  <Text style={styles.statValue}>{discussionVM.forums.length}</Text>
+                </View>
+                <View style={styles.statBadge}>
+                  <Text style={styles.statLabel}>Users</Text>
+                  <Text style={styles.statValue}>{registeredUsers.length}</Text>
+                </View>
+              </View>
+
+              <View style={styles.panelHeaderActions}>
+                {permissions.isAdmin && (
+                  <TouchableOpacity
+                    style={styles.primaryActionButton}
+                    onPress={() => setShowNewForumModal(true)}
+                  >
+                    <Text style={styles.primaryActionButtonText}>Create Forum</Text>
+                  </TouchableOpacity>
+                )}
+                {permissions.isAdmin && (
+                  <TouchableOpacity
+                    style={styles.secondaryActionButton}
+                    onPress={() =>
+                      confirmAction(
+                        'Restore Default Content',
+                        'This will replace the current feed with sample posts.',
+                        () => discussionVM.restoreSamplePosts(currentUser)
+                      )
+                    }
+                  >
+                    <Text style={styles.secondaryActionButtonText}>Restore Default Content</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.quickActionsBar}>
+              {permissions.isAdmin && (
+                <TouchableOpacity
+                  style={styles.quickActionButton}
+                  onPress={() => setShowNewForumModal(true)}
+                >
+                  <Ionicons name="add-circle" size={16} color="#fff" />
+                  <Text style={styles.quickActionButtonText}>Create Forum</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                style={styles.restorePostsButton}
-                onPress={() =>
-                  confirmAction(
-                    'Restore Sample Posts',
-                    'This will replace current feed with sample posts.',
-                    () => discussionVM.restoreSamplePosts(currentUser)
-                  )
-                }
+                style={styles.quickActionButton}
+                onPress={() => setModTab('reports')}
               >
-                <Text style={styles.restorePostsButtonText}>Restore Sample Posts</Text>
+                <Ionicons name="flag" size={16} color="#fff" />
+                <Text style={styles.quickActionButtonText}>Reports ({reportedPosts.length})</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quickActionButton}
+                onPress={() => setModTab('users')}
+              >
+                <Ionicons name="people" size={16} color="#fff" />
+                <Text style={styles.quickActionButtonText}>Users ({registeredUsers.length})</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quickActionButton}
+                onPress={() => setModTab('activity')}
+              >
+                <Ionicons name="time" size={16} color="#fff" />
+                <Text style={styles.quickActionButtonText}>Activity</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.adminTabsRow}>
-              {[
-                { key: 'reports', label: 'Reports' },
-                { key: 'deleted', label: 'Deleted' },
-                { key: 'forums', label: 'Forums' },
-                { key: 'users', label: 'Users' },
-                { key: 'filters', label: 'Filters' },
-              ].map((tab) => {
-                const isActive = modTab === tab.key;
-                return (
-                  <TouchableOpacity
-                    key={tab.key}
-                    style={[styles.adminTabChip, isActive && styles.adminTabChipActive]}
-                    onPress={() => setModTab(tab.key)}
-                  >
-                    <Text style={[styles.adminTabChipText, isActive && styles.adminTabChipTextActive]}>{tab.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            <View style={styles.globalSearchContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Global search across all sections"
+                placeholderTextColor="#B6BFCC"
+                value={globalSearchQuery}
+                onChangeText={setGlobalSearchQuery}
+                autoCapitalize="none"
+              />
+            </View>
 
-            {modTab === 'reports' && (
+            <View style={styles.adminTabBarContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.adminTabsRow}>
+                {[
+                  { key: 'dashboard', label: 'Dashboard' },
+                  { key: 'reports', label: 'Reports' },
+                  { key: 'deleted', label: 'Deleted' },
+                  { key: 'forums', label: 'Forums' },
+                  { key: 'users', label: 'Users' },
+                  { key: 'filters', label: 'Filters' },
+                  { key: 'safety', label: 'Safety' },
+                  { key: 'activity', label: 'Activity' },
+                ].map((tab) => {
+                  const isActive = modTab === tab.key;
+                  return (
+                    <TouchableOpacity
+                      key={tab.key}
+                      style={[styles.adminTabChip, isActive && styles.adminTabChipActive]}
+                      onPress={() => setModTab(tab.key)}
+                    >
+                      <Text style={[styles.adminTabChipText, isActive && styles.adminTabChipTextActive]}>{tab.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            <ScrollView style={styles.adminPanelBody} contentContainerStyle={styles.adminPanelBodyContent}>
+              {modTab === 'dashboard' && (
               <>
-            <Text style={styles.panelSectionTitle}>Reported Posts</Text>
-            {reportedPosts.length === 0 ? (
-              <Text style={styles.emptyStateText}>No reported posts</Text>
+            <Text style={styles.panelSectionTitle}>Admin Dashboard</Text>
+            <View style={styles.dashboardStatsRow}>
+              <View style={styles.statCard}>
+                <Ionicons name="flag" size={24} color="#DC2626" />
+                <Text style={styles.statNumber}>{reportedPosts.length}</Text>
+                <Text style={styles.statLabel}>Pending Reports</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Ionicons name="chatbubbles" size={24} color="#2563EB" />
+                <Text style={styles.statNumber}>{discussionVM.discussions.length}</Text>
+                <Text style={styles.statLabel}>Total Posts</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Ionicons name="people" size={24} color="#059669" />
+                <Text style={styles.statNumber}>{registeredUsers.length}</Text>
+                <Text style={styles.statLabel}>Registered Users</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Ionicons name="folder" size={24} color="#7C3AED" />
+                <Text style={styles.statNumber}>{discussionVM.forums.length}</Text>
+                <Text style={styles.statLabel}>Active Forums</Text>
+              </View>
+            </View>
+            <View style={styles.dashboardQuickLinks}>
+              <TouchableOpacity
+                style={styles.quickLinkCard}
+                onPress={() => setModTab('reports')}
+              >
+                <Ionicons name="flag" size={20} color="#DC2626" />
+                <Text style={styles.quickLinkText}>Review Reports</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quickLinkCard}
+                onPress={() => setModTab('users')}
+              >
+                <Ionicons name="people" size={20} color="#2563EB" />
+                <Text style={styles.quickLinkText}>Manage Users</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quickLinkCard}
+                onPress={() => setModTab('forums')}
+              >
+                <Ionicons name="folder" size={20} color="#059669" />
+                <Text style={styles.quickLinkText}>Forum Settings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.quickLinkCard}
+                onPress={() => setModTab('activity')}
+              >
+                <Ionicons name="time" size={20} color="#7C3AED" />
+                <Text style={styles.quickLinkText}>View Activity</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.panelCard}>
+              <Text style={styles.panelTitle}>Recent Activity</Text>
+              {discussionVM.auditLog.slice(0, 5).map((entry) => (
+                <Text key={entry.id} style={styles.recentActivityItem}>
+                  {entry.action} by {entry.actorName} · {new Date(entry.createdAt).toLocaleString()}
+                </Text>
+              ))}
+              {discussionVM.auditLog.length === 0 && (
+                <Text style={styles.emptyStateText}>No recent activity.</Text>
+              )}
+            </View>
+              </>
+            )}
+              {modTab === 'reports' && (
+              <>
+            <Text style={styles.panelSectionTitle}>Reported Posts ({filteredReportedPosts.length})</Text>
+            {filteredReportedPosts.length > 0 && (
+              <View style={styles.bulkActionsRow}>
+                <TouchableOpacity
+                  style={styles.bulkActionButton}
+                  onPress={() => setSelectedReports(new Set(filteredReportedPosts.map(item => item.id)))}
+                >
+                  <Text style={styles.bulkActionButtonText}>Select All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.bulkActionButton}
+                  onPress={() => setSelectedReports(new Set())}
+                >
+                  <Text style={styles.bulkActionButtonText}>Deselect All</Text>
+                </TouchableOpacity>
+                {selectedReports.size > 0 && (
+                  <TouchableOpacity
+                    style={[styles.bulkActionButton, styles.bulkDangerButton]}
+                    onPress={() =>
+                      confirmAction(
+                        'Bulk Dismiss Reports',
+                        `Dismiss reports for ${selectedReports.size} post(s)?`,
+                        () => {
+                          selectedReports.forEach(id => discussionVM.dismissReportsForDiscussion(id, currentUser));
+                          setSelectedReports(new Set());
+                        }
+                      )
+                    }
+                  >
+                    <Text style={styles.bulkActionButtonText}>Dismiss Selected</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            <TextInput
+              style={styles.input}
+              placeholder="Search by title or author"
+              placeholderTextColor="#B6BFCC"
+              value={reportsSearchQuery}
+              onChangeText={setReportsSearchQuery}
+              autoCapitalize="none"
+            />
+            {filteredReportedPosts.length === 0 ? (
+              <Text style={styles.emptyStateText}>No reported posts match your search.</Text>
             ) : (
-              reportedPosts.map((item) => (
+              <>
+                {filteredReportedPosts.slice(0, reportsLimit).map((item) => (
                   <View key={item.id} style={styles.panelCard}>
-                    <Text style={styles.panelTitle}>{item.title}</Text>
+                    <View style={styles.reportItemHeader}>
+                      <TouchableOpacity
+                        style={styles.checkbox}
+                        onPress={() => {
+                          const newSelected = new Set(selectedReports);
+                          if (newSelected.has(item.id)) {
+                            newSelected.delete(item.id);
+                          } else {
+                            newSelected.add(item.id);
+                          }
+                          setSelectedReports(newSelected);
+                        }}
+                      >
+                        <Text style={styles.checkboxText}>{selectedReports.has(item.id) ? '☑' : '☐'}</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.panelTitle}>{item.title}</Text>
+                    </View>
                     <Text style={styles.panelMeta}>Author: {item.authorName} · Reports: {item.reports.length}</Text>
                     <View style={styles.panelActionRow}>
                       <TouchableOpacity
@@ -879,9 +1230,9 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.panelButton}
-                        onPress={() => discussionVM.muteUser(item.authorID, 30, currentUser)}
+                        onPress={() => openMuteModal(item.authorID, item.authorName || item.authorID)}
                       >
-                        <Text style={styles.panelButtonText}>Mute User 30m</Text>
+                        <Text style={styles.panelButtonText}>Mute User</Text>
                       </TouchableOpacity>
                       {permissions.isAdmin && (
                         <TouchableOpacity
@@ -899,14 +1250,31 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
                       )}
                     </View>
                   </View>
-                ))
+                ))}
+                {filteredReportedPosts.length > reportsLimit && (
+                  <TouchableOpacity
+                    style={styles.loadMoreButton}
+                    onPress={() => setReportsLimit(prev => prev + 10)}
+                  >
+                    <Text style={styles.loadMoreButtonText}>Load More ({filteredReportedPosts.length - reportsLimit} remaining)</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
               </>
             )}
 
             {modTab === 'deleted' && (
               <>
-            <Text style={styles.panelSectionTitle}>Deleted Posts</Text>
+            <Text style={styles.panelSectionTitle}>Deleted Posts ({filteredDeletedDiscussions.length})</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Search by title or author"
+              placeholderTextColor="#B6BFCC"
+              value={deletedSearchQuery}
+              onChangeText={setDeletedSearchQuery}
+              autoCapitalize="none"
+            />
             <View style={{ marginBottom: 8 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
                 <View style={styles.forumSelectRow}>
@@ -924,13 +1292,15 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
                 </View>
               </ScrollView>
             </View>
-            {deletedForumID ? (
-              (() => {
-                const items = discussionVM.getDeletedByForum(deletedForumID) || [];
-                return items.length === 0 ? (
-                  <Text style={styles.emptyStateText}>No deleted posts in this forum</Text>
-                ) : (
-                  items.map((item) => (
+            {(() => {
+              const items = deletedForumID
+                ? filteredDeletedDiscussions.filter((item) => item.forumID === deletedForumID)
+                : filteredDeletedDiscussions;
+              return items.length === 0 ? (
+                <Text style={styles.emptyStateText}>No deleted posts match your search.</Text>
+              ) : (
+                <>
+                  {items.slice(0, deletedLimit).map((item) => (
                     <View key={item.id} style={styles.panelCard}>
                       <Text style={styles.panelTitle}>{item.title}</Text>
                       <Text style={styles.panelMeta}>By {item.authorName} · Deleted {item.deletedAt ? item.deletedAt : ''}</Text>
@@ -949,47 +1319,100 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
                         </TouchableOpacity>
                       </View>
                     </View>
-                  ))
-                );
-              })()
-            ) : (
-              discussionVM.deletedDiscussions.length === 0 ? (
-                <Text style={styles.emptyStateText}>No deleted posts</Text>
-              ) : (
-                discussionVM.deletedDiscussions.map((item) => (
-                  <View key={item.id} style={styles.panelCard}>
-                    <Text style={styles.panelTitle}>{item.title}</Text>
-                    <Text style={styles.panelMeta}>By {item.authorName} · Deleted {item.deletedAt ? item.deletedAt : ''}</Text>
-                    <View style={styles.panelActionRow}>
-                      <TouchableOpacity
-                        style={styles.panelButton}
-                        onPress={() => discussionVM.restoreDeletedDiscussion(item.id, currentUser)}
-                      >
-                        <Text style={styles.panelButtonText}>Restore</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.panelButton, styles.panelDangerButton]}
-                        onPress={() => confirmAction('Purge Deleted Post', 'Permanently delete this post?', () => discussionVM.purgeDeletedDiscussion(item.id, currentUser))}
-                      >
-                        <Text style={styles.panelButtonText}>Purge</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
-              )
-            )}
+                  ))}
+                  {items.length > deletedLimit && (
+                    <TouchableOpacity
+                      style={styles.loadMoreButton}
+                      onPress={() => setDeletedLimit(prev => prev + 10)}
+                    >
+                      <Text style={styles.loadMoreButtonText}>Load More ({items.length - deletedLimit} remaining)</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              );
+            })()}
               </>
             )}
 
             {modTab === 'forums' && (
               <>
-            <Text style={styles.panelSectionTitle}>Forum Controls</Text>
-            {discussionVM.forums.map((forum) => (
+            <Text style={styles.panelSectionTitle}>Forum Management ({filteredForums.length})</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Search forums by title"
+              placeholderTextColor="#B6BFCC"
+              value={forumsSearchQuery}
+              onChangeText={setForumsSearchQuery}
+              autoCapitalize="none"
+            />
+            {filteredForums.map((forum) => (
               <View key={forum.id} style={styles.panelCard}>
                 <Text style={styles.panelTitle}>{forum.title}</Text>
                 <Text style={styles.panelMeta}>
                   {forum.isReadOnly ? 'Read-only' : 'Open'} · {discussionVM.getForumPostCount(forum.id)} post(s)
                 </Text>
+                {permissions.isAdmin && (
+                  <View style={styles.panelSubSection}>
+                    <Text style={styles.panelSubTitle}>Moderators ({forum.moderators?.length || 0})</Text>
+                    {forum.moderators?.length > 0 && (
+                      <View style={styles.panelActionRow}>
+                        {forum.moderators.map((modID) => {
+                          const modName = discussionVM.knownUsers[modID] || modID;
+                          return (
+                            <View key={modID} style={styles.modChip}>
+                              <Text style={styles.modChipText}>{modName}</Text>
+                              <TouchableOpacity
+                                onPress={() =>
+                                  confirmAction(
+                                    'Remove Moderator',
+                                    `Remove ${modName} as moderator from this forum?`,
+                                    () => discussionVM.demoteModeratorFromForum(modID, forum.id, currentUser)
+                                  )
+                                }
+                              >
+                                <Text style={styles.modChipRemove}>✕</Text>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                    <View style={styles.panelActionRow}>
+                      <TextInput
+                        style={[styles.input, { flex: 1, marginRight: 8 }]}
+                        placeholder="Add moderator by username"
+                        placeholderTextColor="#B6BFCC"
+                        value={forumModInput}
+                        onChangeText={setForumModInput}
+                        autoCapitalize="none"
+                      />
+                      <TouchableOpacity
+                        style={styles.panelButton}
+                        onPress={() => {
+                          const username = forumModInput.trim();
+                          if (!username) return;
+                          const userID = Object.keys(discussionVM.knownUsers).find(
+                            (id) => discussionVM.knownUsers[id].toLowerCase() === username.toLowerCase()
+                          );
+                          if (!userID) {
+                            confirmAction('User Not Found', `No user found with username "${username}".`, null);
+                            return;
+                          }
+                          confirmAction(
+                            'Add Moderator',
+                            `Make ${username} a moderator for this forum?`,
+                            () => {
+                              discussionVM.promoteUserToModeratorForForum(userID, forum.id, currentUser);
+                              setForumModInput('');
+                            }
+                          );
+                        }}
+                      >
+                        <Text style={styles.panelButtonText}>Add</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
                 <View style={styles.panelActionRow}>
                   <TouchableOpacity
                     style={styles.panelButton}
@@ -1044,7 +1467,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
 
             {modTab === 'users' && (
               <>
-            <Text style={styles.panelSectionTitle}>User Controls</Text>
+            <Text style={styles.panelSectionTitle}>User Management ({filteredUserSummaries.length})</Text>
             <TextInput
               style={styles.input}
               placeholder="Search username (or role:admin, id:xxxxx)"
@@ -1065,12 +1488,20 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
                     )}
                     {!userItem.isBanned && userItem.isMuted && (
                       <View style={[styles.userStatusChip, styles.userStatusChipMuted]}>
-                        <Text style={[styles.userStatusChipText, styles.userStatusChipTextMuted]}>MUTED</Text>
+                        <Text style={[styles.userStatusChipText, styles.userStatusChipTextMuted]}>
+                          {formatMutedTime(userItem.mutedUntil) || 'MUTED'}
+                        </Text>
                       </View>
                     )}
                   </View>
                 </View>
                 <Text style={styles.panelMeta}>{userItem.posts} post(s) · role: {userItem.role || 'user'}</Text>
+                {userActivity[userItem.id] && (
+                  <Text style={styles.panelMeta}>
+                    Last active: {userActivity[userItem.id].lastActivity} · 
+                    Recent: {userActivity[userItem.id].recentPosts} posts, {userActivity[userItem.id].recentComments} comments
+                  </Text>
+                )}
                 <View style={styles.panelActionRow}>
                   {(() => {
                     const targetUserIDs = (userItem.allIDs && userItem.allIDs.length > 0)
@@ -1099,6 +1530,15 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
                   >
                     <Text style={styles.panelButtonText}>Delete User Posts</Text>
                   </TouchableOpacity>
+
+                  {!userItem.isBanned && permissions.canModerate && (
+                    <TouchableOpacity
+                      style={styles.panelButton}
+                      onPress={() => openMuteModal(userItem.id, userItem.name)}
+                    >
+                      <Text style={styles.panelButtonText}>Mute User</Text>
+                    </TouchableOpacity>
+                  )}
 
                   {userItem.isMuted && permissions.canModerate && (
                     <TouchableOpacity
@@ -1224,9 +1664,79 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
               </>
             )}
 
+            {modTab === 'users' && filteredUserSummaries.length > 0 && filteredUserSummaries.length >= usersLimit && (
+              <TouchableOpacity
+                style={styles.loadMoreButton}
+                onPress={() => setUsersLimit(prev => prev + 20)}
+              >
+                <Text style={styles.loadMoreText}>Load More Users</Text>
+              </TouchableOpacity>
+            )}
+
+            {modTab === 'activity' && (
+              <>
+            <Text style={styles.panelSectionTitle}>Moderator Activity Log</Text>
+            {discussionVM.auditLog.length === 0 ? (
+              <Text style={styles.emptyStateText}>No moderation actions have been recorded yet.</Text>
+            ) : (
+              discussionVM.auditLog.map((entry) => (
+                <View key={entry.id} style={styles.panelCard}>
+                  <Text style={styles.panelTitle}>{entry.action}</Text>
+                  <Text style={styles.panelMeta}>{entry.target || 'General'} · {new Date(entry.createdAt).toLocaleString()}</Text>
+                  <Text style={styles.panelDescription}>{entry.details || 'No additional details.'}</Text>
+                  <Text style={styles.panelMeta}>By {entry.actorName || 'system'}</Text>
+                </View>
+              ))
+            )}
+              </>
+            )}
+            {modTab === 'safety' && (
+              <>
+            <Text style={styles.panelSectionTitle}>Safety & Moderation Tools</Text>
+            <View style={styles.panelCard}>
+              <Text style={styles.panelTitle}>Quarantine ({quarantinedPosts.length})</Text>
+              <Text style={styles.panelMeta}>Posts held for review (auto-flagged for blocked content)</Text>
+              {quarantinedPosts.length === 0 ? (
+                <Text style={styles.emptyStateText}>No quarantined posts at this time.</Text>
+              ) : (
+                quarantinedPosts.slice(0, 5).map((post) => (
+                  <View key={post.id} style={styles.quarantineItem}>
+                    <Text style={styles.panelTitle}>{post.title}</Text>
+                    <Text style={styles.panelMeta}>By {post.authorName} · {new Date(post.createdAt).toLocaleDateString()}</Text>
+                    <View style={styles.panelActionRow}>
+                      <TouchableOpacity
+                        style={styles.panelButton}
+                        onPress={() => openDiscussion(post.id)}
+                      >
+                        <Text style={styles.panelButtonText}>Review</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.panelButton, styles.panelButtonDanger]}
+                        onPress={() => {
+                          confirmAction(
+                            'Delete Quarantined Post',
+                            'Permanently delete this quarantined post?',
+                            () => discussionVM.deleteDiscussion(post.id, currentUser)
+                          );
+                        }}
+                      >
+                        <Text style={styles.panelButtonText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+            <View style={styles.panelCard}>
+              <Text style={styles.panelTitle}>Auto-Moderation Settings</Text>
+              <Text style={styles.panelMeta}>Configure automatic content filtering</Text>
+              <Text style={styles.emptyStateText}>Settings coming soon.</Text>
+            </View>
+              </>
+            )}
             {modTab === 'filters' && (
               <>
-            <Text style={styles.panelSectionTitle}>Content Filter</Text>
+            <Text style={styles.panelSectionTitle}>Content Filter ({discussionVM.blockedWords.length})</Text>
             <View style={styles.panelCard}>
               <Text style={styles.panelMeta}>By default, swearing is blocked automatically. Add extra custom words below if needed.</Text>
               <View style={styles.filterManageRow}>
@@ -1263,6 +1773,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
               </>
             )}
           </ScrollView>
+          </View>
         </SafeAreaView>
       </Modal>
 
@@ -1299,6 +1810,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
         }}
         onLogout={onLogout}
         permissions={permissions}
+        onAdminPanel={() => setShowModPanel(true)}
       />
 
       <Modal visible={showNewForumModal} animationType="slide" presentationStyle="pageSheet">
@@ -1361,6 +1873,43 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
               <Text style={styles.validationText}>End date/time must be in the future.</Text>
             ) : null}
 
+            <Text style={styles.label}>Forum Moderators (Optional)</Text>
+            <Text style={styles.labelHint}>Select users to be moderators for this forum</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.moderatorSelectRow}>
+              {registeredUsers.map((user) => {
+                const isSelected = selectedForumModerators.includes(user.id);
+                const isSelf = user.id === currentUser?.id;
+                return (
+                  <TouchableOpacity
+                    key={user.id}
+                    style={[
+                      styles.moderatorSelectChip,
+                      isSelected && styles.moderatorSelectChipActive,
+                      isSelf && styles.moderatorSelectChipDisabled,
+                    ]}
+                    onPress={() => {
+                      if (isSelf) return;
+                      setSelectedForumModerators((prev) =>
+                        isSelected
+                          ? prev.filter((id) => id !== user.id)
+                          : [...prev, user.id]
+                      );
+                    }}
+                    disabled={isSelf}
+                  >
+                    <Text
+                      style={[
+                        styles.moderatorSelectChipText,
+                        isSelected && styles.moderatorSelectChipTextActive,
+                      ]}
+                    >
+                      {user.username}{isSelected ? ' ✓' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
             {Platform.OS !== 'web' && showEndDatePicker ? (
               <DateTimePicker
                 value={parsedForumEnd || new Date()}
@@ -1395,6 +1944,56 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
               disabled={!canCreateForum}
             >
               <Text style={styles.createButtonText}>Create Forum</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal visible={showMuteModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.navBar}>
+            <TouchableOpacity onPress={closeMuteModal}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.navTitle}>Mute User</Text>
+            <View style={{ width: 60 }} />
+          </View>
+          <View style={styles.modalContent}>
+            <Text style={styles.label}>User</Text>
+            <Text style={styles.panelMeta}>{muteTargetName || 'Unknown user'}</Text>
+            <Text style={styles.label}>Mute duration</Text>
+            <View style={styles.durationPresetsRow}>
+              {[15, 30, 60, 120].map((value) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[
+                    styles.durationPreset,
+                    muteDurationMinutes === value && styles.durationPresetActive,
+                  ]}
+                  onPress={() => setMuteDurationMinutes(value)}
+                >
+                  <Text
+                    style={[
+                      styles.durationPresetText,
+                      muteDurationMinutes === value && styles.durationPresetTextActive,
+                    ]}
+                  >
+                    {value} min
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Custom duration in minutes"
+              placeholderTextColor="#B6BFCC"
+              value={String(muteDurationMinutes)}
+              keyboardType="numeric"
+              onChangeText={(value) => setMuteDurationMinutes(Number(value) || 0)}
+            />
+            {muteError ? <Text style={styles.validationText}>{muteError}</Text> : null}
+            <TouchableOpacity style={styles.createButton} onPress={confirmMute}>
+              <Text style={styles.createButtonText}>Apply Mute</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -1673,7 +2272,52 @@ const styles = StyleSheet.create({
   },
   cancelButton: { color: '#2563EB', fontSize: 16 },
   navTitle: { fontWeight: '600', fontSize: 16 },
-  modalContent: { padding: 16, gap: 12 },
+  modalContent: { flex: 1, padding: 16, gap: 12 },
+  adminPanelContainer: { flex: 1 },
+  adminTabBarContainer: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    paddingBottom: 12,
+    marginBottom: 12,
+  },
+  globalSearchContainer: {
+    marginBottom: 12,
+  },
+  bulkActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  bulkActionButton: {
+    backgroundColor: '#E5E7EB',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  bulkActionButtonText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  bulkDangerButton: {
+    backgroundColor: '#FECACA',
+  },
+  reportItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxText: {
+    fontSize: 16,
+  },
+  adminPanelBody: { flex: 1 },
+  adminPanelBodyContent: { gap: 14, paddingBottom: 32 },
   label: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
   input: {
     borderWidth: 1,
@@ -1702,30 +2346,47 @@ const styles = StyleSheet.create({
   createButtonText: { color: '#fff', fontWeight: '600' },
   validationText: { fontSize: 12, color: '#DC2626' },
   panelHeaderCard: {
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#F0F9FF',
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#DBEAFE',
-    padding: 12,
+    borderWidth: 1.5,
+    borderColor: '#0EA5E9',
+    padding: 16,
     gap: 4,
   },
-  panelHeaderTitle: { color: '#1E3A8A', fontWeight: '700', fontSize: 15 },
-  panelHeaderSubtitle: { color: '#4B5563', fontSize: 12 },
+  panelHeaderTitle: { color: '#0369A1', fontWeight: '700', fontSize: 16 },
+  panelHeaderSubtitle: { color: '#4B5563', fontSize: 13, marginBottom: 8 },
+  summaryStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 12,
+    gap: 8,
+  },
+  statBadge: {
+    flex: 1,
+    backgroundColor: '#DBEAFE',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#7DD3FC',
+  },
+  statLabel: { fontSize: 10, color: '#0369A1', fontWeight: '600' },
+  statValue: { fontSize: 22, fontWeight: '700', color: '#0EA5E9', marginTop: 4 },
   adminTabsRow: { paddingVertical: 2, gap: 8 },
   adminTabChip: {
     borderWidth: 1,
     borderColor: '#D1D5DB',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     backgroundColor: '#F9FAFB',
   },
   adminTabChipActive: {
-    borderColor: '#2563EB',
-    backgroundColor: '#DBEAFE',
+    borderColor: '#0EA5E9',
+    backgroundColor: '#0EA5E9',
   },
-  adminTabChipText: { fontSize: 12, color: '#374151', fontWeight: '600' },
-  adminTabChipTextActive: { color: '#1D4ED8' },
+  adminTabChipText: { fontSize: 13, color: '#374151', fontWeight: '600' },
+  adminTabChipTextActive: { color: '#FFF', fontWeight: '700' },
   restorePostsButton: {
     marginTop: 8,
     alignSelf: 'flex-start',
@@ -1737,6 +2398,62 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   restorePostsButtonText: { color: '#1E40AF', fontSize: 12, fontWeight: '700' },
+  panelHeaderActions: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap',
+    marginTop: 14,
+  },
+  primaryActionButton: {
+    backgroundColor: '#1D4ED8',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  primaryActionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  secondaryActionButton: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  secondaryActionButtonText: {
+    color: '#1D4ED8',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  durationPresetsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  durationPreset: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#F9FAFB',
+  },
+  durationPresetActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  durationPresetText: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  durationPresetTextActive: {
+    color: '#1D4ED8',
+  },
   panelSectionTitle: { fontSize: 13, color: '#374151', fontWeight: '700', marginTop: 2 },
   panelCard: {
     borderWidth: 1,
@@ -1783,6 +2500,7 @@ const styles = StyleSheet.create({
   },
   panelTitle: { color: '#111827', fontWeight: '700' },
   panelMeta: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
+  panelDescription: { color: '#4B5563', fontSize: 13, lineHeight: 18, marginTop: 6 },
   panelActionRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   forumSelectRow: { flexDirection: 'row', gap: 8 },
   forumSelectChip: {
@@ -1800,6 +2518,67 @@ const styles = StyleSheet.create({
   },
   forumSelectText: { fontSize: 12, color: '#374151', fontWeight: '600' },
   forumSelectTextActive: { color: '#1D4ED8' },
+  moderatorSelectRow: {
+    flexDirection: 'row',
+    marginVertical: 8,
+  },
+  moderatorSelectChip: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#F9FAFB',
+    marginRight: 8,
+  },
+  moderatorSelectChipActive: {
+    borderColor: '#10B981',
+    backgroundColor: '#D1FAE5',
+  },
+  moderatorSelectChipDisabled: {
+    opacity: 0.5,
+  },
+  moderatorSelectChipText: { fontSize: 12, color: '#374151', fontWeight: '600' },
+  moderatorSelectChipTextActive: { color: '#059669' },
+  labelHint: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: -4,
+    marginBottom: 8,
+  },
+  panelSubSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  panelSubTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  modChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DBEAFE',
+    borderRadius: 16,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  modChipText: {
+    fontSize: 12,
+    color: '#1D4ED8',
+    fontWeight: '600',
+    marginRight: 4,
+  },
+  modChipRemove: {
+    fontSize: 12,
+    color: '#DC2626',
+    fontWeight: '700',
+  },
   filterManageRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   filterInput: {
     flex: 1,
@@ -1835,6 +2614,25 @@ const styles = StyleSheet.create({
   wordChipText: { color: '#991B1B', fontSize: 12, fontWeight: '700' },
   wordChipRemove: { color: '#B91C1C', fontSize: 12, fontWeight: '700' },
   emptyStateText: { color: '#9CA3AF', fontSize: 13 },
+  quarantineItem: {
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    backgroundColor: '#FFFBEB',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 8,
+  },
+  loadMoreButton: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  loadMoreText: { color: '#2563EB', fontSize: 14, fontWeight: '600' },
   toastTop: {
     position: 'absolute',
     top: 72,

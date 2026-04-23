@@ -120,6 +120,7 @@ export const createDiscussion = ({
  * @property {string} createdAt
  * @property {string} expiresAt
  * @property {boolean} isReadOnly
+ * @property {string[]} moderators - Array of user IDs who are moderators for this forum
  */
 export const createForumConfig = ({
   id,
@@ -129,6 +130,7 @@ export const createForumConfig = ({
   createdAt,
   expiresAt,
   isReadOnly = false,
+  moderators = [],
 }) => ({
   id,
   title,
@@ -137,4 +139,5 @@ export const createForumConfig = ({
   createdAt: createdAt || new Date().toISOString(),
   expiresAt,
   isReadOnly,
+  moderators: Array.isArray(moderators) ? moderators : [],
 });

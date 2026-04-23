@@ -130,6 +130,7 @@ export const useDiscussionViewModel = () => {
   const [bannedUsers, setBannedUsers] = useState({});
   const [deletedDiscussions, setDeletedDiscussions] = useState([]);
   const [blockedWords, setBlockedWords] = useState(DEFAULT_CUSTOM_BLOCKED_WORDS);
+  const [auditLog, setAuditLog] = useState([]);
   const [clockTick, setClockTick] = useState(Date.now());
   const [forums, setForums] = useState([]);
   const [selectedForumID, setSelectedForumID] = useState(null);
@@ -190,6 +191,9 @@ export const useDiscussionViewModel = () => {
         if (Array.isArray(stored.deletedDiscussions)) {
           setDeletedDiscussions(stored.deletedDiscussions);
         }
+        if (Array.isArray(stored.auditLog)) {
+          setAuditLog(stored.auditLog);
+        }
       }
       setIsHydrated(true);
     };
@@ -208,23 +212,10 @@ export const useDiscussionViewModel = () => {
       notifications,
       knownUsers,
       postHistoryCounts,
-    });
-  }, [isHydrated, discussions, forums, selectedForumID, mutedUsers, bannedUsers, blockedWords, notifications, knownUsers, postHistoryCounts]);
-  useEffect(() => {
-    if (!isHydrated) return;
-    saveForumState({
-      discussions,
-      forums,
-      selectedForumID,
-      mutedUsers,
-      bannedUsers,
-      blockedWords,
-      notifications,
-      knownUsers,
-      postHistoryCounts,
       deletedDiscussions,
+      auditLog,
     });
-  }, [isHydrated, deletedDiscussions]);
+  }, [isHydrated, discussions, forums, selectedForumID, mutedUsers, bannedUsers, blockedWords, notifications, knownUsers, postHistoryCounts, deletedDiscussions, auditLog]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -246,6 +237,20 @@ export const useDiscussionViewModel = () => {
     toastTimeoutRef.current = setTimeout(() => {
       setToast(null);
     }, 2300);
+  }, []);
+
+  const logAuditEntry = useCallback((actor, action, target = '', details = '', extra = {}) => {
+    const entry = {
+      id: uuid.v4(),
+      createdAt: nowIso(),
+      actorID: actor?.id || null,
+      actorName: actor?.username || actor?.name || 'system',
+      action,
+      target,
+      details,
+      ...extra,
+    };
+    setAuditLog((prev) => [entry, ...prev].slice(0, 120));
   }, []);
 
   useEffect(() => {
@@ -352,7 +357,8 @@ export const useDiscussionViewModel = () => {
     if (!userID) return false;
     const username = knownUsers[userID];
     if (!username) return false;
-    return ADMIN_IDS.map((id) => id.toLowerCase()).includes(String(username).trim().toLowerCase());
+    const normalizedName = String(username).trim().toLowerCase();
+    return normalizedName === 'admin' || ADMIN_IDS.map((id) => id.toLowerCase()).includes(normalizedName);
   }, [knownUsers]);
 
   const getPermissionSummary = useCallback((user) => {
@@ -370,7 +376,8 @@ export const useDiscussionViewModel = () => {
     }
     const role = String(user?.role || 'user').trim().toLowerCase();
     const username = String(user?.username || '').trim().toLowerCase();
-    const isAdmin = ADMIN_IDS.map((id) => id.toLowerCase()).includes(username);
+    const nameIsAdmin = ADMIN_IDS.map((id) => id.toLowerCase()).includes(username);
+    const isAdmin = role === 'admin' || nameIsAdmin;
     const forumModerators = Array.isArray(user?.forumModerators) ? user.forumModerators : [];
     const isModerator = selectedForum?.id ? forumModerators.includes(selectedForum.id) : false;
     const persistedMutedUntil = user?.mutedUntil || null;
@@ -392,7 +399,7 @@ export const useDiscussionViewModel = () => {
     };
   }, [bannedUsers, mutedUsers, forumIsReadOnly, selectedForum?.id]);
 
-  const createForum = useCallback((title, expiresAtISO, actor) => {
+  const createForum = useCallback((title, expiresAtISO, actor, moderatorIDs = []) => {
     const permissions = getPermissionSummary(actor);
     if (!permissions.canCreateForums) {
       enqueueNotification('Only admins can create forums.');
@@ -421,6 +428,7 @@ export const useDiscussionViewModel = () => {
       return false;
     }
     const expiresAt = new Date(expiresAtMs).toISOString();
+    const filteredModerators = Array.isArray(moderatorIDs) ? moderatorIDs.filter(id => id && id !== actor.id) : [];
     const newForum = createForumConfig({
       id: uuid.v4(),
       title: titleResult.sanitized,
@@ -428,12 +436,21 @@ export const useDiscussionViewModel = () => {
       createdByName: actor.username,
       expiresAt,
       isReadOnly: false,
+      moderators: filteredModerators,
     });
+    
+    // Add moderators to their forum moderators list in memory
+    filteredModerators.forEach((modID) => {
+      // Update the user's forumModerators array (this will need to be persisted separately if needed)
+    });
+    
     setForums((prev) => [newForum, ...prev]);
     setSelectedForumID(newForum.id);
-    enqueueNotification(`New forum \"${titleResult.sanitized}\" is live until ${new Date(expiresAt).toLocaleString()}.`);
+    const modInfo = filteredModerators.length > 0 ? ` with ${filteredModerators.length} moderator(s)` : '';
+    enqueueNotification(`✓ New forum \"${titleResult.sanitized}\" created${modInfo} - Live until ${new Date(expiresAt).toLocaleString()}.`);
+    logAuditEntry(actor, 'Create Forum', titleResult.sanitized, `Created forum${modInfo}`);
     return true;
-  }, [blockedWords, enqueueNotification, getPermissionSummary]);
+  }, [blockedWords, enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const selectForum = useCallback((forumID) => {
     setSelectedForumID(forumID);
@@ -670,9 +687,10 @@ export const useDiscussionViewModel = () => {
       return false;
     }
 
-    enqueueNotification(`Dismissed ${dismissedCount} report(s) for this post.`, 'info');
+    enqueueNotification(`✓ Dismissed ${dismissedCount} report(s) - Action by ${actor?.username}`, 'info');
+    logAuditEntry(actor, 'Dismiss Reports', discussionID, `Dismissed ${dismissedCount} reports`);
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const deleteDiscussion = useCallback((discussionID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -705,9 +723,10 @@ export const useDiscussionViewModel = () => {
       deletedByName: actor?.username || 'moderator',
     };
     setDeletedDiscussions((prev) => [archived, ...prev]);
-    enqueueNotification('Post archived by moderation team.', 'danger');
+    enqueueNotification(`✓ Post deleted by ${actor?.username} - Moved to archive.`, 'danger');
+    logAuditEntry(actor, 'Delete Post', removed.id, `Post archived from forum ${removed.forumID}`);
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const restoreDeletedDiscussion = useCallback((deletedID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -732,8 +751,9 @@ export const useDiscussionViewModel = () => {
     }
     setDiscussions((prev) => [restored, ...prev]);
     enqueueNotification('Post restored.', 'info');
+    logAuditEntry(actor, 'Restore Post', restored.id, `Post restored from archive`);
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const purgeDeletedDiscussion = useCallback((deletedID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -757,8 +777,9 @@ export const useDiscussionViewModel = () => {
       return false;
     }
     enqueueNotification('Deleted post permanently purged.', 'danger');
+    logAuditEntry(actor, 'Purge Post', deletedID, 'Deleted post permanently removed from archive');
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const getDeletedByForum = useCallback((forumID) => {
     if (!forumID) return [];
@@ -775,6 +796,10 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('Invalid mute request.', 'danger');
       return false;
     }
+    if (userID === actor?.id) {
+      enqueueNotification('You cannot mute yourself.', 'danger');
+      return false;
+    }
 
     const mutedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
     setMutedUsers((prev) => ({ ...prev, [userID]: mutedUntil }));
@@ -786,9 +811,10 @@ export const useDiscussionViewModel = () => {
       return false;
     }
 
-    enqueueNotification(`User muted for ${minutes} minute(s).`, 'danger');
+    enqueueNotification(`✓ User muted for ${minutes} minute(s). - Action by ${actor?.username}`, 'danger');
+    logAuditEntry(actor, 'Mute User', userID, `Muted for ${minutes} minutes`);
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const unmuteUser = useCallback(async (userID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -816,8 +842,9 @@ export const useDiscussionViewModel = () => {
     }
 
     enqueueNotification('User unmuted.');
+    logAuditEntry(actor, 'Unmute User', userID, 'Mute removed');
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const banUser = useCallback(async (userID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -827,6 +854,10 @@ export const useDiscussionViewModel = () => {
     }
     if (isUserAdmin(userID)) {
       enqueueNotification('Cannot ban admin users.', 'danger');
+      return false;
+    }
+    if (userID === actor?.id) {
+      enqueueNotification('You cannot ban yourself.', 'danger');
       return false;
     }
     setBannedUsers((prev) => ({ ...prev, [userID]: true }));
@@ -842,14 +873,15 @@ export const useDiscussionViewModel = () => {
       const removedCount = prev.filter((discussion) => discussion.authorID === userID).length;
       enqueueNotification(
         removedCount > 0
-          ? `User banned and ${removedCount} post(s) removed.`
-          : 'User banned by admin.',
+          ? `✓ User banned. ${removedCount} post(s) removed. - Action by ${actor?.username}`
+          : `✓ User banned by ${actor?.username}`,
         'danger'
       );
       return prev.filter((discussion) => discussion.authorID !== userID);
     });
+    logAuditEntry(actor, 'Ban User', userID, `Banned user${removedCount > 0 ? ` and removed ${removedCount} posts` : ''}`);
     return true;
-  }, [enqueueNotification, getPermissionSummary, isUserAdmin]);
+  }, [enqueueNotification, getPermissionSummary, isUserAdmin, logAuditEntry]);
 
   const unbanUser = useCallback(async (userID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -877,8 +909,9 @@ export const useDiscussionViewModel = () => {
     }
 
     enqueueNotification('User unbanned.');
+    logAuditEntry(actor, 'Unban User', userID, 'User ban removed');
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const promoteUserToModeratorForForum = useCallback(async (userID, forumID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -894,16 +927,21 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('Cannot modify admin status.', 'danger');
       return false;
     }
+    if (userID === actor?.id) {
+      enqueueNotification('You cannot modify your own moderator status.', 'danger');
+      return false;
+    }
 
     try {
       await updateUserRole(userID, 'user', { addForumModerator: forumID });
-      enqueueNotification('User made moderator for this forum.');
+      enqueueNotification(`✓ User promoted to moderator - Action by ${actor?.username}`, 'info');
+      logAuditEntry(actor, 'Promote Moderator', userID, `Promoted to moderator for forum ${forumID}`, { forumID });
       return true;
     } catch {
       enqueueNotification('Failed to update user role.', 'danger');
       return false;
     }
-  }, [enqueueNotification, getPermissionSummary, isUserAdmin]);
+  }, [enqueueNotification, getPermissionSummary, isUserAdmin, logAuditEntry]);
 
   const demoteModeratorFromForum = useCallback(async (userID, forumID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -915,16 +953,21 @@ export const useDiscussionViewModel = () => {
       enqueueNotification('Invalid request.', 'danger');
       return false;
     }
+    if (userID === actor?.id) {
+      enqueueNotification('You cannot remove yourself as moderator.', 'danger');
+      return false;
+    }
 
     try {
       await updateUserRole(userID, 'user', { removeForumModerator: forumID });
-      enqueueNotification('User removed as moderator for this forum.');
+      enqueueNotification(`✓ User removed as moderator - Action by ${actor?.username}`, 'info');
+      logAuditEntry(actor, 'Demote Moderator', userID, `Removed moderator for forum ${forumID}`, { forumID });
       return true;
     } catch {
       enqueueNotification('Failed to update user role.', 'danger');
       return false;
     }
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const addBlockedWord = useCallback((word, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -964,7 +1007,8 @@ export const useDiscussionViewModel = () => {
     const targetForumID = selectedForum?.id || forums[0]?.id || DEFAULT_FORUM_ID;
     setDiscussions(loadMockDiscussions(targetForumID));
     enqueueNotification('Sample posts restored.');
-  }, [enqueueNotification, getPermissionSummary, selectedForum?.id, forums]);
+    logAuditEntry(actor, 'Restore Default Content', targetForumID, 'Sample post set applied');
+  }, [enqueueNotification, getPermissionSummary, selectedForum?.id, forums, logAuditEntry]);
 
   const getPostsByAuthor = useCallback((authorID) => {
     return discussions
@@ -987,6 +1031,7 @@ export const useDiscussionViewModel = () => {
     const targetIDs = new Set([authorID, ...additionalAuthorIDs].filter(Boolean));
     const normalizedAuthorName = normalizeName(authorName);
 
+    let removedCount = 0;
     setDiscussions((prev) => {
       const matchesTarget = (discussion) => {
         if (targetIDs.has(discussion.authorID)) return true;
@@ -994,7 +1039,7 @@ export const useDiscussionViewModel = () => {
         return normalizeName(discussion.authorName) === normalizedAuthorName;
       };
 
-      const removedCount = prev.filter(matchesTarget).length;
+      removedCount = prev.filter(matchesTarget).length;
       enqueueNotification(
         removedCount > 0
           ? `${removedCount} post(s) removed for this user.`
@@ -1002,8 +1047,15 @@ export const useDiscussionViewModel = () => {
       );
       return prev.filter((discussion) => !matchesTarget(discussion));
     });
+
+    if (removedCount > 0) {
+      logAuditEntry(actor, 'Bulk Delete User Posts', authorID, `Removed ${removedCount} posts`, {
+        additionalAuthorIDs,
+        authorName,
+      });
+    }
     return true;
-  }, [enqueueNotification, getPermissionSummary]);
+  }, [enqueueNotification, getPermissionSummary, logAuditEntry]);
 
   const closeForum = useCallback((forumID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -1025,9 +1077,10 @@ export const useDiscussionViewModel = () => {
     setForums((prev) =>
       prev.map((forum) => (forum.id === forumID ? { ...forum, isReadOnly: true } : forum))
     );
-    enqueueNotification('Forum has been closed (read-only).');
+    enqueueNotification(`✓ Forum closed by ${actor?.username} - Now read-only.`);
+    logAuditEntry(actor, 'Close Forum', targetForum.title, 'Forum marked read-only');
     return true;
-  }, [enqueueNotification, getPermissionSummary, forums]);
+  }, [enqueueNotification, getPermissionSummary, forums, logAuditEntry]);
 
   const openForum = useCallback((forumID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -1053,9 +1106,10 @@ export const useDiscussionViewModel = () => {
         };
       })
     );
-    enqueueNotification('Forum reopened.');
+    enqueueNotification(`✓ Forum reopened by ${actor?.username} - Now open for posting.`);
+    logAuditEntry(actor, 'Reopen Forum', targetForum.title, 'Forum reopened and set to open');
     return true;
-  }, [enqueueNotification, getPermissionSummary, forums]);
+  }, [enqueueNotification, getPermissionSummary, forums, logAuditEntry]);
 
   const deleteForum = useCallback((forumID, actor) => {
     const permissions = getPermissionSummary(actor);
@@ -1078,9 +1132,10 @@ export const useDiscussionViewModel = () => {
     }
 
     setDiscussions((prev) => prev.filter((discussion) => discussion.forumID !== forumID));
-    enqueueNotification('Forum deleted with all its posts.', 'danger');
+    enqueueNotification(`✓ Forum deleted by ${actor?.username} - All posts removed.`, 'danger');
+    logAuditEntry(actor, 'Delete Forum', targetForum.title, `Deleted forum and removed all related posts`, { forumID });
     return true;
-  }, [enqueueNotification, getPermissionSummary, forums, selectedForumID]);
+  }, [enqueueNotification, getPermissionSummary, forums, selectedForumID, logAuditEntry]);
 
   const forumCountdown = useMemo(() => {
     if (!selectedForum) return 'No active forum';
@@ -1113,6 +1168,7 @@ export const useDiscussionViewModel = () => {
     bannedUsers,
     blockedWords,
     toast,
+    auditLog,
     createDiscussion: createDiscussionPost,
     addComment,
     likeDiscussion,

@@ -23,6 +23,7 @@ const SideMenuDrawer = ({
   onEditProfile,
   onLogout,
   permissions,
+  onAdminPanel,
 }) => {
   if (!visible) return null;
 
@@ -133,7 +134,7 @@ const SideMenuDrawer = ({
                 style={styles.actionButton}
                 onPress={() => {
                   onClose();
-                  // Mod panel can be opened from main view
+                  onAdminPanel && onAdminPanel();
                 }}
               >
                 <Ionicons name="shield-checkmark-outline" size={18} color="#6B7280" />
