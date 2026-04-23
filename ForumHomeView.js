@@ -292,6 +292,8 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
   const [activityLimit, setActivityLimit] = useState(20);
   const [quarantinedPosts, setQuarantinedPosts] = useState([]);
   const [userActivity, setUserActivity] = useState({});
+  const [ipBanInput, setIpBanInput] = useState('');
+  const [ipBanList, setIpBanList] = useState([]);
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const webDateInputRef = useRef(null);
   const webTimeInputRef = useRef(null);
@@ -939,89 +941,45 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
           </View>
 
           <View style={[styles.modalContent, styles.adminPanelContainer]}>
-            <View style={styles.panelHeaderCard}>
-              <Text style={styles.panelHeaderTitle}>
-                {permissions.isAdmin ? 'Admin Control Center' : 'Moderator Control Center'}
-              </Text>
-              <Text style={styles.panelHeaderSubtitle}>
-                {permissions.isAdmin
-                  ? 'Quickly access forums, users, reports, and controls from the top of this panel.'
-                  : 'Quickly access reports and moderation tools from the top of this panel.'}
-              </Text>
-
-              <View style={styles.summaryStatsRow}>
-                <View style={styles.statBadge}>
-                  <Text style={styles.statLabel}>Reported Posts</Text>
-                  <Text style={styles.statValue}>{reportedPosts.length}</Text>
-                </View>
-                <View style={styles.statBadge}>
-                  <Text style={styles.statLabel}>Forums</Text>
-                  <Text style={styles.statValue}>{discussionVM.forums.length}</Text>
-                </View>
-                <View style={styles.statBadge}>
-                  <Text style={styles.statLabel}>Users</Text>
-                  <Text style={styles.statValue}>{registeredUsers.length}</Text>
-                </View>
-              </View>
-
-              <View style={styles.panelHeaderActions}>
-                {permissions.isAdmin && (
-                  <TouchableOpacity
-                    style={styles.primaryActionButton}
-                    onPress={() => setShowNewForumModal(true)}
-                  >
-                    <Text style={styles.primaryActionButtonText}>Create Forum</Text>
-                  </TouchableOpacity>
-                )}
-                {permissions.isAdmin && (
-                  <TouchableOpacity
-                    style={styles.secondaryActionButton}
-                    onPress={() =>
-                      confirmAction(
-                        'Restore Default Content',
-                        'This will replace the current feed with sample posts.',
-                        () => discussionVM.restoreSamplePosts(currentUser)
-                      )
-                    }
-                  >
-                    <Text style={styles.secondaryActionButtonText}>Restore Default Content</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
-            <View style={styles.quickActionsBar}>
+            {/* ── Quick Action Bar ── */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickActionsBar} contentContainerStyle={styles.quickActionsBarContent}>
               {permissions.isAdmin && (
-                <TouchableOpacity
-                  style={styles.quickActionButton}
-                  onPress={() => setShowNewForumModal(true)}
-                >
-                  <Ionicons name="add-circle" size={16} color="#fff" />
-                  <Text style={styles.quickActionButtonText}>Create Forum</Text>
+                <TouchableOpacity style={styles.quickActionBtn} onPress={() => setShowNewForumModal(true)}>
+                  <Ionicons name="add-circle-outline" size={14} color="#1D4ED8" />
+                  <Text style={styles.quickActionBtnText}>Create Forum</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity
-                style={styles.quickActionButton}
-                onPress={() => setModTab('reports')}
-              >
-                <Ionicons name="flag" size={16} color="#fff" />
-                <Text style={styles.quickActionButtonText}>Reports ({reportedPosts.length})</Text>
+              <TouchableOpacity style={[styles.quickActionBtn, reportedPosts.length > 0 && styles.quickActionBtnUrgent]} onPress={() => setModTab('reports')}>
+                <Ionicons name="flag-outline" size={14} color={reportedPosts.length > 0 ? '#DC2626' : '#1D4ED8'} />
+                <Text style={[styles.quickActionBtnText, reportedPosts.length > 0 && styles.quickActionBtnTextUrgent]}>
+                  Reports {reportedPosts.length > 0 ? `(${reportedPosts.length})` : ''}
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickActionButton}
-                onPress={() => setModTab('users')}
-              >
-                <Ionicons name="people" size={16} color="#fff" />
-                <Text style={styles.quickActionButtonText}>Users ({registeredUsers.length})</Text>
+              <TouchableOpacity style={[styles.quickActionBtn, quarantinedPosts.length > 0 && styles.quickActionBtnUrgent]} onPress={() => setModTab('safety')}>
+                <Ionicons name="shield-outline" size={14} color={quarantinedPosts.length > 0 ? '#DC2626' : '#1D4ED8'} />
+                <Text style={[styles.quickActionBtnText, quarantinedPosts.length > 0 && styles.quickActionBtnTextUrgent]}>
+                  Quarantine {quarantinedPosts.length > 0 ? `(${quarantinedPosts.length})` : ''}
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickActionButton}
-                onPress={() => setModTab('activity')}
-              >
-                <Ionicons name="time" size={16} color="#fff" />
-                <Text style={styles.quickActionButtonText}>Activity</Text>
+              <TouchableOpacity style={styles.quickActionBtn} onPress={() => { setModTab('users'); }}>
+                <Ionicons name="person-add-outline" size={14} color="#1D4ED8" />
+                <Text style={styles.quickActionBtnText}>Mute User</Text>
               </TouchableOpacity>
-            </View>
+              <TouchableOpacity style={styles.quickActionBtn} onPress={() => setModTab('users')}>
+                <Ionicons name="people-outline" size={14} color="#1D4ED8" />
+                <Text style={styles.quickActionBtnText}>Users ({registeredUsers.length})</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickActionBtn} onPress={() => setModTab('activity')}>
+                <Ionicons name="time-outline" size={14} color="#1D4ED8" />
+                <Text style={styles.quickActionBtnText}>Audit Log</Text>
+              </TouchableOpacity>
+              {permissions.isAdmin && (
+                <TouchableOpacity style={styles.quickActionBtn} onPress={() => confirmAction('Restore Default Content', 'Replace current feed with sample posts?', () => discussionVM.restoreSamplePosts(currentUser))}>
+                  <Ionicons name="refresh-outline" size={14} color="#1D4ED8" />
+                  <Text style={styles.quickActionBtnText}>Restore Posts</Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
 
             <View style={styles.globalSearchContainer}>
               <TextInput
@@ -1063,70 +1021,208 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
             <ScrollView style={styles.adminPanelBody} contentContainerStyle={styles.adminPanelBodyContent}>
               {modTab === 'dashboard' && (
               <>
-            <Text style={styles.panelSectionTitle}>Admin Dashboard</Text>
-            <View style={styles.dashboardStatsRow}>
-              <View style={styles.statCard}>
-                <Ionicons name="flag" size={24} color="#DC2626" />
-                <Text style={styles.statNumber}>{reportedPosts.length}</Text>
-                <Text style={styles.statLabel}>Pending Reports</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Ionicons name="chatbubbles" size={24} color="#2563EB" />
-                <Text style={styles.statNumber}>{discussionVM.discussions.length}</Text>
-                <Text style={styles.statLabel}>Total Posts</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Ionicons name="people" size={24} color="#059669" />
-                <Text style={styles.statNumber}>{registeredUsers.length}</Text>
-                <Text style={styles.statLabel}>Registered Users</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Ionicons name="folder" size={24} color="#7C3AED" />
-                <Text style={styles.statNumber}>{discussionVM.forums.length}</Text>
-                <Text style={styles.statLabel}>Active Forums</Text>
-              </View>
-            </View>
-            <View style={styles.dashboardQuickLinks}>
-              <TouchableOpacity
-                style={styles.quickLinkCard}
-                onPress={() => setModTab('reports')}
-              >
-                <Ionicons name="flag" size={20} color="#DC2626" />
-                <Text style={styles.quickLinkText}>Review Reports</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickLinkCard}
-                onPress={() => setModTab('users')}
-              >
-                <Ionicons name="people" size={20} color="#2563EB" />
-                <Text style={styles.quickLinkText}>Manage Users</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickLinkCard}
-                onPress={() => setModTab('forums')}
-              >
-                <Ionicons name="folder" size={20} color="#059669" />
-                <Text style={styles.quickLinkText}>Forum Settings</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickLinkCard}
-                onPress={() => setModTab('activity')}
-              >
-                <Ionicons name="time" size={20} color="#7C3AED" />
-                <Text style={styles.quickLinkText}>View Activity</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.panelCard}>
-              <Text style={styles.panelTitle}>Recent Activity</Text>
-              {discussionVM.auditLog.slice(0, 5).map((entry) => (
-                <Text key={entry.id} style={styles.recentActivityItem}>
-                  {entry.action} by {entry.actorName} · {new Date(entry.createdAt).toLocaleString()}
-                </Text>
-              ))}
-              {discussionVM.auditLog.length === 0 && (
-                <Text style={styles.emptyStateText}>No recent activity.</Text>
-              )}
-            </View>
+                {/* ── Metric Cards ── */}
+                <Text style={styles.panelSectionTitle}>Overview</Text>
+                <View style={styles.dbStatsGrid}>
+                  <TouchableOpacity style={[styles.dbStatCard, reportedPosts.length > 0 && styles.dbStatCardAlert]} onPress={() => setModTab('reports')}>
+                    <View style={styles.dbStatTop}>
+                      <Ionicons name="flag" size={18} color={reportedPosts.length > 0 ? '#DC2626' : '#6B7280'} />
+                      <Text style={[styles.dbStatNum, reportedPosts.length > 0 && styles.dbStatNumAlert]}>{reportedPosts.length}</Text>
+                    </View>
+                    <Text style={styles.dbStatLbl}>Reported Posts</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.dbStatCard, quarantinedPosts.length > 0 && styles.dbStatCardWarn]} onPress={() => setModTab('safety')}>
+                    <View style={styles.dbStatTop}>
+                      <Ionicons name="shield" size={18} color={quarantinedPosts.length > 0 ? '#D97706' : '#6B7280'} />
+                      <Text style={[styles.dbStatNum, quarantinedPosts.length > 0 && styles.dbStatNumWarn]}>{quarantinedPosts.length}</Text>
+                    </View>
+                    <Text style={styles.dbStatLbl}>Quarantined</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.dbStatCard} onPress={() => setModTab('users')}>
+                    <View style={styles.dbStatTop}>
+                      <Ionicons name="people" size={18} color="#6B7280" />
+                      <Text style={styles.dbStatNum}>{registeredUsers.length}</Text>
+                    </View>
+                    <Text style={styles.dbStatLbl}>Users</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.dbStatCard} onPress={() => setModTab('forums')}>
+                    <View style={styles.dbStatTop}>
+                      <Ionicons name="folder-open" size={18} color="#6B7280" />
+                      <Text style={styles.dbStatNum}>{discussionVM.openForums.length}</Text>
+                    </View>
+                    <Text style={styles.dbStatLbl}>Open Forums</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.dbStatCard} onPress={() => setModTab('users')}>
+                    <View style={styles.dbStatTop}>
+                      <Ionicons name="ban" size={18} color="#6B7280" />
+                      <Text style={styles.dbStatNum}>{Object.values(discussionVM.bannedUsers).filter(Boolean).length}</Text>
+                    </View>
+                    <Text style={styles.dbStatLbl}>Banned</Text>
+                  </TouchableOpacity>
+                  <View style={styles.dbStatCard}>
+                    <View style={styles.dbStatTop}>
+                      <Ionicons name="chatbubbles" size={18} color="#6B7280" />
+                      <Text style={styles.dbStatNum}>{discussionVM.discussions.length}</Text>
+                    </View>
+                    <Text style={styles.dbStatLbl}>Total Posts</Text>
+                  </View>
+                </View>
+
+                {/* ── Content Moderation Queue ── */}
+                <Text style={styles.panelSectionTitle}>Content Moderation Queue</Text>
+                <View style={styles.panelCard}>
+                  <Text style={styles.dbSectionNote}>Prioritized queue — highest report count first. Tap an action to resolve.</Text>
+                  {reportedPosts.length === 0 ? (
+                    <View style={styles.dbEmptyRow}>
+                      <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                      <Text style={styles.dbEmptyText}>Queue is clear — no reported posts.</Text>
+                    </View>
+                  ) : (
+                    [...reportedPosts]
+                      .sort((a, b) => b.reports.length - a.reports.length)
+                      .slice(0, 5)
+                      .map((item) => {
+                        const urgency = item.reports.length >= 3 ? 'high' : item.reports.length >= 2 ? 'medium' : 'low';
+                        return (
+                          <View key={item.id} style={[styles.dbQueueRow, urgency === 'high' && styles.dbQueueRowHigh, urgency === 'medium' && styles.dbQueueRowMed]}>
+                            <View style={styles.dbQueueMeta}>
+                              <View style={[styles.dbUrgencyDot, urgency === 'high' && styles.dbUrgencyHigh, urgency === 'medium' && styles.dbUrgencyMed, urgency === 'low' && styles.dbUrgencyLow]} />
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.dbQueueTitle} numberOfLines={1}>{item.title}</Text>
+                                <Text style={styles.dbQueueMeta2}>by {item.authorName} · {item.reports.length} report(s)</Text>
+                              </View>
+                            </View>
+                            <View style={styles.dbQueueActions}>
+                              <TouchableOpacity style={styles.dbMiniBtn} onPress={() => confirmAction('Dismiss Reports', 'Clear all reports on this post?', () => discussionVM.dismissReportsForDiscussion(item.id, currentUser))}>
+                                <Text style={styles.dbMiniBtnText}>Dismiss</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity style={[styles.dbMiniBtn, styles.dbMiniBtnDanger]} onPress={() => confirmAction('Delete Post', 'Permanently remove this post?', () => discussionVM.deleteDiscussion(item.id, currentUser))}>
+                                <Text style={styles.dbMiniBtnText}>Delete</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        );
+                      })
+                  )}
+                  {reportedPosts.length > 5 && (
+                    <TouchableOpacity onPress={() => setModTab('reports')}>
+                      <Text style={styles.dbSeeAllLink}>See all {reportedPosts.length} reports →</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* ── Content Quarantine ── */}
+                <Text style={styles.panelSectionTitle}>Content Quarantine</Text>
+                <View style={styles.panelCard}>
+                  <Text style={styles.dbSectionNote}>Posts auto-flagged for blocked words, held before appearing in feed.</Text>
+                  {quarantinedPosts.length === 0 ? (
+                    <View style={styles.dbEmptyRow}>
+                      <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                      <Text style={styles.dbEmptyText}>No posts in quarantine.</Text>
+                    </View>
+                  ) : (
+                    quarantinedPosts.slice(0, 4).map((post) => (
+                      <View key={post.id} style={styles.dbQuarantineRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.dbQueueTitle} numberOfLines={1}>{post.title}</Text>
+                          <Text style={styles.dbQueueMeta2}>by {post.authorName} · {new Date(post.createdAt).toLocaleDateString()}</Text>
+                        </View>
+                        <View style={styles.dbQueueActions}>
+                          <TouchableOpacity style={[styles.dbMiniBtn, styles.dbMiniBtnDanger]} onPress={() => confirmAction('Delete Quarantined Post', 'Permanently delete this post?', () => discussionVM.deleteDiscussion(post.id, currentUser))}>
+                            <Text style={styles.dbMiniBtnText}>Delete</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                  {quarantinedPosts.length > 4 && (
+                    <TouchableOpacity onPress={() => setModTab('safety')}>
+                      <Text style={styles.dbSeeAllLink}>See all {quarantinedPosts.length} quarantined →</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* ── User Activity Monitoring ── */}
+                <Text style={styles.panelSectionTitle}>User Activity Monitor</Text>
+                <View style={styles.panelCard}>
+                  <Text style={styles.dbSectionNote}>7-day activity. Users with high recent activity may warrant review.</Text>
+                  {registeredUsers.length === 0 ? (
+                    <Text style={styles.emptyStateText}>No registered users to monitor.</Text>
+                  ) : (
+                    registeredUsers
+                      .filter((u) => userActivity[u.id])
+                      .sort((a, b) => (userActivity[b.id]?.recentActivity || 0) - (userActivity[a.id]?.recentActivity || 0))
+                      .slice(0, 6)
+                      .map((user) => {
+                        const act = userActivity[user.id];
+                        const isBanned = Boolean(discussionVM.bannedUsers[user.id]);
+                        const isMuted = Boolean(discussionVM.mutedUsers[user.id] && new Date(discussionVM.mutedUsers[user.id]).getTime() > Date.now());
+                        const activityHigh = act.recentActivity >= 5;
+                        return (
+                          <View key={user.id} style={styles.dbActivityRow}>
+                            <View style={styles.dbActivityLeft}>
+                              <View style={[styles.dbActivityAvatar, activityHigh && styles.dbActivityAvatarHigh]}>
+                                <Text style={styles.dbActivityAvatarText}>{(user.username || '?')[0].toUpperCase()}</Text>
+                              </View>
+                              <View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Text style={styles.dbActivityName}>{user.username}</Text>
+                                  {isBanned && <View style={styles.dbStatusBadgeBanned}><Text style={styles.dbStatusBadgeBannedText}>BANNED</Text></View>}
+                                  {isMuted && !isBanned && <View style={styles.dbStatusBadgeMuted}><Text style={styles.dbStatusBadgeMutedText}>MUTED</Text></View>}
+                                </View>
+                                <Text style={styles.dbActivityStats}>
+                                  {act.recentPosts}p {act.recentComments}c (7d) · Last: {act.lastActivity}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={styles.dbQueueActions}>
+                              {!isBanned && !isMuted && (
+                                <TouchableOpacity style={styles.dbMiniBtn} onPress={() => openMuteModal(user.id, user.username)}>
+                                  <Text style={styles.dbMiniBtnText}>Mute</Text>
+                                </TouchableOpacity>
+                              )}
+                              {!isBanned && permissions.isAdmin && (
+                                <TouchableOpacity style={[styles.dbMiniBtn, styles.dbMiniBtnDanger]} onPress={() => confirmAction('Ban User', 'Ban this user and remove all their posts?', () => discussionVM.banUser(user.id, currentUser))}>
+                                  <Text style={styles.dbMiniBtnText}>Ban</Text>
+                                </TouchableOpacity>
+                              )}
+                              {isBanned && permissions.isAdmin && (
+                                <TouchableOpacity style={styles.dbMiniBtn} onPress={() => confirmAction('Unban User', 'Remove ban for this user?', () => discussionVM.unbanUser(user.id, currentUser))}>
+                                  <Text style={styles.dbMiniBtnText}>Unban</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })
+                  )}
+                  <TouchableOpacity onPress={() => setModTab('users')}>
+                    <Text style={styles.dbSeeAllLink}>Full user management →</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* ── Audit Log (recent) ── */}
+                <Text style={styles.panelSectionTitle}>Recent Moderation Actions</Text>
+                <View style={styles.panelCard}>
+                  {discussionVM.auditLog.length === 0 ? (
+                    <Text style={styles.emptyStateText}>No actions recorded yet.</Text>
+                  ) : (
+                    discussionVM.auditLog.slice(0, 6).map((entry) => (
+                      <View key={entry.id} style={styles.dbAuditRow}>
+                        <View style={styles.dbAuditDot} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.dbAuditAction}>{entry.action}</Text>
+                          <Text style={styles.dbAuditMeta}>by {entry.actorName} · {new Date(entry.createdAt).toLocaleString()}</Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                  {discussionVM.auditLog.length > 6 && (
+                    <TouchableOpacity onPress={() => setModTab('activity')}>
+                      <Text style={styles.dbSeeAllLink}>Full audit log →</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </>
             )}
               {modTab === 'reports' && (
@@ -2649,6 +2745,164 @@ const styles = StyleSheet.create({
     backgroundColor: '#DC2626',
   },
   toastTopText: { color: '#F9FAFB', fontWeight: '800', fontSize: 19, textAlign: 'center' },
+
+  // ── Quick Action Bar ──
+  quickActionsBar: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    marginBottom: 10,
+  },
+  quickActionsBarContent: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+  },
+  quickActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  quickActionBtnUrgent: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  quickActionBtnText: { fontSize: 12, color: '#1D4ED8', fontWeight: '600' },
+  quickActionBtnTextUrgent: { color: '#DC2626' },
+
+  // ── Dashboard Metric Grid ──
+  dbStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  dbStatCard: {
+    width: '30%',
+    flexGrow: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    padding: 10,
+    gap: 4,
+  },
+  dbStatCardAlert: {
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  dbStatCardWarn: {
+    borderColor: '#FDE68A',
+    backgroundColor: '#FFFBEB',
+  },
+  dbStatTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  dbStatNum: { fontSize: 22, fontWeight: '700', color: '#111827' },
+  dbStatNumAlert: { color: '#DC2626' },
+  dbStatNumWarn: { color: '#D97706' },
+  dbStatLbl: { fontSize: 11, color: '#6B7280', fontWeight: '500' },
+
+  // ── Moderation Queue ──
+  dbSectionNote: { fontSize: 11, color: '#9CA3AF', marginBottom: 8, lineHeight: 16 },
+  dbEmptyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  dbEmptyText: { fontSize: 13, color: '#6B7280' },
+  dbQueueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    gap: 8,
+  },
+  dbQueueRowHigh: { backgroundColor: '#FEF2F2', borderRadius: 6, paddingHorizontal: 6, borderBottomWidth: 0, marginBottom: 4 },
+  dbQueueRowMed: { backgroundColor: '#FFFBEB', borderRadius: 6, paddingHorizontal: 6, borderBottomWidth: 0, marginBottom: 4 },
+  dbQueueMeta: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8 },
+  dbQueueTitle: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  dbQueueMeta2: { fontSize: 11, color: '#6B7280' },
+  dbQueueActions: { flexDirection: 'row', gap: 6 },
+  dbUrgencyDot: { width: 8, height: 8, borderRadius: 4 },
+  dbUrgencyHigh: { backgroundColor: '#DC2626' },
+  dbUrgencyMed: { backgroundColor: '#D97706' },
+  dbUrgencyLow: { backgroundColor: '#6B7280' },
+  dbMiniBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  dbMiniBtnDanger: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  dbMiniBtnText: { fontSize: 11, color: '#1F2937', fontWeight: '600' },
+  dbSeeAllLink: { fontSize: 12, color: '#2563EB', fontWeight: '600', marginTop: 8 },
+
+  // ── Quarantine ──
+  dbQuarantineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    gap: 8,
+  },
+
+  // ── Activity Monitor ──
+  dbActivityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    gap: 8,
+  },
+  dbActivityLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
+  dbActivityAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DBEAFE',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dbActivityAvatarHigh: { backgroundColor: '#FEE2E2' },
+  dbActivityAvatarText: { fontSize: 13, fontWeight: '700', color: '#1D4ED8' },
+  dbActivityName: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  dbActivityStats: { fontSize: 11, color: '#6B7280' },
+  dbStatusBadgeBanned: {
+    backgroundColor: '#FEE2E2',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  dbStatusBadgeBannedText: { fontSize: 9, fontWeight: '700', color: '#B91C1C' },
+  dbStatusBadgeMuted: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  dbStatusBadgeMutedText: { fontSize: 9, fontWeight: '700', color: '#92400E' },
+
+  // ── Audit Log ──
+  dbAuditRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  dbAuditDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#2563EB', marginTop: 5 },
+  dbAuditAction: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  dbAuditMeta: { fontSize: 11, color: '#6B7280' },
 });
 
 // Re-export with authVM prop passed from parent
