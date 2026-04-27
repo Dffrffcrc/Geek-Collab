@@ -362,6 +362,7 @@ export const saveForumState = async (forumState) => {
       knownUsers: forumState.knownUsers || {},
       postHistoryCounts: forumState.postHistoryCounts || {},
       deletedDiscussions: forumState.deletedDiscussions || [],
+      auditLog: forumState.auditLog || [],
       updatedAt: new Date().toISOString(),
     });
 
@@ -400,6 +401,7 @@ export const getForumState = async () => {
           knownUsers: remoteMeta?.knownUsers || {},
           postHistoryCounts: remoteMeta?.postHistoryCounts || {},
           deletedDiscussions: remoteMeta?.deletedDiscussions || [],
+          auditLog: remoteMeta?.auditLog || [],
         };
         await AsyncStorage.setItem(FORUM_STATE_KEY, JSON.stringify(remoteState));
         return remoteState;

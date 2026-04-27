@@ -9,11 +9,41 @@ import {
   Image,
   StyleSheet,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import LexicalMarkdownEditor from './LexicalMarkdownEditor';
 import MediaPicker from './MediaPicker';
 import { hasModerationMatch } from './ContentModeration';
+
+// Reddit-inspired colors
+const Colors = {
+  primary: '#2563EB',
+  surface: '#FFFFFF',
+  surfaceHover: '#F3F4F6',
+  background: '#F9FAFB',
+  textPrimary: '#111827',
+  textSecondary: '#374151',
+  textMuted: '#6B7280',
+  textLight: '#9CA3AF',
+  border: '#E5E7EB',
+  success: '#16A34A',
+  danger: '#DC2626',
+};
+
+const Spacing = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+};
+
+const Radius = {
+  sm: 6,
+  md: 8,
+  lg: 12,
+  full: 9999,
+};
 
 const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
   const [title, setTitle] = useState('');
