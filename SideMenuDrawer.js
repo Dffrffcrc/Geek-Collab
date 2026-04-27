@@ -10,8 +10,23 @@ import {
   Platform,
   Dimensions,
   Animated,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+
+// Reddit-inspired colors
+const Colors = {
+  primary: '#2563EB',
+  primaryLight: '#DBEAFE',
+  surface: '#FFFFFF',
+  background: '#F9FAFB',
+  textPrimary: '#111827',
+  textSecondary: '#374151',
+  textMuted: '#6B7280',
+  textLight: '#9CA3AF',
+  border: '#E5E7EB',
+  danger: '#DC2626',
+};
 
 const SideMenuDrawer = ({
   visible,

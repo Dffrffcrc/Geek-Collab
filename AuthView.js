@@ -12,6 +12,19 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+// Minimalist color palette
+const Colors = {
+  primary: '#2563EB',
+  surface: '#FFFFFF',
+  textPrimary: '#111827',
+  textSecondary: '#374151',
+  textMuted: '#6B7280',
+  textLight: '#9CA3AF',
+  border: '#E5E7EB',
+  background: '#F9FAFB',
+  danger: '#DC2626',
+};
+
 const AuthView = ({ authVM }) => {
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [username, setUsername] = useState('');
@@ -47,6 +60,11 @@ const AuthView = ({ authVM }) => {
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logo}>
+              <Ionicons name="hash" size={32} color={Colors.primary} />
+            </View>
+          </View>
           <Text style={styles.appTitle}>GeekCollab</Text>
           <Text style={styles.appSubtitle}>Connect. Share. Build Together</Text>
         </View>
@@ -182,27 +200,41 @@ const AuthView = ({ authVM }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  inner: { flexGrow: 1, padding: 24, justifyContent: 'space-between' },
-  header: { alignItems: 'center', paddingVertical: 40 },
-  appTitle: { fontSize: 36, fontWeight: 'bold', color: '#2563EB' },
-  appSubtitle: { fontSize: 14, color: '#9CA3AF', marginTop: 4 },
+  container: { flex: 1, backgroundColor: Colors.background },
+  inner: { flexGrow: 1, padding: 24, justifyContent: 'center' },
+  header: { alignItems: 'center', paddingVertical: 20 },
+  logoContainer: { marginBottom: 16 },
+  logo: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  appTitle: { fontSize: 32, fontWeight: '700', color: Colors.textPrimary },
+  appSubtitle: { fontSize: 14, color: Colors.textMuted, marginTop: 8 },
   form: { gap: 16 },
-  fieldGroup: { gap: 6 },
-  label: { fontSize: 12, color: '#9CA3AF' },
+  fieldGroup: { gap: 8 },
+  label: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
   input: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    padding: 14,
     fontSize: 16,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: Colors.surface,
+    ...(Platform.OS === 'web' ? { outline: 'none' } : {}),
+  },
+  inputFocused: {
+    borderColor: Colors.primary,
+    borderWidth: 2,
   },
   passwordRow: { position: 'relative' },
   passwordInput: { paddingRight: 48 },
   visibilityButton: {
     position: 'absolute',
-    right: 12,
+    right: 14,
     top: 0,
     bottom: 0,
     justifyContent: 'center',
@@ -210,46 +242,47 @@ const styles = StyleSheet.create({
   roleRow: { flexDirection: 'row', gap: 8 },
   roleChip: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#F9FAFB',
+    borderColor: Colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: Colors.surface,
   },
   roleChipActive: {
-    borderColor: '#2563EB',
-    backgroundColor: '#DBEAFE',
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryLight,
   },
-  roleChipText: { fontSize: 12, color: '#374151', textTransform: 'capitalize' },
-  roleChipTextActive: { color: '#1D4ED8', fontWeight: '600' },
+  roleChipText: { fontSize: 13, color: Colors.textSecondary, textTransform: 'capitalize' },
+  roleChipTextActive: { color: Colors.primary, fontWeight: '600' },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEE2E2',
+    backgroundColor: Colors.dangerLight,
     padding: 12,
-    borderRadius: 8,
-    gap: 8,
+    borderRadius: 10,
+    gap: 10,
   },
-  errorIcon: { fontSize: 16 },
-  errorText: { fontSize: 12, color: '#DC2626', flex: 1 },
+  errorIcon: { fontSize: 18 },
+  errorText: { fontSize: 13, color: Colors.danger, flex: 1 },
   submitButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: Colors.primary,
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
     marginTop: 8,
+    ...(Platform.OS === 'web' ? { cursor: 'pointer' } : {}),
   },
   submitButtonDisabled: { opacity: 0.6 },
-  submitButtonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  submitButtonText: { color: Colors.surface, fontWeight: '600', fontSize: 16 },
   toggleRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: 20,
-    paddingTop: 32,
+    marginTop: 24,
+    gap: 6,
   },
-  toggleText: { fontSize: 12, color: '#9CA3AF' },
-  toggleLink: { fontSize: 12, color: '#2563EB', fontWeight: '600' },
+  toggleText: { fontSize: 13, color: Colors.textMuted },
+  toggleLink: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
 });
 
 export default AuthView;

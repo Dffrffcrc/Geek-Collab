@@ -13,6 +13,7 @@ import {
   Animated,
   Alert,
   Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -25,6 +26,44 @@ import ProfileEditView from './ProfileEditView';
 import SideMenuDrawer from './SideMenuDrawer';
 import { getAllUsers } from './StorageExtension';
 import { hasModerationMatch } from './ContentModeration';
+
+// Reddit-inspired colors
+const Colors = {
+  primary: '#2563EB',
+  primaryLight: '#DBEAFE',
+  surface: '#FFFFFF',
+  surfaceHover: '#F3F4F6',
+  background: '#F9FAFB',
+  textPrimary: '#111827',
+  textSecondary: '#374151',
+  textMuted: '#6B7280',
+  textLight: '#9CA3AF',
+  border: '#E5E7EB',
+  success: '#16A34A',
+  successLight: '#DCFCE7',
+  danger: '#DC2626',
+  dangerLight: '#FEE2E2',
+  warning: '#D97706',
+  warningLight: '#FEF3C7',
+};
+
+const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+};
+
+const Radius = {
+  sm: 4,
+  md: 8,
+  lg: 12,
+  xl: 16,
+  full: 9999,
+};
 
 const toImageURI = (image) => {
   if (!image) return null;
@@ -112,126 +151,113 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
   const [showDetail, setShowDetail] = useState(false);
   const permissions = viewModel.getPermissionSummary(currentUser);
 
+  // Check if current user has liked this post
+  const hasUpvoted = (discussion.likesBy || []).includes(currentUser.id);
+  const voteCount = discussion.likes || 0;
+
   return (
     <>
       <TouchableOpacity style={styles.card} onPress={() => setShowDetail(true)} activeOpacity={0.85}>
-        <View style={styles.cardAuthorRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={styles.cardAuthorAvatar}>
-              <Text style={styles.cardAuthorAvatarText}>
-                {discussion.authorName[0].toUpperCase()}
-              </Text>
-            </View>
-            <View>
-              <TouchableOpacity onPress={() => onOpenProfile(discussion.authorID, discussion.authorName)}>
-                <Text style={styles.cardAuthorName}>{discussion.authorName}</Text>
-              </TouchableOpacity>
-              <Text style={styles.cardAuthorDate}>{relativeDate(discussion.createdAt)}</Text>
-            </View>
-          </View>
-
-          <View style={styles.moreMenuWrapper}>
-            <TouchableOpacity
-              style={styles.moreButton}
-              onPressIn={(e) => openMenu(discussion, e.nativeEvent.pageX, e.nativeEvent.pageY)}
-            >
-              <Ionicons name="ellipsis-horizontal" size={16} color="#374151" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <Text style={styles.cardTitle} numberOfLines={2}>{discussion.title}</Text>
-        <Text style={styles.cardDescription} numberOfLines={2}>{discussion.description}</Text>
-
-        {permissions.canModerate && discussion.reports.length > 0 && (
-          <View style={styles.reportedBadge}>
-            <Text style={styles.reportedBadgeText}>Reported {discussion.reports.length}x</Text>
-          </View>
-        )}
-
-        {discussion.image ? (
-          <Image
-            source={{ uri: toImageURI(discussion.image) }}
-            style={[styles.cardImage, { aspectRatio: getAspectRatio(discussion.image) }]}
-            resizeMode="contain"
-          />
-        ) : null}
-
-        {discussion.tags.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagsRow}>
-            {discussion.tags.map((tag) => (
-              <View key={tag} style={styles.tag}>
-                <Text style={styles.tagText}>#{tag}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        )}
-
-        <View style={styles.cardActions}>
+        {/* Vote Controls (Reddit-style sidebar) */}
+        <View style={styles.voteColumn}>
           <TouchableOpacity
-            style={styles.actionItem}
+            style={[styles.voteButton, hasUpvoted && styles.voteButtonActive]}
             onPress={() => viewModel.likeDiscussion(discussion.id, currentUser.id)}
+            activeOpacity={0.7}
           >
             <Ionicons
-              name={(discussion.likesBy || []).includes(currentUser.id) ? 'heart' : 'heart-outline'}
-              size={16}
-              color={(discussion.likesBy || []).includes(currentUser.id) ? '#EF4444' : '#6B7280'}
+              name={hasUpvoted ? 'arrow-up' : 'arrow-up-outline'}
+              size={20}
+              color={hasUpvoted ? Colors.success : Colors.textMuted}
             />
-            <Text style={styles.actionText}>{discussion.likes}</Text>
           </TouchableOpacity>
-
-          <View style={styles.actionItem}>
-            <Ionicons name="chatbubble-outline" size={15} color="#6B7280" />
-            <Text style={styles.actionText}>{discussion.comments.length}</Text>
-          </View>
-
-          <View style={{ flex: 1 }} />
-
-          {/* more menu moved to header */}
-
-          {permissions.canModerate && (
-            <TouchableOpacity
-              onPress={() =>
-                confirmAction(
-                  'Delete Post',
-                  'This will permanently remove this post.',
-                  () => viewModel.deleteDiscussion(discussion.id, currentUser)
-                )
-              }
-            >
-              <Text style={styles.deleteLink}>Delete</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity onPress={() => setShowDetail(true)}>
-            <Text style={styles.viewLink}>View</Text>
+          <Text style={[styles.voteCount, hasUpvoted && styles.voteCountActive]}>{voteCount}</Text>
+          <TouchableOpacity
+            style={styles.voteButton}
+            onPress={() => {}}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-down-outline" size={20} color={Colors.textMuted} />
           </TouchableOpacity>
         </View>
 
-        {permissions.canModerate && discussion.authorID !== currentUser.id && (
-          <View style={styles.moderationRow}>
+        <View style={styles.cardContent}>
+          {/* Author Row */}
+          <View style={styles.cardAuthorRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={styles.cardAuthorAvatar}>
+                <Text style={styles.cardAuthorAvatarText}>
+                  {discussion.authorName[0].toUpperCase()}
+                </Text>
+              </View>
+              <View>
+                <TouchableOpacity onPress={() => onOpenProfile(discussion.authorID, discussion.authorName)}>
+                  <Text style={styles.cardAuthorName}>{discussion.authorName}</Text>
+                </TouchableOpacity>
+                <Text style={styles.cardAuthorDate}>{relativeDate(discussion.createdAt)}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Content */}
+          <Text style={styles.cardTitle} numberOfLines={2}>{discussion.title}</Text>
+          <Text style={styles.cardDescription} numberOfLines={2}>{discussion.description}</Text>
+
+          {discussion.image ? (
+            <Image
+              source={{ uri: toImageURI(discussion.image) }}
+              style={[styles.cardImage, { aspectRatio: getAspectRatio(discussion.image) }]}
+              resizeMode="contain"
+            />
+          ) : null}
+
+          {discussion.tags.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagsRow}>
+              {discussion.tags.map((tag) => (
+                <View key={tag} style={styles.tag}>
+                  <Text style={styles.tagText}>#{tag}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Actions Bar */}
+          <View style={styles.cardActions}>
             <TouchableOpacity
-              style={styles.moderationButton}
-              onPress={() => onOpenMuteModal(discussion.authorID, discussion.authorName || discussion.authorID)}
+              style={styles.actionItem}
+              onPress={() => viewModel.likeDiscussion(discussion.id, currentUser.id)}
             >
-              <Text style={styles.moderationButtonText}>Mute</Text>
+              <Ionicons
+                name={hasUpvoted ? 'heart' : 'heart-outline'}
+                size={14}
+                color={hasUpvoted ? '#EF4444' : '#6B7280'}
+              />
+              <Text style={styles.actionText}>{voteCount}</Text>
             </TouchableOpacity>
-            {permissions.isAdmin && (
-              <TouchableOpacity
-                style={[styles.moderationButton, styles.banButton]}
-                onPress={() =>
-                  confirmAction(
-                    'Ban User',
-                    'Ban this user and remove all their posts?',
-                    () => viewModel.banUser(discussion.authorID, currentUser)
-                  )
-                }
-              >
-                <Text style={styles.moderationButtonText}>Ban User</Text>
-              </TouchableOpacity>
+
+            <View style={styles.actionItem}>
+              <Ionicons name="chatbubble-outline" size={14} color="#6B7280" />
+              <Text style={styles.actionText}>{discussion.comments.length} comments</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.actionItem}
+              onPress={() => {
+                const target = { id: discussion.id, reports: discussion.reports || [] };
+                openMenu(discussion, 0, 0);
+              }}
+            >
+              <Ionicons name="ellipsis-vertical" size={14} color="#6B7280" />
+              <Text style={styles.actionText}>Share</Text>
+            </TouchableOpacity>
+
+            {permissions.canModerate && discussion.reports.length > 0 && (
+              <View style={styles.reportedBadge}>
+                <Text style={styles.reportedBadgeText}>{discussion.reports.length} reports</Text>
+              </View>
             )}
           </View>
-        )}
+        </View>
       </TouchableOpacity>
 
       <Modal visible={showDetail} animationType="slide" presentationStyle="pageSheet">
@@ -980,7 +1006,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
                 </TouchableOpacity>
               )}
             </ScrollView>
-
+          
             <View style={styles.globalSearchContainer}>
               <TextInput
                 style={styles.input}
@@ -1888,7 +1914,6 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
           authVM={authVM}
           onClose={() => setShowProfileEdit(false)}
           onSaveProfile={() => {
-            // Profile saved, can refresh if needed
           }}
         />
       </Modal>
@@ -2765,9 +2790,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF',
     borderWidth: 1,
     borderColor: '#BFDBFE',
-    borderRadius: 20,
+    borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    // maxHeight: 60,
   },
   quickActionBtnUrgent: {
     backgroundColor: '#FEF2F2',
