@@ -18,7 +18,6 @@ const ContentView = () => {
         <ForumHomeView
           authVM={authVM}
           currentUser={authVM.currentUser}
-          authVM={authVM}
           onLogout={authVM.logout}
           newUserNotice={authVM.newUserNotice}
           clearNewUserNotice={authVM.clearNewUserNotice}

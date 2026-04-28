@@ -9,8 +9,6 @@ import {
   Image,
   Platform,
   Dimensions,
-  Animated,
-  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -31,6 +29,7 @@ const Colors = {
 const SideMenuDrawer = ({
   visible,
   onClose,
+  persistent = false,
   currentUser,
   forums,
   activeForum,
@@ -40,7 +39,7 @@ const SideMenuDrawer = ({
   permissions,
   onAdminPanel,
 }) => {
-  if (!visible) return null;
+  if (!persistent && !visible) return null;
 
   const profileImageURI = currentUser.profileImage
     ? typeof currentUser.profileImage === 'string'
@@ -52,11 +51,12 @@ const SideMenuDrawer = ({
 
   return (
     <>
-      {/* Overlay Backdrop */}
-      <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
+      {!persistent ? (
+        <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
+      ) : null}
 
       {/* Side Drawer */}
-      <View style={styles.drawer}>
+      <View style={[styles.drawer, persistent && styles.persistentDrawer]}>
         <SafeAreaView style={styles.drawerContainer}>
           {/* Header - User Profile Card */}
           <View style={styles.profileCard}>
@@ -68,9 +68,11 @@ const SideMenuDrawer = ({
                   <Ionicons name="person-circle" size={60} color="#BFDBFE" />
                 </View>
               )}
-              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                <Ionicons name="close" size={24} color="#6B7280" />
-              </TouchableOpacity>
+              {!persistent ? (
+                <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                  <Ionicons name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             <View style={styles.profileInfo}>
@@ -92,7 +94,10 @@ const SideMenuDrawer = ({
 
           {/* Forum List */}
           <View style={styles.forumSection}>
-            <Text style={styles.sectionTitle}>Forums</Text>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="chatbubbles" size={16} color="#2563EB" />
+              <Text style={styles.sectionTitle}>Forums</Text>
+            </View>
             <ScrollView
               style={styles.forumList}
               showsVerticalScrollIndicator={true}
@@ -107,9 +112,13 @@ const SideMenuDrawer = ({
                       style={[styles.forumItem, isActive && styles.forumItemActive]}
                       onPress={() => {
                         onSelectForum(forum.id);
-                        onClose();
+                        if (!persistent) onClose();
                       }}
+                      activeOpacity={0.6}
                     >
+                      <View style={styles.forumItemIcon}>
+                        <Ionicons name="folder" size={16} color={isActive ? '#2563EB' : '#9CA3AF'} />
+                      </View>
                       <View style={styles.forumItemContent}>
                         <Text
                           style={[styles.forumItemTitle, isActive && styles.forumItemTitleActive]}
@@ -121,7 +130,7 @@ const SideMenuDrawer = ({
                           {forum.isReadOnly ? '🔒 Read-only' : '📝 Open'}
                         </Text>
                       </View>
-                      {isActive && <Ionicons name="checkmark-circle" size={20} color="#2563EB" />}
+                      {isActive && <View style={styles.forumActiveIndicator} />}
                     </TouchableOpacity>
                   );
                 })
@@ -133,22 +142,11 @@ const SideMenuDrawer = ({
 
           {/* Action Buttons */}
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => {
-                onClose();
-                // FAQ can be opened from main view
-              }}
-            >
-              <Ionicons name="help-circle-outline" size={18} color="#6B7280" />
-              <Text style={styles.actionButtonText}>FAQ</Text>
-            </TouchableOpacity>
-
             {permissions.canModerate && (
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => {
-                  onClose();
+                  if (!persistent) onClose();
                   onAdminPanel && onAdminPanel();
                 }}
               >
@@ -196,6 +194,13 @@ const styles = StyleSheet.create({
           shadowRadius: 8,
         }),
     elevation: 10,
+  },
+  persistentDrawer: {
+    position: 'relative',
+    top: undefined,
+    bottom: undefined,
+    width: 280,
+    elevation: 0,
   },
   drawerContainer: {
     flex: 1,
@@ -282,13 +287,20 @@ const styles = StyleSheet.create({
   forumSection: {
     flex: 1,
     minHeight: 0,
+    marginTop: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+    paddingHorizontal: 4,
   },
   sectionTitle: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontWeight: '700',
+    color: '#374151',
     textTransform: 'uppercase',
-    marginBottom: 10,
     letterSpacing: 0.5,
   },
   forumList: {
@@ -297,37 +309,49 @@ const styles = StyleSheet.create({
   forumItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 10,
     borderRadius: 8,
     marginBottom: 6,
-    gap: 10,
-    flex: 1,
+    gap: 8,
+    backgroundColor: '#FFFFFF',
   },
   forumItemActive: {
-    backgroundColor: '#EFF6FF',
-    borderLeftWidth: 3,
-    borderLeftColor: '#2563EB',
+    backgroundColor: '#DBEAFE',
+  },
+  forumItemIcon: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   forumItemContent: {
     flex: 1,
+    minWidth: 0,
   },
   forumItemTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#6B7280',
+    color: '#374151',
   },
   forumItemTitleActive: {
-    color: '#1D4ED8',
+    color: '#2563EB',
     fontWeight: '700',
   },
   forumItemMeta: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#9CA3AF',
     marginTop: 2,
   },
   forumItemMetaActive: {
     color: '#2563EB',
+    fontWeight: '500',
+  },
+  forumActiveIndicator: {
+    width: 4,
+    height: 20,
+    backgroundColor: '#2563EB',
+    borderRadius: 2,
+    marginLeft: 4,
   },
   noForumsText: {
     fontSize: 12,
@@ -339,7 +363,7 @@ const styles = StyleSheet.create({
     gap: 8,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
-    paddingTopY: 12,
+    paddingTop: 12,
   },
   actionButton: {
     flexDirection: 'row',
@@ -352,7 +376,7 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#6B7280',
+    color: '#374151',
   },
   logoutButton: {
     flexDirection: 'row',
@@ -366,7 +390,7 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#EF4444',
+    color: '#DC2626',
   },
 });
 

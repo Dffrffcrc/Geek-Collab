@@ -13,7 +13,7 @@ import {
   Animated,
   Alert,
   Platform,
-  TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -275,6 +275,8 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
 
 const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewUserNotice }) => {
   const discussionVM = useDiscussionViewModel();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 1024;
   const [showNewDiscussion, setShowNewDiscussion] = useState(false);
   const [showFAQ, setShowFAQ] = useState(false);
   const [showPastForums, setShowPastForums] = useState(false);
@@ -739,7 +741,27 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
   const shouldShowNoForumsState = discussionVM.isHydrated && !discussionVM.activeForum && discussionVM.openForums.length === 0 && !showPastForumPosts;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.pageShell}>
+      {isDesktop ? (
+        <View style={styles.desktopSidebar}>
+          <SideMenuDrawer
+            visible
+            persistent
+            onClose={() => {}}
+            currentUser={currentUser}
+            forums={discussionVM.openForums}
+            activeForum={discussionVM.activeForum}
+            onSelectForum={(forumID) => discussionVM.selectForum(forumID)}
+            onEditProfile={() => {
+              setShowProfileEdit(true);
+            }}
+            onLogout={onLogout}
+            permissions={permissions}
+            onAdminPanel={() => setShowModPanel(true)}
+          />
+        </View>
+      ) : null}
+      <SafeAreaView style={styles.container}>
       {discussionVM.toast?.message ? (
         <Animated.View
           style={[
@@ -753,13 +775,17 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
       ) : null}
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => setShowSideMenu(true)} style={styles.menuButton}>
-          <Ionicons name="menu" size={24} color="#2563EB" />
-        </TouchableOpacity>
+        {!isDesktop ? (
+          <TouchableOpacity onPress={() => setShowSideMenu(true)} style={styles.menuButton}>
+            <Ionicons name="menu" size={24} color="#2563EB" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.menuButtonPlaceholder} />
+        )}
         <TouchableOpacity onPress={goHome}>
           <Text style={styles.headerTitle}>GeekCollab</Text>
         </TouchableOpacity>
-        <View style={{ width: 40 }} />
+        <View style={styles.menuButtonPlaceholder} />
       </View>
 
       <View style={styles.forumBanner}>
@@ -999,12 +1025,6 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
                 <Ionicons name="time-outline" size={14} color="#1D4ED8" />
                 <Text style={styles.quickActionBtnText}>Audit Log</Text>
               </TouchableOpacity>
-              {permissions.isAdmin && (
-                <TouchableOpacity style={styles.quickActionBtn} onPress={() => confirmAction('Restore Default Content', 'Replace current feed with sample posts?', () => discussionVM.restoreSamplePosts(currentUser))}>
-                  <Ionicons name="refresh-outline" size={14} color="#1D4ED8" />
-                  <Text style={styles.quickActionBtnText}>Restore Posts</Text>
-                </TouchableOpacity>
-              )}
             </ScrollView>
           
             <View style={styles.globalSearchContainer}>
@@ -1919,7 +1939,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
       </Modal>
 
       <SideMenuDrawer
-        visible={showSideMenu}
+        visible={showSideMenu && !isDesktop}
         onClose={() => setShowSideMenu(false)}
         currentUser={currentUser}
         forums={discussionVM.openForums}
@@ -2131,11 +2151,23 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
           />
         ) : null}
       </Modal>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  pageShell: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+  },
+  desktopSidebar: {
+    width: 280,
+    borderRightWidth: 1,
+    borderRightColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+  },
   container: { flex: 1, backgroundColor: '#F9FAFB' },
   header: {
     flexDirection: 'row',
@@ -2148,6 +2180,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
   },
   menuButton: { padding: 8 },
+  menuButtonPlaceholder: { width: 40, height: 40 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#2563EB' },
   forumBanner: {
     backgroundColor: '#fff',
@@ -2177,20 +2210,20 @@ const styles = StyleSheet.create({
   forumBannerActions: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   secondaryForumButton: {
     backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#BFDBFE',
   },
-  secondaryForumButtonText: { color: '#1D4ED8', fontWeight: '600', fontSize: 11 },
+  secondaryForumButtonText: { color: '#1D4ED8', fontWeight: '600', fontSize: 12 },
   createForumButton: {
     backgroundColor: '#2563EB',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 6,
   },
-  createForumButtonText: { color: '#fff', fontWeight: '600', fontSize: 11 },
+  createForumButtonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
   listContent: { padding: 12, gap: 12 },
   card: {
     backgroundColor: '#fff',
