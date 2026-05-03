@@ -10,14 +10,17 @@ import {
   Image,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { uploadToCloudinary } from './CloudinaryClient';
 
 const ProfileEditView = ({ currentUser, authVM, onClose, onSaveProfile }) => {
   const [displayName, setDisplayName] = useState(currentUser.displayName || currentUser.username || '');
   const [bio, setBio] = useState(currentUser.bio || '');
   const [profileImage, setProfileImage] = useState(currentUser.profileImage || null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
   const pickImage = async () => {
@@ -29,10 +32,20 @@ const ProfileEditView = ({ currentUser, authVM, onClose, onSaveProfile }) => {
         const file = event.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
           const base64 = e.target?.result?.split(',')[1];
-          if (base64) {
-            setProfileImage(base64);
+          if (!base64) return;
+
+          // Upload to Cloudinary
+          setIsUploadingImage(true);
+          try {
+            const cloudinaryUrl = await uploadToCloudinary(base64, currentUser.id, 'profile');
+            setProfileImage(cloudinaryUrl); // Store Cloudinary URL instead of base64
+          } catch (error) {
+            console.error('Profile image upload failed:', error);
+            Alert.alert('Upload Failed', `Could not upload image: ${error.message}`);
+          } finally {
+            setIsUploadingImage(false);
           }
         };
         reader.readAsDataURL(file);
@@ -80,9 +93,11 @@ const ProfileEditView = ({ currentUser, authVM, onClose, onSaveProfile }) => {
 
   const profileImageURI = profileImage
     ? typeof profileImage === 'string'
-      ? profileImage.startsWith('data:')
-        ? profileImage
-        : `data:image/jpeg;base64,${profileImage}`
+      ? profileImage.startsWith('http')
+        ? profileImage // Cloudinary URL - use directly
+        : profileImage.startsWith('data:')
+          ? profileImage
+          : `data:image/jpeg;base64,${profileImage}` // Legacy base64
       : null
     : null;
 
@@ -111,9 +126,22 @@ const ProfileEditView = ({ currentUser, authVM, onClose, onSaveProfile }) => {
             </View>
           )}
           <View style={styles.pictureButtonsRow}>
-            <TouchableOpacity style={styles.uploadButton} onPress={pickImage}>
-              <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
-              <Text style={styles.uploadButtonText}>Upload Photo</Text>
+            <TouchableOpacity 
+              style={[styles.uploadButton, isUploadingImage && styles.uploadButtonDisabled]}
+              onPress={pickImage}
+              disabled={isUploadingImage}
+            >
+              {isUploadingImage ? (
+                <>
+                  <ActivityIndicator size="small" color="#fff" style={{ marginRight: 4 }} />
+                  <Text style={styles.uploadButtonText}>Uploading...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={16} color="#fff" />
+                  <Text style={styles.uploadButtonText}>Upload Photo</Text>
+                </>
+              )}
             </TouchableOpacity>
             {profileImageURI && (
               <TouchableOpacity style={[styles.uploadButton, styles.removeButton]} onPress={removeImage}>
@@ -218,6 +246,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 6,
   },
+  uploadButtonDisabled: { backgroundColor: '#93C5FD', opacity: 0.7 },
   removeButton: { backgroundColor: '#EF4444' },
   uploadButtonText: { color: '#fff', fontWeight: '600', fontSize: 12 },
   fieldGroup: { gap: 6 },

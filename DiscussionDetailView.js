@@ -52,7 +52,12 @@ const Radius = {
 
 const toImageURI = (image) => {
   if (!image) return null;
-  if (typeof image === 'string') return `data:image/jpeg;base64,${image}`;
+  if (typeof image === 'string') {
+    // If it's already a data: URI or an https URL (Cloudinary), return as-is
+    if (image.startsWith('data:') || image.startsWith('http')) return image;
+    // Otherwise assume it's base64 and wrap it
+    return `data:image/jpeg;base64,${image}`;
+  }
   if (image.base64) return `data:image/jpeg;base64,${image.base64}`;
   return null;
 };

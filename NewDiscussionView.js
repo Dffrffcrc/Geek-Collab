@@ -10,11 +10,14 @@ import {
   StyleSheet,
   SafeAreaView,
   Platform,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import LexicalMarkdownEditor from './LexicalMarkdownEditor';
 import MediaPicker from './MediaPicker';
 import { hasModerationMatch } from './ContentModeration';
+import { uploadToCloudinary } from './CloudinaryClient';
 
 // Reddit-inspired colors
 const Colors = {
@@ -52,6 +55,8 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(false);
   const [tags, setTags] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const initialOpenForumID = (viewModel.openForums && viewModel.openForums.length > 0)
     ? viewModel.openForums[0].id
     : viewModel.selectedForumID || null;
@@ -72,7 +77,12 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
   const toImageURI = (image) => {
     if (!image) return null;
     if (image.uri) return image.uri;
-    if (typeof image === 'string') return image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
+    if (typeof image === 'string') {
+      // If it's already a data: URI or an https URL (Cloudinary), return as-is
+      if (image.startsWith('data:') || image.startsWith('http')) return image;
+      // Otherwise assume it's base64 and wrap it
+      return `data:image/jpeg;base64,${image}`;
+    }
     if (image.base64) {
       const mimeType = image.mimeType || 'image/jpeg';
       return `data:${mimeType};base64,${image.base64}`;
@@ -80,22 +90,57 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
     return null;
   };
 
-  const postDiscussion = () => {
+  const postDiscussion = async () => {
     if (!canSubmit) return;
+
+    let imageUrl = null;
+
+    // Upload image to Cloudinary if one is selected
+    if (selectedImage) {
+      setIsUploading(true);
+      try {
+        console.log('Selected image:', selectedImage); // DEBUG
+        const base64 = selectedImage.base64 || 
+          (typeof selectedImage === 'string' ? selectedImage : null);
+        
+        console.log('Base64 extracted:', !!base64); // DEBUG
+        
+        if (!base64) {
+          throw new Error('Invalid image format');
+        }
+
+        console.log('Uploading to Cloudinary with forumID:', selectedForumID); // DEBUG
+        imageUrl = await uploadToCloudinary(base64, selectedForumID, 'post');
+        console.log('Upload successful, URL:', imageUrl); // DEBUG
+        setUploadedImageUrl(imageUrl); // Store for preview
+      } catch (error) {
+        console.error('Image upload failed:', error);
+        Alert.alert('Upload Failed', `Could not upload image: ${error.message}`);
+        setIsUploading(false);
+        return;
+      } finally {
+        setIsUploading(false);
+      }
+    }
+
     const tagArray = tags
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
+    
     const created = viewModel.createDiscussion(
       title,
       description,
       content,
-      selectedImage,
+      imageUrl, // Pass the Cloudinary URL instead of base64
       tagArray,
       currentUser,
       selectedForumID
     );
+    
     if (created) {
+      setSelectedImage(null); // Clear the preview after successful post
+      setUploadedImageUrl(null);
       onDismiss();
     }
   };
@@ -222,11 +267,11 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             onImageSelected={(image) => setSelectedImage(image)}
             onCancel={() => {}}
           />
-          {selectedImage && (
+          {(selectedImage || uploadedImageUrl) && (
             <>
               <Text style={styles.imageAdded}>✓ Image added</Text>
               <Image
-                source={{ uri: toImageURI(selectedImage) }}
+                source={{ uri: uploadedImageUrl || toImageURI(selectedImage) }}
                 style={styles.imagePreview}
                 resizeMode="contain"
               />
@@ -240,12 +285,19 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
         <TouchableOpacity
           style={[
             styles.postButton,
-            !canSubmit && styles.postButtonDisabled,
+            (!canSubmit || isUploading) && styles.postButtonDisabled,
           ]}
           onPress={postDiscussion}
-          disabled={!canSubmit}
+          disabled={!canSubmit || isUploading}
         >
-          <Text style={styles.postButtonText}>Post</Text>
+          {isUploading ? (
+            <>
+              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.postButtonText}>Uploading...</Text>
+            </>
+          ) : (
+            <Text style={styles.postButtonText}>Post</Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -358,6 +410,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
   },
   postButtonDisabled: { backgroundColor: '#93C5FD' },
   postButtonText: { color: '#fff', fontWeight: '600', fontSize: 16 },

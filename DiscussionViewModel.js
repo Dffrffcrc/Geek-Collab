@@ -502,7 +502,11 @@ export const useDiscussionViewModel = () => {
       tags: safeTags,
       forumID: targetForumID,
     });
-    setDiscussions((prev) => [newDiscussion, ...prev]);
+    console.log('Creating discussion:', newDiscussion); // DEBUG
+    setDiscussions((prev) => {
+      console.log('New discussions state:', [newDiscussion, ...prev]); // DEBUG
+      return [newDiscussion, ...prev];
+    });
     setPostHistoryCounts((prev) => ({
       ...prev,
       [author.id]: (prev[author.id] || 0) + 1,
