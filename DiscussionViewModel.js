@@ -6,7 +6,7 @@ import { updateUserBanStatus, updateUserMuteStatus, updateUserRole } from './Sto
 import { moderateText } from './ContentModeration';
 import uuid from 'react-native-uuid';
 
-const FILTERS = ['Latest', 'Popular', 'Trending', 'Reported'];
+const FILTERS = ['Latest', 'Popular', 'Reported'];
 const DEFAULT_CUSTOM_BLOCKED_WORDS = ['spam', 'scam', 'hate'];
 const DEFAULT_FORUM_ID = 'forum-general-discussion';
 const SAMPLE_USER_IDS = {
@@ -37,10 +37,6 @@ const applyFilter = (discussions, filter) => {
       return [...discussions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     case 'Popular':
       return [...discussions].sort((a, b) => b.likes - a.likes);
-    case 'Trending':
-      return [...discussions].sort(
-        (a, b) => (b.likes + b.comments.length) - (a.likes + a.comments.length)
-      );
     case 'Reported':
       return [...discussions]
         .filter((discussion) => discussion.reports.length > 0)
@@ -379,7 +375,7 @@ export const useDiscussionViewModel = () => {
     const nameIsAdmin = ADMIN_IDS.map((id) => id.toLowerCase()).includes(username);
     const isAdmin = role === 'admin' || nameIsAdmin;
     const forumModerators = Array.isArray(user?.forumModerators) ? user.forumModerators : [];
-    const isModerator = selectedForum?.id ? forumModerators.includes(selectedForum.id) : false;
+    const isModerator = forumModerators.includes(selectedForum?.id) || forumModerators.length > 0;
     const persistedMutedUntil = user?.mutedUntil || null;
     const inMemoryMutedUntil = user?.id ? mutedUsers[user.id] : null;
     const effectiveMutedUntil = inMemoryMutedUntil || persistedMutedUntil;

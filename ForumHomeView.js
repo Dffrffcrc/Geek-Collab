@@ -13,14 +13,13 @@ import {
   Animated,
   Alert,
   Platform,
-  TouchableOpacity,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useDiscussionViewModel } from './DiscussionViewModel';
 import DiscussionDetailView from './DiscussionDetailView';
 import NewDiscussionView from './NewDiscussionView';
-import FAQView from './FAQView';
 import UserProfileView from './UserProfileView';
 import ProfileEditView from './ProfileEditView';
 import SideMenuDrawer from './SideMenuDrawer';
@@ -155,32 +154,17 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
   const hasUpvoted = (discussion.likesBy || []).includes(currentUser.id);
   const voteCount = discussion.likes || 0;
 
+  const handleOpenMenu = (event) => {
+    if (event?.stopPropagation) {
+      event.stopPropagation();
+    }
+    const { pageX = 0, pageY = 0 } = event?.nativeEvent || {};
+    openMenu(discussion, pageX, pageY);
+  };
+
   return (
     <>
-      <TouchableOpacity style={styles.card} onPress={() => setShowDetail(true)} activeOpacity={0.85}>
-        {/* Vote Controls (Reddit-style sidebar) */}
-        <View style={styles.voteColumn}>
-          <TouchableOpacity
-            style={[styles.voteButton, hasUpvoted && styles.voteButtonActive]}
-            onPress={() => viewModel.likeDiscussion(discussion.id, currentUser.id)}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={hasUpvoted ? 'arrow-up' : 'arrow-up-outline'}
-              size={20}
-              color={hasUpvoted ? Colors.success : Colors.textMuted}
-            />
-          </TouchableOpacity>
-          <Text style={[styles.voteCount, hasUpvoted && styles.voteCountActive]}>{voteCount}</Text>
-          <TouchableOpacity
-            style={styles.voteButton}
-            onPress={() => {}}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-down-outline" size={20} color={Colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
+      <TouchableOpacity style={[styles.card, isDarkMode && styles.cardDark]} onPress={() => setShowDetail(true)} activeOpacity={0.85}>
         <View style={styles.cardContent}>
           {/* Author Row */}
           <View style={styles.cardAuthorRow}>
@@ -192,16 +176,16 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
               </View>
               <View>
                 <TouchableOpacity onPress={() => onOpenProfile(discussion.authorID, discussion.authorName)}>
-                  <Text style={styles.cardAuthorName}>{discussion.authorName}</Text>
+                  <Text style={[styles.cardAuthorName, isDarkMode && styles.cardAuthorNameDark]}>{discussion.authorName}</Text>
                 </TouchableOpacity>
-                <Text style={styles.cardAuthorDate}>{relativeDate(discussion.createdAt)}</Text>
+                <Text style={[styles.cardAuthorDate, isDarkMode && styles.cardAuthorDateDark]}>{relativeDate(discussion.createdAt)}</Text>
               </View>
             </View>
           </View>
 
           {/* Content */}
-          <Text style={styles.cardTitle} numberOfLines={2}>{discussion.title}</Text>
-          <Text style={styles.cardDescription} numberOfLines={2}>{discussion.description}</Text>
+          <Text style={[styles.cardTitle, isDarkMode && styles.cardTitleDark]} numberOfLines={2}>{discussion.title}</Text>
+          <Text style={[styles.cardDescription, isDarkMode && styles.cardDescriptionDark]} numberOfLines={2}>{discussion.description}</Text>
 
           {discussion.image ? (
             <Image
@@ -223,32 +207,17 @@ const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, con
 
           {/* Actions Bar */}
           <View style={styles.cardActions}>
-            <TouchableOpacity
-              style={styles.actionItem}
-              onPress={() => viewModel.likeDiscussion(discussion.id, currentUser.id)}
-            >
-              <Ionicons
-                name={hasUpvoted ? 'heart' : 'heart-outline'}
-                size={14}
-                color={hasUpvoted ? '#EF4444' : '#6B7280'}
-              />
-              <Text style={styles.actionText}>{voteCount}</Text>
-            </TouchableOpacity>
-
             <View style={styles.actionItem}>
               <Ionicons name="chatbubble-outline" size={14} color="#6B7280" />
-              <Text style={styles.actionText}>{discussion.comments.length} comments</Text>
+              <Text style={[styles.actionText, isDarkMode && styles.actionTextDark]}>{discussion.comments.length} comments</Text>
             </View>
 
             <TouchableOpacity
               style={styles.actionItem}
-              onPress={() => {
-                const target = { id: discussion.id, reports: discussion.reports || [] };
-                openMenu(discussion, 0, 0);
-              }}
+              onPressIn={handleOpenMenu}
             >
               <Ionicons name="ellipsis-vertical" size={14} color="#6B7280" />
-              <Text style={styles.actionText}>Share</Text>
+              <Text style={styles.actionText}>More</Text>
             </TouchableOpacity>
 
             {permissions.canModerate && discussion.reports.length > 0 && (
@@ -283,6 +252,9 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
   const [selectedProfile, setSelectedProfile] = useState({ id: null, name: '' });
   const [showSideMenu, setShowSideMenu] = useState(false);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [recentForums, setRecentForums] = useState([]);
   const [showQuickReportModal, setShowQuickReportModal] = useState(false);
   const [quickReportReason, setQuickReportReason] = useState(REPORT_REASON_OPTIONS[0]);
   const [quickReportCustomText, setQuickReportCustomText] = useState('');
@@ -305,6 +277,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
   const [reportsSearchQuery, setReportsSearchQuery] = useState('');
   const [deletedSearchQuery, setDeletedSearchQuery] = useState('');
   const [forumsSearchQuery, setForumsSearchQuery] = useState('');
+  const [feedSearchQuery, setFeedSearchQuery] = useState('');
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [selectedReports, setSelectedReports] = useState(new Set());
   const [forumModInput, setForumModInput] = useState('');
@@ -362,9 +335,116 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
       forum.title.toLowerCase().includes(query)
     );
   }, [discussionVM.forums, forumsSearchQuery]);
+  const permissions = useMemo(
+    () => discussionVM.getPermissionSummary(currentUser),
+    [discussionVM, currentUser]
+  );
+
+  const feedFilteredDiscussions = useMemo(() => {
+    const baseList = discussionVM.filteredDiscussions.filter((item) =>
+      permissions.canModerate || item.reports.length === 0
+    );
+    const query = String(feedSearchQuery || '').trim().toLowerCase();
+    if (!query) return baseList;
+    return baseList.filter((item) => {
+      return (
+        String(item.title || '').toLowerCase().includes(query) ||
+        String(item.description || '').toLowerCase().includes(query) ||
+        String(item.authorName || '').toLowerCase().includes(query) ||
+        (Array.isArray(item.tags) && item.tags.some((tag) => String(tag || '').toLowerCase().includes(query)))
+      );
+    });
+  }, [discussionVM.filteredDiscussions, feedSearchQuery, permissions.canModerate]);
+
+  const availableFeedFilters = useMemo(
+    () => discussionVM.filters.filter((filter) => filter !== 'Reported' || permissions.canModerate),
+    [discussionVM.filters, permissions.canModerate]
+  );
+
+  const isForumExpired = (forum) => {
+    if (!forum?.expiresAt) return false;
+    return new Date(forum.expiresAt).getTime() <= Date.now();
+  };
+
+  const openNavigationForums = useMemo(
+    () => discussionVM.forums.filter((forum) => !isForumExpired(forum)),
+    [discussionVM.forums]
+  );
+
+  const addRecentForum = (forum) => {
+    if (!forum) return;
+    setRecentForums((previous) => {
+      const updated = [forum, ...previous.filter((item) => item.id !== forum.id)];
+      return updated.slice(0, 5);
+    });
+  };
+
+  useEffect(() => {
+    if (discussionVM.activeForum) {
+      addRecentForum(discussionVM.activeForum);
+    }
+  }, [discussionVM.activeForum?.id]);
+
+  const handleSelectForum = (forumID) => {
+    const forum = discussionVM.forums.find((item) => item.id === forumID);
+    if (forum) {
+      addRecentForum(forum);
+    }
+    discussionVM.selectForum(forumID);
+    setShowSideMenu(false);
+  };
+
   const canSubmitQuickReport = quickReportReason !== 'Other' || Boolean(quickReportCustomText.trim());
 
-  const permissions = useMemo(() => discussionVM.getPermissionSummary(currentUser), [discussionVM, currentUser]);
+  const getDiscussionUrl = (discussion) => {
+    const baseUrl = Platform.OS === 'web' && typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://app.geekcollab.com';
+    return `${baseUrl}/discussion/${discussion.id}`;
+  };
+
+  const handleShareDiscussion = async (discussion) => {
+    const url = getDiscussionUrl(discussion);
+    try {
+      if (Platform.OS === 'web' && navigator?.share) {
+        await navigator.share({
+          title: discussion.title || 'Discussion',
+          text: `${discussion.title}\n\n${discussion.description}\n\n${url}`,
+          url,
+        });
+        return;
+      }
+      if (Share?.share) {
+        await Share.share({
+          title: discussion.title || 'Discussion',
+          message: `${discussion.title}\n\n${discussion.description}\n\n${url}`,
+          url,
+        });
+        return;
+      }
+      Alert.alert('Share', `Share this link:\n${url}`);
+    } catch (error) {
+      Alert.alert('Share failed', error.message || 'Unable to share this discussion.');
+    }
+  };
+
+  const handleCopyDiscussionLink = async (discussion) => {
+    const url = getDiscussionUrl(discussion);
+    if (Platform.OS === 'web' && navigator?.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(url);
+        Alert.alert('Link copied', 'Discussion link copied to clipboard.');
+      } catch (error) {
+        Alert.alert('Copy failed', 'Could not copy link.');
+      }
+      return;
+    }
+    Alert.alert('Link ready', `Use this link to share:\n${url}`);
+  };
+
+  const handleSaveDiscussion = (discussion) => {
+    Alert.alert('Saved', 'This discussion has been saved for later.');
+  };
 
   useEffect(() => {
     if (newUserNotice) {
@@ -517,11 +597,18 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
     setShowProfile(true);
   };
 
+  const openDiscussion = (discussionID) => {
+    const discussion = discussionVM.discussions.find((item) => item.id === discussionID);
+    if (!discussion) {
+      return;
+    }
+    setReportedPostToView(discussion);
+  };
+
   const goHome = () => {
     setShowPastForumPosts(false);
     setShowPastForums(false);
     setShowModPanel(false);
-    setShowFAQ(false);
     if (discussionVM.openForums.length > 0) {
       discussionVM.selectForum(discussionVM.openForums[0].id);
     } else {
@@ -739,7 +826,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
   const shouldShowNoForumsState = discussionVM.isHydrated && !discussionVM.activeForum && discussionVM.openForums.length === 0 && !showPastForumPosts;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, isDarkMode && styles.containerDark]}>
       {discussionVM.toast?.message ? (
         <Animated.View
           style={[
@@ -752,31 +839,72 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
         </Animated.View>
       ) : null}
 
-      <View style={styles.header}>
+      <View style={[styles.header, isDarkMode && styles.headerDark]}>
         <TouchableOpacity onPress={() => setShowSideMenu(true)} style={styles.menuButton}>
           <Ionicons name="menu" size={24} color="#2563EB" />
         </TouchableOpacity>
         <TouchableOpacity onPress={goHome}>
-          <Text style={styles.headerTitle}>GeekCollab</Text>
+          <Text style={[styles.headerTitle, isDarkMode && styles.headerTitleDark]}>GeekCollab</Text>
         </TouchableOpacity>
         <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.forumBanner}>
+      <View style={[styles.forumBanner, isDarkMode && styles.forumBannerDark]}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.forumTitle}>Current Forum</Text>
-          <Text style={styles.forumTitleValue}>{discussionVM.activeForum?.title || 'No forum selected'}</Text>
+          <Text style={[styles.forumTitle, isDarkMode && styles.forumTitleDark]}>Current Forum</Text>
+          <Text style={[styles.forumTitleValue, isDarkMode && styles.forumTitleValueDark]}>{discussionVM.activeForum?.title || 'No forum selected'}</Text>
+          <Text style={[styles.forumSubtitle, isDarkMode && styles.forumSubtitleDark]}>
+            {discussionVM.activeForum
+              ? `${discussionVM.activeForum.isReadOnly ? 'Read-only' : 'Open'} · ${discussionVM.forumCountdown} remaining`
+              : 'Pick a forum to start participating.'}
+          </Text>
         </View>
         <View style={styles.forumBannerActions}>
-          <TouchableOpacity style={styles.secondaryForumButton} onPress={() => setShowPastForums(true)}>
-            <Text style={styles.secondaryForumButtonText}>Past</Text>
-          </TouchableOpacity>
           {permissions.canCreateForums && (
             <TouchableOpacity style={styles.createForumButton} onPress={() => setShowNewForumModal(true)}>
               <Text style={styles.createForumButtonText}>Create</Text>
             </TouchableOpacity>
           )}
         </View>
+      </View>
+
+      <View style={styles.feedToolbar}>
+        <TextInput
+          style={[styles.feedSearchInput, isDarkMode && styles.feedSearchInputDark]}
+          placeholder="Search discussions, authors or tags"
+          placeholderTextColor="#9CA3AF"
+          value={feedSearchQuery}
+          onChangeText={setFeedSearchQuery}
+          autoCapitalize="none"
+        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.feedFilterRow} contentContainerStyle={styles.feedFilterRowContent}>
+          {availableFeedFilters.map((filter) => {
+            const isActive = discussionVM.selectedFilter === filter;
+            return (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  styles.filterChip,
+                  isActive && styles.filterChipActive,
+                  isDarkMode && styles.filterChipDark,
+                  isActive && isDarkMode && styles.filterChipActiveDark,
+                ]}
+                onPress={() => discussionVM.filterDiscussions(filter)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    isActive && styles.filterChipTextActive,
+                    isDarkMode && styles.filterChipTextDark,
+                    isActive && isDarkMode && styles.filterChipTextActiveDark,
+                  ]}
+                >
+                  {filter}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {shouldShowNoForumsState ? (
@@ -788,7 +916,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
         </View>
       ) : (
         <FlatList
-          data={discussionVM.filteredDiscussions}
+          data={feedFilteredDiscussions}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <DiscussionCard
@@ -804,6 +932,15 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
             />
           )}
           contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.emptyStateWrapper}>
+              <Text style={styles.emptyStateText}>
+                {feedSearchQuery.trim()
+                  ? 'No discussions match your search.'
+                  : 'No discussions available in this forum yet.'}
+              </Text>
+            </View>
+          }
           showsVerticalScrollIndicator={false}
         />
       )}
@@ -814,7 +951,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
           <View
             style={[
               styles.moreMenu,
-              { position: 'absolute', left: Math.max(8, overlayMenu.x - 160), top: overlayMenu.y + 8 },
+              { position: 'absolute', right: 16, top: Math.max(8, overlayMenu.y - 16) },
             ]}
           >
             <TouchableOpacity
@@ -826,6 +963,42 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
               }}
             >
               <Text style={styles.moreMenuItemText}>Report Post ({overlayMenu.discussion.reports.length})</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => {
+                handleShareDiscussion(overlayMenu.discussion);
+                setOverlayMenu({ visible: false });
+              }}
+            >
+              <Text style={styles.moreMenuItemText}>Share Post</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => {
+                handleCopyDiscussionLink(overlayMenu.discussion);
+                setOverlayMenu({ visible: false });
+              }}
+            >
+              <Text style={styles.moreMenuItemText}>Copy Link</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => {
+                handleSaveDiscussion(overlayMenu.discussion);
+                setOverlayMenu({ visible: false });
+              }}
+            >
+              <Text style={styles.moreMenuItemText}>Save Post</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => {
+                onOpenProfile(overlayMenu.discussion.authorID, overlayMenu.discussion.authorName);
+                setOverlayMenu({ visible: false });
+              }}
+            >
+              <Text style={styles.moreMenuItemText}>View Author</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -966,134 +1139,9 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
             <View style={{ width: 60 }} />
           </View>
 
-          <View style={[styles.modalContent, styles.adminPanelContainer]}>
-            {/* ── Quick Action Bar ── */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickActionsBar} contentContainerStyle={styles.quickActionsBarContent}>
-              {permissions.isAdmin && (
-                <TouchableOpacity style={styles.quickActionBtn} onPress={() => setShowNewForumModal(true)}>
-                  <Ionicons name="add-circle-outline" size={14} color="#1D4ED8" />
-                  <Text style={styles.quickActionBtnText}>Create Forum</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={[styles.quickActionBtn, reportedPosts.length > 0 && styles.quickActionBtnUrgent]} onPress={() => setModTab('reports')}>
-                <Ionicons name="flag-outline" size={14} color={reportedPosts.length > 0 ? '#DC2626' : '#1D4ED8'} />
-                <Text style={[styles.quickActionBtnText, reportedPosts.length > 0 && styles.quickActionBtnTextUrgent]}>
-                  Reports {reportedPosts.length > 0 ? `(${reportedPosts.length})` : ''}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.quickActionBtn, quarantinedPosts.length > 0 && styles.quickActionBtnUrgent]} onPress={() => setModTab('safety')}>
-                <Ionicons name="shield-outline" size={14} color={quarantinedPosts.length > 0 ? '#DC2626' : '#1D4ED8'} />
-                <Text style={[styles.quickActionBtnText, quarantinedPosts.length > 0 && styles.quickActionBtnTextUrgent]}>
-                  Quarantine {quarantinedPosts.length > 0 ? `(${quarantinedPosts.length})` : ''}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickActionBtn} onPress={() => { setModTab('users'); }}>
-                <Ionicons name="person-add-outline" size={14} color="#1D4ED8" />
-                <Text style={styles.quickActionBtnText}>Mute User</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickActionBtn} onPress={() => setModTab('users')}>
-                <Ionicons name="people-outline" size={14} color="#1D4ED8" />
-                <Text style={styles.quickActionBtnText}>Users ({registeredUsers.length})</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickActionBtn} onPress={() => setModTab('activity')}>
-                <Ionicons name="time-outline" size={14} color="#1D4ED8" />
-                <Text style={styles.quickActionBtnText}>Audit Log</Text>
-              </TouchableOpacity>
-              {permissions.isAdmin && (
-                <TouchableOpacity style={styles.quickActionBtn} onPress={() => confirmAction('Restore Default Content', 'Replace current feed with sample posts?', () => discussionVM.restoreSamplePosts(currentUser))}>
-                  <Ionicons name="refresh-outline" size={14} color="#1D4ED8" />
-                  <Text style={styles.quickActionBtnText}>Restore Posts</Text>
-                </TouchableOpacity>
-              )}
-            </ScrollView>
-          
-            <View style={styles.globalSearchContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Global search across all sections"
-                placeholderTextColor="#B6BFCC"
-                value={globalSearchQuery}
-                onChangeText={setGlobalSearchQuery}
-                autoCapitalize="none"
-              />
-            </View>
-
-            <View style={styles.adminTabBarContainer}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.adminTabsRow}>
-                {[
-                  { key: 'dashboard', label: 'Dashboard' },
-                  { key: 'reports', label: 'Reports' },
-                  { key: 'deleted', label: 'Deleted' },
-                  { key: 'forums', label: 'Forums' },
-                  { key: 'users', label: 'Users' },
-                  { key: 'filters', label: 'Filters' },
-                  { key: 'safety', label: 'Safety' },
-                  { key: 'activity', label: 'Activity' },
-                ].map((tab) => {
-                  const isActive = modTab === tab.key;
-                  return (
-                    <TouchableOpacity
-                      key={tab.key}
-                      style={[styles.adminTabChip, isActive && styles.adminTabChipActive]}
-                      onPress={() => setModTab(tab.key)}
-                    >
-                      <Text style={[styles.adminTabChipText, isActive && styles.adminTabChipTextActive]}>{tab.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <ScrollView style={styles.adminPanelBody} contentContainerStyle={styles.adminPanelBodyContent}>
-              {modTab === 'dashboard' && (
+          <ScrollView style={styles.adminPanelBody} contentContainerStyle={styles.adminPanelBodyContent}>
+            {modTab === 'dashboard' && (
               <>
-                {/* ── Metric Cards ── */}
-                <Text style={styles.panelSectionTitle}>Overview</Text>
-                <View style={styles.dbStatsGrid}>
-                  <TouchableOpacity style={[styles.dbStatCard, reportedPosts.length > 0 && styles.dbStatCardAlert]} onPress={() => setModTab('reports')}>
-                    <View style={styles.dbStatTop}>
-                      <Ionicons name="flag" size={18} color={reportedPosts.length > 0 ? '#DC2626' : '#6B7280'} />
-                      <Text style={[styles.dbStatNum, reportedPosts.length > 0 && styles.dbStatNumAlert]}>{reportedPosts.length}</Text>
-                    </View>
-                    <Text style={styles.dbStatLbl}>Reported Posts</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.dbStatCard, quarantinedPosts.length > 0 && styles.dbStatCardWarn]} onPress={() => setModTab('safety')}>
-                    <View style={styles.dbStatTop}>
-                      <Ionicons name="shield" size={18} color={quarantinedPosts.length > 0 ? '#D97706' : '#6B7280'} />
-                      <Text style={[styles.dbStatNum, quarantinedPosts.length > 0 && styles.dbStatNumWarn]}>{quarantinedPosts.length}</Text>
-                    </View>
-                    <Text style={styles.dbStatLbl}>Quarantined</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.dbStatCard} onPress={() => setModTab('users')}>
-                    <View style={styles.dbStatTop}>
-                      <Ionicons name="people" size={18} color="#6B7280" />
-                      <Text style={styles.dbStatNum}>{registeredUsers.length}</Text>
-                    </View>
-                    <Text style={styles.dbStatLbl}>Users</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.dbStatCard} onPress={() => setModTab('forums')}>
-                    <View style={styles.dbStatTop}>
-                      <Ionicons name="folder-open" size={18} color="#6B7280" />
-                      <Text style={styles.dbStatNum}>{discussionVM.openForums.length}</Text>
-                    </View>
-                    <Text style={styles.dbStatLbl}>Open Forums</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.dbStatCard} onPress={() => setModTab('users')}>
-                    <View style={styles.dbStatTop}>
-                      <Ionicons name="ban" size={18} color="#6B7280" />
-                      <Text style={styles.dbStatNum}>{Object.values(discussionVM.bannedUsers).filter(Boolean).length}</Text>
-                    </View>
-                    <Text style={styles.dbStatLbl}>Banned</Text>
-                  </TouchableOpacity>
-                  <View style={styles.dbStatCard}>
-                    <View style={styles.dbStatTop}>
-                      <Ionicons name="chatbubbles" size={18} color="#6B7280" />
-                      <Text style={styles.dbStatNum}>{discussionVM.discussions.length}</Text>
-                    </View>
-                    <Text style={styles.dbStatLbl}>Total Posts</Text>
-                  </View>
-                </View>
-
                 {/* ── Content Moderation Queue ── */}
                 <Text style={styles.panelSectionTitle}>Content Moderation Queue</Text>
                 <View style={styles.panelCard}>
@@ -1251,13 +1299,13 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
                 </View>
               </>
             )}
-              {modTab === 'reports' && (
+            {modTab === 'reports' && (
               <>
-            <Text style={styles.panelSectionTitle}>Reported Posts ({filteredReportedPosts.length})</Text>
-            {filteredReportedPosts.length > 0 && (
-              <View style={styles.bulkActionsRow}>
-                <TouchableOpacity
-                  style={styles.bulkActionButton}
+                <Text style={styles.panelSectionTitle}>Reported Posts ({filteredReportedPosts.length})</Text>
+                {filteredReportedPosts.length > 0 && (
+                  <View style={styles.bulkActionsRow}>
+                    <TouchableOpacity
+                      style={styles.bulkActionButton}
                   onPress={() => setSelectedReports(new Set(filteredReportedPosts.map(item => item.id)))}
                 >
                   <Text style={styles.bulkActionButtonText}>Select All</Text>
@@ -1858,8 +1906,8 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
             )}
             {modTab === 'filters' && (
               <>
-            <Text style={styles.panelSectionTitle}>Content Filter ({discussionVM.blockedWords.length})</Text>
-            <View style={styles.panelCard}>
+                <Text style={styles.panelSectionTitle}>Content Filter ({discussionVM.blockedWords.length})</Text>
+                <View style={styles.panelCard}>
               <Text style={styles.panelMeta}>By default, swearing is blocked automatically. Add extra custom words below if needed.</Text>
               <View style={styles.filterManageRow}>
                 <TextInput
@@ -1895,7 +1943,6 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
               </>
             )}
           </ScrollView>
-          </View>
         </SafeAreaView>
       </Modal>
 
@@ -1918,20 +1965,100 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
         />
       </Modal>
 
+      <Modal visible={showSettings} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={[styles.modalContainer, isDarkMode && styles.modalContainerDark]}>
+          <View style={[styles.navBar, isDarkMode && styles.navBarDark]}>
+            <TouchableOpacity onPress={() => setShowSettings(false)}>
+              <Text style={[styles.cancelButton, isDarkMode && styles.cancelButtonDark]}>Close</Text>
+            </TouchableOpacity>
+            <Text style={[styles.navTitle, isDarkMode && styles.navTitleDark]}>App Settings</Text>
+            <View style={{ width: 60 }} />
+          </View>
+          <ScrollView style={styles.modalContent} contentContainerStyle={styles.settingsScrollContent}>
+            <Text style={[styles.settingsSectionTitle, isDarkMode && styles.settingsSectionTitleDark]}>Profile & account</Text>
+            <View style={[styles.settingsCard, isDarkMode && styles.settingsCardDark]}>
+              <Text style={[styles.settingsCardTitle, isDarkMode && styles.settingsCardTitleDark]}>Signed in as</Text>
+              <Text style={[styles.settingsCardText, isDarkMode && styles.settingsCardTextDark]}>@{currentUser.username}</Text>
+              <Text style={[styles.settingsCardText, isDarkMode && styles.settingsCardTextDark]}>{currentUser.displayName || 'No display name set'}</Text>
+              <TouchableOpacity
+                style={[styles.settingsActionButton, isDarkMode && styles.settingsActionButtonDark]}
+                onPress={() => {
+                  setShowSettings(false);
+                  setShowProfileEdit(true);
+                }}
+              >
+                <Text style={[styles.settingsActionButtonText, isDarkMode && styles.settingsActionButtonTextDark]}>Edit profile</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.settingsSectionTitle, isDarkMode && styles.settingsSectionTitleDark]}>Theme</Text>
+            <TouchableOpacity
+              style={[styles.settingsItem, isDarkMode && styles.settingsItemDark]}
+              onPress={() => setIsDarkMode((prev) => !prev)}
+            >
+              <Text style={[styles.settingsItemTitle, isDarkMode && styles.settingsItemTitleDark]}>{isDarkMode ? 'Dark mode enabled' : 'Light mode'}</Text>
+              <Text style={[styles.settingsItemSubtitle, isDarkMode && styles.settingsItemSubtitleDark]}>
+                {isDarkMode ? 'A softer color palette for low-light browsing.' : 'A crisp light palette for clarity and focus.'}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.settingsSectionTitle, isDarkMode && styles.settingsSectionTitleDark]}>Account center</Text>
+            <Text style={[styles.settingsNote, isDarkMode && styles.settingsNoteDark]}>Recent account summaries below. Account switching is available in the login flow.</Text>
+            {(registeredUsers.length > 0 ? registeredUsers.slice(0, 5) : []).map((user) => (
+              <View key={user.id} style={[styles.accountRow, isDarkMode && styles.accountRowDark]}>
+                <Text style={[styles.accountName, isDarkMode && styles.accountNameDark]}>{user.username}</Text>
+                <Text style={[styles.accountStatus, isDarkMode && styles.accountStatusDark]}>
+                  {currentUser.id === user.id ? 'Current' : user.role || 'Member'}
+                </Text>
+              </View>
+            ))}
+
+            <Text style={[styles.settingsSectionTitle, isDarkMode && styles.settingsSectionTitleDark]}>Support</Text>
+            <TouchableOpacity
+              style={[styles.settingsItem, isDarkMode && styles.settingsItemDark]}
+              onPress={() => {
+                if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                  window.alert('Need help? Reach out to your community or app owner for support.');
+                }
+              }}
+            >
+              <Text style={[styles.settingsItemTitle, isDarkMode && styles.settingsItemTitleDark]}>Help & support</Text>
+              <Text style={[styles.settingsItemSubtitle, isDarkMode && styles.settingsItemSubtitleDark]}>View usage guidelines and support options.</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.logoutButtonLarge, isDarkMode && styles.logoutButtonLargeDark]}
+              onPress={() => {
+                setShowSettings(false);
+                onLogout();
+              }}
+            >
+              <Text style={[styles.logoutButtonText, styles.logoutButtonLargeText, isDarkMode && styles.logoutButtonTextDark]}>Sign out</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
       <SideMenuDrawer
         visible={showSideMenu}
         onClose={() => setShowSideMenu(false)}
         currentUser={currentUser}
-        forums={discussionVM.openForums}
+        forums={openNavigationForums}
+        recentForums={recentForums}
         activeForum={discussionVM.activeForum}
-        onSelectForum={(forumID) => discussionVM.selectForum(forumID)}
-        onEditProfile={() => {
+        onSelectForum={handleSelectForum}
+        onPastForums={() => {
+          setShowPastForums(true);
           setShowSideMenu(false);
-          setShowProfileEdit(true);
+        }}
+        onSettings={() => {
+          setShowSideMenu(false);
+          setShowSettings(true);
         }}
         onLogout={onLogout}
         permissions={permissions}
         onAdminPanel={() => setShowModPanel(true)}
+        isDarkMode={isDarkMode}
       />
 
       <Modal visible={showNewForumModal} animationType="slide" presentationStyle="pageSheet">
@@ -2142,26 +2269,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  menuButton: { padding: 8 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#2563EB' },
+  menuButton: { padding: 6 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#2563EB' },
   forumBanner: {
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  forumTitle: { fontWeight: '600', color: '#6B7280', fontSize: 12 },
-  forumTitleValue: { fontWeight: '700', color: '#111827', fontSize: 15, marginTop: 2 },
-  noOpenForumsLink: { color: '#2563EB', fontSize: 18, fontWeight: '700', marginTop: 10 },
+  forumTitle: { fontWeight: '600', color: '#9CA3AF', fontSize: 11 },
+  forumTitleValue: { fontWeight: '700', color: '#111827', fontSize: 14, marginTop: 1 },
+  forumSubtitle: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  noOpenForumsLink: { color: '#2563EB', fontSize: 16, fontWeight: '700', marginTop: 10 },
   noForumsContent: {
     flex: 1,
     alignItems: 'center',
@@ -2169,7 +2297,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   noForumsContentText: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '700',
     color: '#111827',
     textAlign: 'center',
@@ -2186,42 +2314,84 @@ const styles = StyleSheet.create({
   secondaryForumButtonText: { color: '#1D4ED8', fontWeight: '600', fontSize: 11 },
   createForumButton: {
     backgroundColor: '#2563EB',
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
   },
   createForumButtonText: { color: '#fff', fontWeight: '600', fontSize: 11 },
-  listContent: { padding: 12, gap: 12 },
+  feedToolbar: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#fff', gap: 8 },
+  feedSearchInput: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  feedFilterRow: { marginTop: 0 },
+  feedFilterRowContent: { paddingHorizontal: 0, gap: 6 },
+  feedSearchInputDark: {
+    borderColor: '#334155',
+    backgroundColor: '#1F2937',
+    color: '#E2E8F0',
+  },
+  filterChip: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  filterChipActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+  },
+  filterChipText: { fontSize: 11, fontWeight: '600', color: '#6B7280' },
+  filterChipTextActive: { color: '#fff' },
+  filterChipDark: { backgroundColor: '#334155', borderColor: '#475569' },
+  filterChipActiveDark: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
+  filterChipTextDark: { color: '#E2E8F0' },
+  filterChipTextActiveDark: { color: '#fff' },
+  listContent: { padding: 12, gap: 10 },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 10,
+    padding: 14,
     gap: 10,
     position: 'relative',
     ...(Platform.OS === 'web'
-      ? { boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.06)' }
+      ? { boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.05)' }
       : {
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.06,
-          shadowRadius: 4,
+          shadowOpacity: 0.05,
+          shadowRadius: 3,
         }),
-    elevation: 2,
+    elevation: 1,
   },
-  cardAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'space-between' },
+  cardContent: {},
+  cardAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between' },
   cardAuthorAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#DBEAFE',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cardAuthorAvatarText: { color: '#2563EB', fontWeight: '700', fontSize: 15 },
-  cardAuthorName: { fontWeight: '600', fontSize: 14 },
-  cardAuthorDate: { fontSize: 11, color: '#9CA3AF' },
-  cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
-  cardDescription: { fontSize: 13, color: '#6B7280' },
+  cardAuthorAvatarText: { color: '#2563EB', fontWeight: '700', fontSize: 13 },
+  cardAuthorName: { fontWeight: '600', fontSize: 13, color: '#111827' },
+  cardAuthorNameDark: { color: '#F8FAFC' },
+  cardAuthorDate: { fontSize: 10, color: '#9CA3AF' },
+  cardAuthorDateDark: { color: '#CBD5E1' },
+  cardTitle: { fontSize: 15, fontWeight: '700', color: '#111827', marginTop: 2 },
+  cardTitleDark: { color: '#F8FAFC' },
+  cardDescription: { fontSize: 12, color: '#6B7280' },
+  cardDescriptionDark: { color: '#CBD5E1' },
+  actionText: { fontSize: 12, color: '#6B7280' },
+  actionTextDark: { color: '#CBD5E1' },
   reportedBadge: {
     alignSelf: 'flex-start',
     backgroundColor: '#FEF3C7',
@@ -2229,13 +2399,14 @@ const styles = StyleSheet.create({
     borderColor: '#FDE68A',
     borderRadius: 999,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
   },
-  reportedBadgeText: { fontSize: 11, color: '#92400E', fontWeight: '700' },
+  reportedBadgeText: { fontSize: 10, color: '#92400E', fontWeight: '700' },
+  cardDark: { backgroundColor: '#111827' },
   cardImage: {
     width: '100%',
-    maxHeight: 260,
-    minHeight: 140,
+    maxHeight: 240,
+    minHeight: 120,
     borderRadius: 8,
     backgroundColor: '#F3F4F6',
   },
@@ -2248,7 +2419,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   tagText: { fontSize: 11, color: '#2563EB' },
-  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 },
+  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2 },
   actionItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionText: { fontSize: 12, color: '#6B7280' },
   moreMenuWrapper: { position: 'absolute', top: 12, right: 12, zIndex: 50, elevation: 8 },
@@ -2363,37 +2534,71 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 28,
     right: 24,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     backgroundColor: '#2563EB',
     justifyContent: 'center',
     alignItems: 'center',
     ...(Platform.OS === 'web'
-      ? { boxShadow: '0px 4px 8px rgba(37, 99, 235, 0.35)' }
+      ? { boxShadow: '0px 4px 8px rgba(37, 99, 235, 0.3)' }
       : {
           shadowColor: '#2563EB',
           shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.35,
+          shadowOpacity: 0.3,
           shadowRadius: 8,
         }),
-    elevation: 6,
+    elevation: 5,
   },
   fabDisabled: { backgroundColor: '#93C5FD' },
-  fabIcon: { color: '#fff', fontSize: 28, lineHeight: 32 },
+  fabIcon: { color: '#fff', fontSize: 26, lineHeight: 28 },
   modalContainer: { flex: 1, backgroundColor: '#fff' },
+  modalContainerDark: { backgroundColor: '#0F172A' },
   navBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
   cancelButton: { color: '#2563EB', fontSize: 16 },
+  cancelButtonDark: { color: '#93C5FD' },
   navTitle: { fontWeight: '600', fontSize: 16 },
+  navTitleDark: { color: '#E2E8F0' },
   modalContent: { flex: 1, padding: 16, gap: 12 },
+  settingsScrollContent: { paddingBottom: 32, gap: 16 },
+  settingsSectionTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  settingsSectionTitleDark: { color: '#E2E8F0' },
+  settingsCard: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 14, gap: 6 },
+  settingsCardDark: { backgroundColor: '#1F2937' },
+  settingsCardTitle: { fontSize: 12, fontWeight: '700', color: '#1F2937' },
+  settingsCardTitleDark: { color: '#E2E8F0' },
+  settingsCardText: { fontSize: 13, color: '#374151' },
+  settingsCardTextDark: { color: '#CBD5E1' },
+  settingsActionButton: { backgroundColor: '#2563EB', borderRadius: 10, padding: 12, alignItems: 'center' },
+  settingsActionButtonDark: { backgroundColor: '#1D4ED8' },
+  settingsActionButtonText: { color: '#fff', fontWeight: '700' },
+  settingsActionButtonTextDark: { color: '#fff' },
+  settingsItem: { backgroundColor: '#F3F4F6', borderRadius: 12, padding: 14, gap: 4 },
+  settingsItemDark: { backgroundColor: '#1E293B' },
+  settingsItemTitle: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  settingsItemTitleDark: { color: '#E2E8F0' },
+  settingsItemSubtitle: { fontSize: 12, color: '#475569' },
+  settingsItemSubtitleDark: { color: '#94A3B8' },
+  settingsNote: { fontSize: 11, color: '#6B7280', marginBottom: 8 },
+  settingsNoteDark: { color: '#94A3B8' },
+  accountRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 12, backgroundColor: '#FFFFFF', borderRadius: 10, marginBottom: 8 },
+  accountRowDark: { backgroundColor: '#111827' },
+  accountName: { color: '#111827', fontWeight: '600' },
+  accountNameDark: { color: '#E2E8F0' },
+  accountStatus: { color: '#6B7280', fontSize: 12 },
+  accountStatusDark: { color: '#94A3B8' },
+  logoutButtonLarge: { marginTop: 18, backgroundColor: '#FEE2E2', borderRadius: 10, padding: 14, alignItems: 'center' },
+  logoutButtonLargeDark: { backgroundColor: '#7F1D1D' },
+  logoutButtonLargeText: { color: '#DC2626', fontWeight: '700' },
+  logoutButtonTextDark: { color: '#FECACA' },
   adminPanelContainer: { flex: 1 },
   adminTabBarContainer: {
     borderBottomWidth: 1,
@@ -2720,6 +2925,7 @@ const styles = StyleSheet.create({
     borderColor: '#BFDBFE',
   },
   panelDangerButton: { backgroundColor: '#FEE2E2', borderColor: '#FECACA' },
+  panelButtonDanger: { backgroundColor: '#FEE2E2', borderColor: '#FECACA' },
   panelButtonText: { fontSize: 12, color: '#1F2937', fontWeight: '600' },
   wordChip: {
     flexDirection: 'row',
@@ -2743,6 +2949,38 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 8,
   },
+  adminSummaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 14,
+  },
+  adminSummaryCard: {
+    flex: 1,
+    minWidth: 110,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 14,
+  },
+  adminSummaryCardUrgent: {
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  adminSummaryValue: { fontSize: 20, fontWeight: '700', color: '#111827' },
+  adminSummaryLabel: { fontSize: 12, color: '#6B7280', marginTop: 4 },
+  adminRestoreButton: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  adminRestoreButtonText: { fontSize: 13, fontWeight: '600', color: '#1D4ED8' },
   loadMoreButton: {
     backgroundColor: '#EFF6FF',
     borderWidth: 1,

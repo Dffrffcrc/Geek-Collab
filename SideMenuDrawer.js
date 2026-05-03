@@ -33,12 +33,15 @@ const SideMenuDrawer = ({
   onClose,
   currentUser,
   forums,
+  recentForums,
   activeForum,
   onSelectForum,
-  onEditProfile,
+  onPastForums,
+  onSettings,
   onLogout,
   permissions,
   onAdminPanel,
+  isDarkMode = false,
 }) => {
   if (!visible) return null;
 
@@ -56,10 +59,10 @@ const SideMenuDrawer = ({
       <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
 
       {/* Side Drawer */}
-      <View style={styles.drawer}>
+      <View style={[styles.drawer, isDarkMode && styles.drawerDark]}>
         <SafeAreaView style={styles.drawerContainer}>
           {/* Header - User Profile Card */}
-          <View style={styles.profileCard}>
+          <View style={[styles.profileCard, isDarkMode && styles.profileCardDark]}>
             <View style={styles.profileTop}>
               {profileImageURI ? (
                 <Image source={{ uri: profileImageURI }} style={styles.profileImage} />
@@ -74,32 +77,33 @@ const SideMenuDrawer = ({
             </View>
 
             <View style={styles.profileInfo}>
-              <Text style={styles.displayName}>{currentUser.displayName || currentUser.username}</Text>
-              <Text style={styles.username}>@{currentUser.username}</Text>
+              <Text style={[styles.displayName, isDarkMode && styles.displayNameDark]}>{currentUser.displayName || currentUser.username}</Text>
+              <Text style={[styles.username, isDarkMode && styles.usernameDark]}>@{currentUser.username}</Text>
               {currentUser.bio && (
-                <Text style={styles.bio} numberOfLines={2}>{currentUser.bio}</Text>
+                <Text style={[styles.bio, isDarkMode && styles.bioDark]} numberOfLines={2}>{currentUser.bio}</Text>
               )}
-              <View style={styles.roleBadge}>
-                <Text style={styles.roleBadgeText}>{currentUser.role}</Text>
+              <View style={[styles.roleBadge, isDarkMode && styles.roleBadgeDark]}>
+                <Text style={[styles.roleBadgeText, isDarkMode && styles.roleBadgeTextDark]}>{currentUser.role}</Text>
               </View>
             </View>
 
-            <TouchableOpacity style={styles.editProfileButton} onPress={onEditProfile}>
-              <Ionicons name="pencil" size={14} color="#fff" />
-              <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+            <TouchableOpacity style={styles.editProfileButton} onPress={onSettings}>
+              <Ionicons name="settings-outline" size={14} color="#fff" />
+              <Text style={styles.editProfileButtonText}>Settings</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Forum List */}
-          <View style={styles.forumSection}>
-            <Text style={styles.sectionTitle}>Forums</Text>
-            <ScrollView
-              style={styles.forumList}
-              showsVerticalScrollIndicator={true}
-              scrollIndicatorInsets={{ right: -10 }}
-            >
-              {forums && forums.length > 0 ? (
-                forums.map((forum) => {
+          {/* Forum Navigation */}
+          <ScrollView
+            style={styles.forumsContainer}
+            showsVerticalScrollIndicator={false}
+            scrollIndicatorInsets={{ right: -10 }}
+          >
+            {/* Recently Visited */}
+            {recentForums && recentForums.length > 0 ? (
+              <View style={styles.forumGroup}>
+                <Text style={styles.sectionTitle}>Recently visited</Text>
+                {recentForums.map((forum) => {
                   const isActive = activeForum?.id === forum.id;
                   return (
                     <TouchableOpacity
@@ -110,41 +114,68 @@ const SideMenuDrawer = ({
                         onClose();
                       }}
                     >
-                      <View style={styles.forumItemContent}>
+                      <View style={styles.forumItemLeft}>
                         <Text
                           style={[styles.forumItemTitle, isActive && styles.forumItemTitleActive]}
                           numberOfLines={1}
                         >
                           {forum.title}
                         </Text>
-                        <Text style={[styles.forumItemMeta, isActive && styles.forumItemMetaActive]}>
-                          {forum.isReadOnly ? '🔒 Read-only' : '📝 Open'}
-                        </Text>
                       </View>
-                      {isActive && <Ionicons name="checkmark-circle" size={20} color="#2563EB" />}
+                      {forum.isReadOnly && <View style={styles.readOnlyBadge}><Text style={styles.badgeText}>R/O</Text></View>}
+                      {isActive && <Ionicons name="checkmark" size={16} color="#2563EB" />}
                     </TouchableOpacity>
                   );
-                })
-              ) : (
-                <Text style={styles.noForumsText}>No forums available</Text>
-              )}
-            </ScrollView>
-          </View>
+                })}
+              </View>
+            ) : null}
+
+            {/* Open Forums */}
+            {forums && forums.length > 0 ? (
+              <View style={styles.forumGroup}>
+                <Text style={styles.sectionTitle}>Open forums</Text>
+                {forums.map((forum) => {
+                  const isActive = activeForum?.id === forum.id;
+                  return (
+                    <TouchableOpacity
+                      key={forum.id}
+                      style={[styles.forumItem, isActive && styles.forumItemActive]}
+                      onPress={() => {
+                        onSelectForum(forum.id);
+                        onClose();
+                      }}
+                    >
+                      <View style={styles.forumItemLeft}>
+                        <Text
+                          style={[styles.forumItemTitle, isActive && styles.forumItemTitleActive]}
+                          numberOfLines={1}
+                        >
+                          {forum.title}
+                        </Text>
+                      </View>
+                      {forum.isReadOnly && <View style={styles.readOnlyBadge}><Text style={styles.badgeText}>R/O</Text></View>}
+                      {isActive && <Ionicons name="checkmark" size={16} color="#2563EB" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.noForumsText}>No forums available</Text>
+            )}
+          </ScrollView>
+
+          <TouchableOpacity style={styles.pastForumsButton} onPress={onPastForums}>
+            <Ionicons name="time-outline" size={16} color="#2563EB" />
+            <Text style={styles.pastForumsText}>Past forums</Text>
+          </TouchableOpacity>
 
           {/* Action Buttons */}
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => {
-                onClose();
-                // FAQ can be opened from main view
-              }}
-            >
-              <Ionicons name="help-circle-outline" size={18} color="#6B7280" />
-              <Text style={styles.actionButtonText}>FAQ</Text>
-            </TouchableOpacity>
-
-            {permissions.canModerate && (
+            {(
+              permissions.canModerate ||
+              currentUser?.role === 'admin' ||
+              (Array.isArray(currentUser?.forumModerators) && currentUser.forumModerators.length > 0)
+            ) && (
               <TouchableOpacity
                 style={styles.actionButton}
                 onPress={() => {
@@ -152,13 +183,15 @@ const SideMenuDrawer = ({
                   onAdminPanel && onAdminPanel();
                 }}
               >
-                <Ionicons name="shield-checkmark-outline" size={18} color="#6B7280" />
-                <Text style={styles.actionButtonText}>Admin Panel</Text>
+                <Ionicons name="shield-checkmark-outline" size={16} color="#2563EB" />
+                <Text style={styles.actionButtonText}>
+                  {currentUser?.role === 'admin' ? 'Admin Panel' : 'Moderator'}
+                </Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
-              <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+              <Ionicons name="log-out-outline" size={16} color="#EF4444" />
               <Text style={styles.logoutButtonText}>Logout</Text>
             </TouchableOpacity>
           </View>
@@ -279,94 +312,143 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 12,
   },
-  forumSection: {
+  forumsContainer: {
     flex: 1,
-    minHeight: 0,
+  },
+  forumGroup: {
+    marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#9CA3AF',
     textTransform: 'uppercase',
-    marginBottom: 10,
-    letterSpacing: 0.5,
-  },
-  forumList: {
-    flex: 1,
+    marginBottom: 8,
+    letterSpacing: 0.8,
   },
   forumItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginBottom: 6,
-    gap: 10,
-    flex: 1,
+    paddingHorizontal: 0,
+    paddingVertical: 8,
+    marginBottom: 4,
+    gap: 8,
   },
-  forumItemActive: {
-    backgroundColor: '#EFF6FF',
-    borderLeftWidth: 3,
-    borderLeftColor: '#2563EB',
-  },
-  forumItemContent: {
+  forumItemLeft: {
     flex: 1,
+    minWidth: 0,
   },
   forumItemTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#374151',
   },
   forumItemTitleActive: {
     color: '#1D4ED8',
+    fontWeight: '600',
+  },
+  forumItemActive: {
+    backgroundColor: 'transparent',
+  },
+  readOnlyBadge: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  badgeText: {
+    fontSize: 10,
     fontWeight: '700',
+    color: '#6B7280',
   },
-  forumItemMeta: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 2,
+  pastForumsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    marginTop: 8,
   },
-  forumItemMetaActive: {
+  pastForumsText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: '#2563EB',
   },
   noForumsText: {
     fontSize: 12,
     color: '#9CA3AF',
     textAlign: 'center',
-    paddingVertical: 20,
+    paddingVertical: 16,
   },
   actions: {
-    gap: 8,
+    gap: 6,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
-    paddingTopY: 12,
+    paddingTop: 12,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 8,
-    gap: 10,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 8,
+    backgroundColor: '#EFF6FF',
   },
   actionButtonText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#6B7280',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 8,
-    gap: 10,
-    marginTop: 4,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 8,
+    backgroundColor: '#FEE2E2',
   },
   logoutButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#EF4444',
+    color: '#DC2626',
+  },
+  // Dark mode styles
+  drawerDark: {
+    backgroundColor: '#1F2937',
+    borderRightColor: '#334155',
+  },
+  profileCardDark: {
+    backgroundColor: '#111827',
+    borderColor: '#334155',
+  },
+  displayNameDark: {
+    color: '#93C5FD',
+  },
+  usernameDark: {
+    color: '#94A3B8',
+  },
+  bioDark: {
+    color: '#CBD5E1',
+  },
+  roleBadgeDark: {
+    backgroundColor: '#0C4A6E',
+  },
+  roleBadgeTextDark: {
+    color: '#93C5FD',
+  },
+  editProfileButtonDark: {
+    backgroundColor: '#1D4ED8',
+  },
+  editProfileButtonTextDark: {
+    color: '#E2E8F0',
   },
 });
 
