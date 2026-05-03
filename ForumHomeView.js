@@ -25,6 +25,7 @@ import ProfileEditView from './ProfileEditView';
 import SideMenuDrawer from './SideMenuDrawer';
 import { getAllUsers } from './StorageExtension';
 import { hasModerationMatch } from './ContentModeration';
+import FAQView from './FAQView';
 
 // Reddit-inspired colors
 const Colors = {
@@ -146,7 +147,7 @@ const TouchableOpacity = ({ children, style, activeOpacity = 0.85, disabled, ...
   );
 };
 
-const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, confirmAction, openMenu, onOpenMuteModal }) => {
+const DiscussionCard = ({ discussion, viewModel, currentUser, onOpenProfile, confirmAction, openMenu, onOpenMuteModal, isDarkMode }) => {
   const [showDetail, setShowDetail] = useState(false);
   const permissions = viewModel.getPermissionSummary(currentUser);
 
@@ -926,6 +927,7 @@ const ForumHomeView = ({ currentUser, onLogout, authVM, newUserNotice, clearNewU
               onOpenProfile={openProfile}
               confirmAction={confirmAction}
               onOpenMuteModal={openMuteModal}
+              isDarkMode={isDarkMode}
               openMenu={(discussion, x, y) => {
                 setOverlayMenu({ visible: true, x, y, discussion });
               }}
