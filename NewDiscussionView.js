@@ -48,6 +48,16 @@ const Radius = {
   full: 9999,
 };
 
+const normalizeImageUri = (value) => {
+  if (!value || typeof value !== 'string') return value;
+  if (value.startsWith('data:image/') && value.includes('https://')) {
+    const commaIndex = value.indexOf(',');
+    const payload = commaIndex >= 0 ? value.slice(commaIndex + 1) : value;
+    if (payload.startsWith('http://') || payload.startsWith('https://')) return payload;
+  }
+  return value;
+};
+
 const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -76,12 +86,13 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
 
   const toImageURI = (image) => {
     if (!image) return null;
-    if (image.uri) return image.uri;
+    if (image.uri) return normalizeImageUri(image.uri);
     if (typeof image === 'string') {
+      const normalized = normalizeImageUri(image);
       // If it's already a data: URI or an https URL (Cloudinary), return as-is
-      if (image.startsWith('data:') || image.startsWith('http')) return image;
+      if (normalized.startsWith('data:') || normalized.startsWith('http')) return normalized;
       // Otherwise assume it's base64 and wrap it
-      return `data:image/jpeg;base64,${image}`;
+      return `data:image/jpeg;base64,${normalized}`;
     }
     if (image.base64) {
       const mimeType = image.mimeType || 'image/jpeg';
@@ -110,7 +121,7 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
         }
 
         console.log('Uploading to Cloudinary with forumID:', selectedForumID); // DEBUG
-        imageUrl = await uploadToCloudinary(base64, selectedForumID, 'post');
+        imageUrl = await uploadToCloudinary(base64, selectedForumID, 'forum');
         console.log('Upload successful, URL:', imageUrl); // DEBUG
         setUploadedImageUrl(imageUrl); // Store for preview
       } catch (error) {

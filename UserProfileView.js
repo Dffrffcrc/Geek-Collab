@@ -16,12 +16,13 @@ import MediaPicker from './MediaPicker';
 const toImageURI = (image) => {
   if (!image) return null;
   if (typeof image === 'string') {
+    const normalized = normalizeImageUri(image);
     // If it's already a data: URI or an https URL (Cloudinary), return as-is
-    if (image.startsWith('data:') || image.startsWith('http')) return image;
+    if (normalized.startsWith('data:') || normalized.startsWith('http')) return normalized;
     // Otherwise assume it's base64 and wrap it
-    return `data:image/jpeg;base64,${image}`;
+    return `data:image/jpeg;base64,${normalized}`;
   }
-  if (image.uri) return image.uri;
+  if (image.uri) return normalizeImageUri(image.uri);
   if (image.base64) {
     const mimeType = image.mimeType || 'image/jpeg';
     return `data:${mimeType};base64,${image.base64}`;

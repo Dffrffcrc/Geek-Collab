@@ -50,14 +50,26 @@ const Radius = {
   full: 9999,
 };
 
+const normalizeImageUri = (value) => {
+  if (!value || typeof value !== 'string') return value;
+  if (value.startsWith('data:image/') && value.includes('https://')) {
+    const commaIndex = value.indexOf(',');
+    const payload = commaIndex >= 0 ? value.slice(commaIndex + 1) : value;
+    if (payload.startsWith('http://') || payload.startsWith('https://')) return payload;
+  }
+  return value;
+};
+
 const toImageURI = (image) => {
   if (!image) return null;
   if (typeof image === 'string') {
+    const normalized = normalizeImageUri(image);
     // If it's already a data: URI or an https URL (Cloudinary), return as-is
-    if (image.startsWith('data:') || image.startsWith('http')) return image;
+    if (normalized.startsWith('data:') || normalized.startsWith('http')) return normalized;
     // Otherwise assume it's base64 and wrap it
-    return `data:image/jpeg;base64,${image}`;
+    return `data:image/jpeg;base64,${normalized}`;
   }
+  if (image.uri) return normalizeImageUri(image.uri);
   if (image.base64) return `data:image/jpeg;base64,${image.base64}`;
   return null;
 };

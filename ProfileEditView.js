@@ -19,6 +19,7 @@ const ProfileEditView = ({ currentUser, authVM, onClose, onSaveProfile }) => {
   const [displayName, setDisplayName] = useState(currentUser.displayName || currentUser.username || '');
   const [bio, setBio] = useState(currentUser.bio || '');
   const [profileImage, setProfileImage] = useState(currentUser.profileImage || null);
+const [selectedImageBase64, setSelectedImageBase64] = useState(null); // Store local selection before upload
   const [isLoading, setIsLoading] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -32,21 +33,14 @@ const ProfileEditView = ({ currentUser, authVM, onClose, onSaveProfile }) => {
         const file = event.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = async (e) => {
+        reader.onload = (e) => {
           const base64 = e.target?.result?.split(',')[1];
           if (!base64) return;
-
-          // Upload to Cloudinary
-          setIsUploadingImage(true);
-          try {
-            const cloudinaryUrl = await uploadToCloudinary(base64, currentUser.id, 'profile');
-            setProfileImage(cloudinaryUrl); // Store Cloudinary URL instead of base64
-          } catch (error) {
-            console.error('Profile image upload failed:', error);
-            Alert.alert('Upload Failed', `Could not upload image: ${error.message}`);
-          } finally {
-            setIsUploadingImage(false);
-          }
+          // Store base64 locally - don't upload yet
+          // Upload will happen when user clicks Save
+          setSelectedImageBase64(base64);
+          // Show a preview using data URI
+          setProfileImage(`data:image/jpeg;base64,${base64}`);
         };
         reader.readAsDataURL(file);
       };
@@ -65,12 +59,31 @@ const ProfileEditView = ({ currentUser, authVM, onClose, onSaveProfile }) => {
   const handleSave = async () => {
     setIsLoading(true);
     setSaveMessage('');
+    let finalImageUrl = originalProfileImage; // Start with the original
 
     try {
+      // If user selected a new image, upload it now
+      if (selectedImageBase64) {
+        setIsUploadingImage(true);
+        try {
+          const uploadedUrl = await uploadToCloudinary(selectedImageBase64, currentUser.id, 'profile');
+          finalImageUrl = uploadedUrl;
+          console.log('Profile image uploaded:', uploadedUrl);
+        } catch (error) {
+          console.error('Profile image upload failed:', error);
+          Alert.alert('Upload Failed', `Could not upload image: ${error.message}`);
+          setIsLoading(false);
+          setIsUploadingImage(false);
+          return;
+        } finally {
+          setIsUploadingImage(false);
+        }
+      }
+
       const success = await authVM.updateProfile({
         displayName,
         bio,
-        profileImage,
+        profileImage: finalImageUrl,
       });
 
       if (success) {

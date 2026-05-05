@@ -9,10 +9,10 @@ const CLOUDINARY_CLOUD_NAME = 'dyy4eujyq';
  * 
  * @param {string} base64Image - Base64 encoded image
  * @param {string} resourceId - Forum ID or User ID
- * @param {string} resourceType - 'post' | 'profile' (default: 'post')
+ * @param {string} resourceType - 'forum' | 'profile' (default: 'forum')
  * @returns {Promise<string>} - Cloudinary secure URL
  */
-export const uploadToCloudinary = async (base64Image, resourceId, resourceType = 'post') => {
+export const uploadToCloudinary = async (base64Image, resourceId, resourceType = 'forum') => {
   if (!base64Image) {
     throw new Error('No image provided');
   }
@@ -24,13 +24,14 @@ export const uploadToCloudinary = async (base64Image, resourceId, resourceType =
   try {
     const formData = new FormData();
     formData.append('file', `data:image/jpeg;base64,${base64Image}`);
-    formData.append('upload_preset', 'test_upload');
     
-    // Add folder for organization
+    // Use the appropriate preset based on resource type
     if (resourceType === 'profile') {
-      formData.append('folder', `users/${resourceId}/profile`);
+      formData.append('upload_preset', 'geek_collab_profile_pics');
+      formData.append('folder', `profilePics/${resourceId}`);
     } else {
-      formData.append('folder', `${resourceId}/posts`);
+      formData.append('upload_preset', 'geek_collab_forum_media');
+      formData.append('folder', `forums/${resourceId}`);
     }
 
     const response = await fetch(
