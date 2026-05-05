@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Geek Collab",
+    "slug": "geek-collab",
+    "scheme": "geekcollab",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/forum-logo.png",
+    "userInterfaceStyle": "dark",
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/forum-logo.png"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
