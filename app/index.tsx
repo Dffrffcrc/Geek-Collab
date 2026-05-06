@@ -14,5 +14,5 @@ export default function Index() {
   }
   if (!user) return <Redirect href="/login" />;
   if (!user.emailVerified) return <Redirect href="/verify-email" />;
-  return <Redirect href="/home" />;
+  return <Redirect href="/forums" />;
 }

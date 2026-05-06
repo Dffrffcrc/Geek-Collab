@@ -2,24 +2,183 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Per-user profile docs. UID-keyed; only the owner can write.
+    // ---- helpers ---------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+
+    function forumIsActive(slug) {
+      return get(/databases/$(database)/documents/forums/$(slug)).data.closesAt > request.time;
+    }
+
+    function isModOf(slug) {
+      return isSignedIn() &&
+             request.auth.uid in
+               get(/databases/$(database)/documents/forums/$(slug)).data.get('moderatorUids', []);
+    }
+
+    function userMutedIn(slug) {
+      return exists(/databases/$(database)/documents/forums/$(slug)/mutes/$(request.auth.uid));
+    }
+
+    function userTimedOut() {
+      return exists(/databases/$(database)/documents/timeouts/$(request.auth.uid)) && (
+        get(/databases/$(database)/documents/timeouts/$(request.auth.uid)).data.expiresAt == null ||
+        get(/databases/$(database)/documents/timeouts/$(request.auth.uid)).data.expiresAt > request.time
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // ---- admins (read-only for clients; provisioned via console) --------
+    match /admins/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ---- content filter (banned words list, admin-managed) -------------
+    match /config/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ---- users -----------------------------------------------------------
     match /users/{uid} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null && request.auth.uid == uid;
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && request.auth.uid == uid;
       allow delete: if false;
     }
 
-    // Username -> uid index, used to allow logging in by username.
-    // Public read so the login page can resolve username -> email lookup
-    // through the users collection query (which requires auth, but creation
-    // of the username doc itself happens at signup, just after auth).
+    // ---- usernames index (public read for username->email lookup) -------
     match /usernames/{name} {
       allow read: if true;
-      allow create: if request.auth != null
-                    && request.resource.data.uid == request.auth.uid;
-      allow delete: if request.auth != null
-                    && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
       allow update: if false;
+    }
+
+    // ---- global timeouts (any signed-in user can write; client-gated) ---
+    match /timeouts/{uid} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // ---- forums ---------------------------------------------------------
+    match /forums/{slug} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && !userTimedOut();
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.createdBy ||
+        isModOf(slug) ||
+        isAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['postCount', 'activeUserCount'])
+      );
+      // Only admins (with an /admins/{uid} doc) can delete a forum, even
+      // a closed (read-only) one. The client cleans up subcollections
+      // first; subcollection delete rules below also allow admins.
+      allow delete: if isAdmin();
+
+      // Per-forum mute list — only mods (or admins) write.
+      match /mutes/{uid} {
+        allow read: if isSignedIn();
+        allow create, delete: if isModOf(slug) || isAdmin();
+        allow update: if false;
+      }
+
+      // Participants — anyone writes their own; mods/admins read & delete.
+      match /participants/{uid} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn() && uid == request.auth.uid;
+        allow delete: if isModOf(slug) || isAdmin();
+      }
+
+      // Activity log — anyone signed in can append; mods/admins read & delete.
+      match /activity/{eventId} {
+        allow read: if isModOf(slug) || isAdmin();
+        allow create: if isSignedIn();
+        allow update: if false;
+        allow delete: if isModOf(slug) || isAdmin();
+      }
+
+      // Reports — reporters can read their own, mods/admins read all and update/delete.
+      match /reports/{reportId} {
+        allow read: if isSignedIn() && (
+          isModOf(slug) || isAdmin() || resource.data.reporterUid == request.auth.uid
+        );
+        allow create: if isSignedIn()
+                      && !userTimedOut()
+                      && request.resource.data.reporterUid == request.auth.uid;
+        allow update, delete: if isModOf(slug) || isAdmin();
+      }
+
+      // Posts
+      match /posts/{postId} {
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+                      && !userTimedOut()
+                      && !userMutedIn(slug)
+                      && request.resource.data.authorUid == request.auth.uid
+                      && forumIsActive(slug);
+
+        // Author can edit own; mods can edit any (including isQuarantined).
+        // Anyone signed-in can update only the denormalized counters.
+        allow update: if isSignedIn() && (
+          (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
+          isModOf(slug) ||
+          isAdmin() ||
+          // Counter-only writes (any signed-in user — used for likes/comments).
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['likeCount', 'commentCount', 'nonAuthorCommentCount', 'reportCount']) ||
+          // Author can soft-delete their own post even if currently muted/
+          // timed out — you can always remove your own content.
+          (resource.data.authorUid == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['isDeleted', 'deletedAt', 'deletedBy', 'deletedByUsername']))
+        );
+
+        allow delete: if isSignedIn() && (
+          resource.data.authorUid == request.auth.uid ||
+          isModOf(slug) ||
+          isAdmin()
+        );
+
+        // Comments
+        match /comments/{commentId} {
+          allow read: if isSignedIn();
+          allow create: if isSignedIn()
+                        && !userTimedOut()
+                        && !userMutedIn(slug)
+                        && request.resource.data.authorUid == request.auth.uid
+                        && forumIsActive(slug);
+          allow update: if isSignedIn() && (
+            (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
+            isModOf(slug) ||
+            isAdmin() ||
+            // Author can soft-delete their own comment regardless of mute/timeout.
+            (resource.data.authorUid == request.auth.uid &&
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['isDeleted', 'deletedAt', 'deletedBy', 'deletedByUsername']))
+          );
+          allow delete: if isSignedIn() && (
+            resource.data.authorUid == request.auth.uid ||
+            isModOf(slug) ||
+            isAdmin()
+          );
+        }
+
+        // Likes (presence-based)
+        match /likes/{likerUid} {
+          allow read: if isSignedIn();
+          allow create, delete: if isSignedIn()
+                                && request.auth.uid == likerUid
+                                && !userTimedOut()
+                                && forumIsActive(slug);
+          allow update: if false;
+        }
+      }
     }
   }
 }

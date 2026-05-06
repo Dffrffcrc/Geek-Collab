@@ -1,0 +1,504 @@
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  increment,
+  onSnapshot,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  type Timestamp,
+} from 'firebase/firestore';
+import { db } from '../../../../lib/firebase';
+import { useAuth } from '../../../../lib/auth';
+import { useUserProfile } from '../../../../lib/user-profile';
+import { COLORS, BODY_FONT, HEADING_FONT } from '../../../../lib/theme';
+import { isClosed, timeAgo } from '../../../../lib/forum-utils';
+import {
+  logActivity,
+  trackParticipant,
+  setPostQuarantine,
+  useIsMod,
+  useIsMutedInForum,
+  useTimeoutStatus,
+} from '../../../../lib/moderation';
+import { useIsServerAdmin } from '../../../../lib/admins';
+import { useContentFilter, violatesContentFilter } from '../../../../lib/admin-tools';
+import { Avatar } from '../../../../components/Avatar';
+import { FormInput } from '../../../../components/FormInput';
+import { CommentItem, type Comment } from '../../../../components/CommentItem';
+import { HeartIcon, CommentIcon, MoreIcon } from '../../../../components/Icons';
+import { OverflowMenu, type MenuAction } from '../../../../components/OverflowMenu';
+import { ReportModal } from '../../../../components/ReportModal';
+import { EditModal } from '../../../../components/EditModal';
+
+type Post = {
+  title: string;
+  slug: string;
+  body: string;
+  authorUid: string;
+  authorUsername: string;
+  authorDisplayName: string;
+  createdAt: Timestamp;
+  editedAt?: Timestamp | null;
+  likeCount: number;
+  commentCount: number;
+  mediaUrls?: string[];
+  isQuarantined?: boolean;
+  isDeleted?: boolean;
+  deletedByUsername?: string;
+};
+
+type Forum = { name: string; closesAt: Timestamp };
+
+export default function PostDetail() {
+  const router = useRouter();
+  const { slug, post: postSlug } = useLocalSearchParams<{ slug: string; post: string }>();
+  const { user } = useAuth();
+  const profile = useUserProfile();
+  const isMod = useIsMod(slug);
+  const isAdmin = useIsServerAdmin();
+  const muted = useIsMutedInForum(slug);
+  const { timedOut } = useTimeoutStatus();
+  const filter = useContentFilter();
+
+  const [forum, setForum] = useState<Forum | null | undefined>(undefined);
+  const [post, setPost] = useState<Post | null | undefined>(undefined);
+  const [comments, setComments] = useState<Comment[] | null>(null);
+  const [liked, setLiked] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+
+  useEffect(() => {
+    if (!slug) return;
+    return onSnapshot(doc(db, 'forums', slug), (snap) => {
+      setForum(snap.exists() ? (snap.data() as Forum) : null);
+    });
+  }, [slug]);
+
+  useEffect(() => {
+    if (!slug || !postSlug) return;
+    return onSnapshot(doc(db, 'forums', slug, 'posts', postSlug), (snap) => {
+      setPost(snap.exists() ? (snap.data() as Post) : null);
+    });
+  }, [slug, postSlug]);
+
+  useEffect(() => {
+    if (!slug || !postSlug) return;
+    const q = query(
+      collection(db, 'forums', slug, 'posts', postSlug, 'comments'),
+      orderBy('createdAt', 'asc'),
+    );
+    return onSnapshot(q, (snap) => {
+      setComments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Comment, 'id'>) })));
+    });
+  }, [slug, postSlug]);
+
+  useEffect(() => {
+    if (!user || !slug || !postSlug) return;
+    return onSnapshot(doc(db, 'forums', slug, 'posts', postSlug, 'likes', user.uid), (snap) => {
+      setLiked(snap.exists());
+    });
+  }, [user, slug, postSlug]);
+
+  async function toggleLike() {
+    if (!user || !slug || !postSlug) return;
+    const likeRef = doc(db, 'forums', slug, 'posts', postSlug, 'likes', user.uid);
+    const postRef = doc(db, 'forums', slug, 'posts', postSlug);
+    try {
+      if (liked) {
+        await deleteDoc(likeRef);
+        await runTransaction(db, async (tx) => {
+          const p = await tx.get(postRef);
+          if (p.exists()) tx.update(postRef, { likeCount: Math.max(0, (p.data().likeCount ?? 1) - 1) });
+        });
+      } else {
+        await setDoc(likeRef, { createdAt: serverTimestamp() });
+        await runTransaction(db, async (tx) => {
+          tx.update(postRef, { likeCount: increment(1) });
+        });
+      }
+    } catch (err) {
+      console.error('[post:like] failed:', err);
+    }
+  }
+
+  async function postComment() {
+    setError(null);
+    const t = commentText.trim();
+    if (!t) return;
+    if (!user || !profile || !slug || !postSlug) return;
+    if (timedOut) return setError('You are timed out and cannot comment.');
+    if (muted) return setError('You are muted in this forum.');
+    const blocked = violatesContentFilter(t, filter.words);
+    if (blocked) {
+      return setError(`Your comment contains a restricted word ("${blocked}"). Please rewrite.`);
+    }
+    setBusy(true);
+    try {
+      const commentsRef = collection(db, 'forums', slug, 'posts', postSlug, 'comments');
+      const postRef = doc(db, 'forums', slug, 'posts', postSlug);
+      const commentRef = await addDoc(commentsRef, {
+        body: t,
+        authorUid: user.uid,
+        authorUsername: profile.username,
+        authorDisplayName: profile.displayName,
+        createdAt: serverTimestamp(),
+        parentCommentId: null,
+        rootCommentId: null,
+        isDeleted: false,
+      });
+      await runTransaction(db, async (tx) => {
+        const updates: Record<string, unknown> = { commentCount: increment(1) };
+        // Only count toward popularity if a non-author commented.
+        if (post && user.uid !== post.authorUid) {
+          updates.nonAuthorCommentCount = increment(1);
+        }
+        tx.update(postRef, updates);
+      });
+      trackParticipant(slug, user.uid, profile.username, profile.displayName, 'comment');
+      logActivity(slug, user.uid, profile.username, 'comment_created', {
+        targetType: 'comment',
+        targetId: commentRef.id,
+      });
+      setCommentText('');
+    } catch (err: unknown) {
+      console.error('[comment:create] failed:', err);
+      const e = err as { code?: string; message?: string };
+      setError(`Could not comment (${e.code ?? e.message ?? 'unknown error'}).`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deletePost() {
+    if (!post || !slug || !postSlug || !user || !profile) return;
+    if (!confirm('Delete this post?')) return;
+    try {
+      // Soft delete — admins can still see and restore.
+      await updateDoc(doc(db, 'forums', slug, 'posts', postSlug), {
+        isDeleted: true,
+        deletedAt: serverTimestamp(),
+        deletedBy: user.uid,
+        deletedByUsername: profile.username,
+      });
+      logActivity(slug, user.uid, profile.username, 'post_deleted', {
+        targetType: 'post',
+        targetId: postSlug,
+        details: post.title,
+      });
+      router.replace(`/forums/${slug}`);
+    } catch (err) {
+      console.error('[post:delete] failed:', err);
+    }
+  }
+
+  async function toggleQuarantine() {
+    if (!post || !slug || !postSlug || !user || !profile) return;
+    try {
+      const next = !post.isQuarantined;
+      await setPostQuarantine(slug, postSlug, next);
+      logActivity(slug, user.uid, profile.username, next ? 'post_quarantined' : 'post_unquarantined', {
+        targetType: 'post',
+        targetId: postSlug,
+      });
+    } catch (err) {
+      console.error('[post:quarantine] failed:', err);
+    }
+  }
+
+  if (post === undefined || forum === undefined) {
+    return <ActivityIndicator color={COLORS.yellow} style={{ marginTop: 32 }} />;
+  }
+  if (post === null || forum === null) {
+    return (
+      <View style={styles.notFound}>
+        <Text style={styles.notFoundText}>Post not found.</Text>
+        <TouchableOpacity onPress={() => router.replace(`/forums/${slug}`)}>
+          <Text style={styles.backLink}>← Back to forum</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const closed = isClosed(forum.closesAt);
+  const isAuthor = !!user && user.uid === post.authorUid;
+
+  // Block the post detail entirely for non-mods if it's quarantined.
+  if (post.isQuarantined && !isMod && !isAdmin) {
+    return (
+      <View style={styles.notFound}>
+        <Text style={styles.notFoundText}>This post is under review and not currently visible.</Text>
+        <TouchableOpacity onPress={() => router.replace(`/forums/${slug}`)}>
+          <Text style={styles.backLink}>← Back to forum</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+  // Same for soft-deleted posts: invisible except to mods/admins for audit.
+  if (post.isDeleted && !isMod && !isAdmin) {
+    return (
+      <View style={styles.notFound}>
+        <Text style={styles.notFoundText}>This post has been deleted.</Text>
+        <TouchableOpacity onPress={() => router.replace(`/forums/${slug}`)}>
+          <Text style={styles.backLink}>← Back to forum</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const actions: MenuAction[] = [];
+  if (isAuthor) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
+  if (isAuthor || isMod) actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
+  if (isMod) {
+    actions.push({
+      label: post.isQuarantined ? 'Remove from quarantine' : 'Move to quarantine',
+      onPress: toggleQuarantine,
+    });
+  }
+  if (!isAuthor) actions.push({ label: 'Report', onPress: () => setReportOpen(true) });
+
+  return (
+    <ScrollView contentContainerStyle={styles.scroll}>
+      <TouchableOpacity onPress={() => router.push(`/forums/${slug}`)}>
+        <Text style={styles.crumb}>← {forum.name}</Text>
+      </TouchableOpacity>
+
+      <View style={styles.postCard}>
+        <View style={styles.postHeaderRow}>
+          <View style={styles.postHeader}>
+            <Avatar size={36} label={post.authorDisplayName || post.authorUsername} />
+            <View style={{ marginLeft: 10 }}>
+              <Text
+                style={styles.author}
+                onPress={() => router.push(`/user/${post.authorUsername}`)}
+              >
+                {post.authorUsername}
+              </Text>
+              <Text style={styles.timestamp}>
+                {timeAgo(post.createdAt)}
+                {post.editedAt ? ' · edited' : ''}
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {post.isQuarantined && <Text style={styles.quarantineTag}>QUARANTINED</Text>}
+            {post.isDeleted && <Text style={styles.deletedTag}>DELETED</Text>}
+            {actions.length > 0 && (
+              <TouchableOpacity onPress={() => setMenuOpen(true)} style={styles.moreBtn}>
+                <MoreIcon size={20} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        <Text style={styles.title}>{post.title}</Text>
+        {!!post.body && <Text style={styles.body}>{post.body}</Text>}
+
+        {post.mediaUrls && post.mediaUrls.length > 0 && (
+          <View style={styles.mediaList}>
+            {post.mediaUrls.map((url) => (
+              <Image
+                key={url}
+                source={{ uri: url }}
+                style={styles.mediaImg}
+                resizeMode="contain"
+              />
+            ))}
+          </View>
+        )}
+
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={[styles.likeButton, liked && styles.likeButtonActive]}
+            onPress={toggleLike}
+          >
+            <HeartIcon size={18} color={liked ? COLORS.yellow : COLORS.textMuted} filled={liked} />
+            <Text style={styles.likeCount}>{post.likeCount ?? 0}</Text>
+          </TouchableOpacity>
+          <View style={styles.commentBadge}>
+            <CommentIcon size={16} color={COLORS.yellow} />
+            <Text style={styles.likeCount}>{post.commentCount ?? 0}</Text>
+          </View>
+        </View>
+      </View>
+
+      <Text style={styles.commentsHeading}>Comments</Text>
+      {comments === null ? (
+        <ActivityIndicator color={COLORS.yellow} />
+      ) : comments.length === 0 ? (
+        <Text style={styles.empty}>No comments yet.</Text>
+      ) : (
+        // Render top-level comments with their replies grouped underneath.
+        // Threading is flattened to a single visual indent level: any reply,
+        // regardless of depth, lives directly under its top-level ancestor.
+        // Deleted comments are filtered out unless the viewer is a mod/admin.
+        comments
+          .filter((c) => !c.parentCommentId && (!c.isDeleted || isMod || isAdmin))
+          .map((top) => {
+            const replies = comments
+              .filter(
+                (c) =>
+                  c.rootCommentId === top.id && (!c.isDeleted || isMod || isAdmin),
+              )
+              .sort(
+                (a, b) =>
+                  (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0),
+              );
+            return (
+              <View key={top.id}>
+                <CommentItem
+                  comment={top}
+                  forumSlug={slug!}
+                  postSlug={postSlug!}
+                  postAuthorUid={post.authorUid}
+                  canReply={!closed && !muted && !timedOut}
+                />
+                {replies.map((r) => (
+                  <CommentItem
+                    key={r.id}
+                    comment={r}
+                    forumSlug={slug!}
+                    postSlug={postSlug!}
+                    postAuthorUid={post.authorUid}
+                    isReply
+                    canReply={!closed && !muted && !timedOut}
+                  />
+                ))}
+              </View>
+            );
+          })
+      )}
+
+      {closed ? (
+        <Text style={styles.roHint}>Comments are closed.</Text>
+      ) : muted ? (
+        <Text style={styles.roHint}>You are muted in this forum and cannot comment.</Text>
+      ) : timedOut ? (
+        <Text style={styles.roHint}>You are timed out and cannot comment.</Text>
+      ) : (
+        <View style={styles.commentBox}>
+          <FormInput
+            placeholder="Write a comment…"
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            style={{ height: 70, paddingTop: 12 }}
+          />
+          {error && <Text style={styles.error}>{error}</Text>}
+          <TouchableOpacity style={styles.commentSubmit} onPress={postComment} disabled={busy}>
+            {busy ? <ActivityIndicator color="#000" /> : <Text style={styles.commentSubmitLabel}>Comment</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <OverflowMenu visible={menuOpen} onClose={() => setMenuOpen(false)} actions={actions} />
+      <ReportModal
+        visible={reportOpen}
+        onClose={() => setReportOpen(false)}
+        forumSlug={slug!}
+        targetType="post"
+        targetId={postSlug!}
+        targetAuthorUid={post.authorUid}
+        targetAuthorUsername={post.authorUsername}
+      />
+      <EditModal
+        visible={editOpen}
+        onClose={() => setEditOpen(false)}
+        forumSlug={slug!}
+        kind="post"
+        postSlug={postSlug!}
+        initialTitle={post.title}
+        initialBody={post.body}
+      />
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  scroll: { padding: 32, paddingBottom: 64, maxWidth: 800 },
+  crumb: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
+  postCard: { backgroundColor: '#2a2a2a', borderRadius: 14, padding: 22, marginBottom: 24 },
+  postHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  postHeader: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  author: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
+  timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
+  quarantineTag: {
+    backgroundColor: 'rgba(255,118,118,0.18)',
+    color: COLORS.error,
+    fontSize: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontFamily: BODY_FONT,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    overflow: 'hidden',
+  },
+  deletedTag: {
+    backgroundColor: '#3a3a3a',
+    color: COLORS.textMuted,
+    fontSize: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontFamily: BODY_FONT,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    overflow: 'hidden',
+  },
+  moreBtn: { padding: 4 },
+  title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 26, marginBottom: 12 },
+  body: { color: '#dddddd', fontFamily: BODY_FONT, fontSize: 15, lineHeight: 22 },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 18 },
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1f1f1f',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  likeButtonActive: { backgroundColor: '#3a3300' },
+  likeCount: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13 },
+  commentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#1f1f1f',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
+  mediaList: { gap: 12, marginTop: 16 },
+  mediaImg: { width: '100%', height: 360, borderRadius: 10, backgroundColor: '#1a1a1a' },
+  commentsHeading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, marginBottom: 14 },
+  empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
+  commentBox: { marginTop: 8 },
+  commentSubmit: {
+    alignSelf: 'flex-end',
+    backgroundColor: COLORS.yellow,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  commentSubmitLabel: { color: '#000', fontFamily: BODY_FONT, fontWeight: '700', fontSize: 13 },
+  error: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 12, marginBottom: 6 },
+  roHint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, textAlign: 'center', marginTop: 12 },
+  notFound: { padding: 32 },
+  notFoundText: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 16, marginBottom: 12 },
+  backLink: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 13 },
+});

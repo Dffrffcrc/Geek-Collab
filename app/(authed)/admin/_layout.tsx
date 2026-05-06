@@ -1,0 +1,101 @@
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { Slot, Redirect, useRouter, usePathname } from 'expo-router';
+import { useAuth } from '../../../lib/auth';
+import { useIsServerAdmin } from '../../../lib/admins';
+import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
+
+const TABS = [
+  { label: 'Dashboard', path: '' },
+  { label: 'Reports', path: '/reports' },
+  { label: 'Quarantine', path: '/quarantine' },
+  { label: 'Deleted', path: '/deleted' },
+  { label: 'Forums', path: '/forums' },
+  { label: 'Users', path: '/users' },
+  { label: 'Activity', path: '/activity' },
+  { label: 'Filters', path: '/filters' },
+];
+
+export default function AdminLayout() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { user, initializing } = useAuth();
+  const isAdmin = useIsServerAdmin();
+
+  if (initializing) {
+    return <ActivityIndicator color={COLORS.yellow} style={{ marginTop: 32 }} />;
+  }
+  if (!user) return <Redirect href="/login" />;
+  if (!isAdmin) {
+    return (
+      <View style={styles.deny}>
+        <Text style={styles.denyText}>You're not an admin.</Text>
+        <TouchableOpacity onPress={() => router.replace('/forums')}>
+          <Text style={styles.denyLink}>← Back to forums</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.shell}>
+      <View style={styles.header}>
+        <Text style={styles.heading}>Admin panel</Text>
+        <Text style={styles.sub}>App-wide moderation, user management, and safety tools.</Text>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabs}
+      >
+        {TABS.map((t) => {
+          const href = `/admin${t.path}`;
+          const active = pathname === href;
+          return (
+            <TouchableOpacity
+              key={t.path}
+              style={[styles.tab, active && styles.tabActive]}
+              onPress={() => router.push(href as never)}
+            >
+              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <View style={styles.body}>
+        <Slot />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  shell: { flex: 1 },
+  header: { paddingHorizontal: 32, paddingTop: 24, paddingBottom: 4 },
+  heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 30 },
+  sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 6 },
+  tabs: {
+    gap: 8,
+    paddingHorizontal: 32,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.separator,
+  },
+  tab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+  },
+  tabActive: { backgroundColor: COLORS.yellow, borderColor: COLORS.yellow },
+  tabLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '600' },
+  tabLabelActive: { color: '#000' },
+  body: { flex: 1 },
+  deny: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  denyText: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 16, marginBottom: 12 },
+  denyLink: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 14 },
+});

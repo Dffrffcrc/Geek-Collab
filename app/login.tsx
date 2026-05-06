@@ -44,7 +44,7 @@ export default function Login() {
       }
       const cred = await signInWithEmailAndPassword(auth, email, password);
       if (!cred.user.emailVerified) router.replace('/verify-email');
-      else router.replace('/home');
+      else router.replace('/forums');
     } catch (err: unknown) {
       console.error('[login] failed:', err);
       const e = err as { code?: string; message?: string };

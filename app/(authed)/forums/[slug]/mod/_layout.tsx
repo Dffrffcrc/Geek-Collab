@@ -1,0 +1,120 @@
+import { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Slot, Redirect, useLocalSearchParams, useRouter, usePathname } from 'expo-router';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../../../../lib/firebase';
+import { useAuth } from '../../../../../lib/auth';
+import { COLORS, BODY_FONT, HEADING_FONT } from '../../../../../lib/theme';
+
+type Forum = { name: string; moderatorUids?: string[] };
+
+const TABS = [
+  { label: 'Dashboard', path: '' },
+  { label: 'Reports', path: '/reports' },
+  { label: 'Quarantine', path: '/quarantine' },
+  { label: 'Users', path: '/users' },
+  { label: 'Activity', path: '/activity' },
+];
+
+export default function ModLayout() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { user, initializing } = useAuth();
+  const [forum, setForum] = useState<Forum | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!slug) return;
+    return onSnapshot(doc(db, 'forums', slug), (snap) => {
+      setForum(snap.exists() ? (snap.data() as Forum) : null);
+    });
+  }, [slug]);
+
+  if (initializing || forum === undefined) {
+    return <ActivityIndicator color={COLORS.yellow} style={{ marginTop: 32 }} />;
+  }
+  if (!user) return <Redirect href="/login" />;
+  if (!forum) {
+    return (
+      <View style={styles.deny}>
+        <Text style={styles.denyText}>Forum not found.</Text>
+      </View>
+    );
+  }
+  const isMod = (forum.moderatorUids ?? []).includes(user.uid);
+  if (!isMod) {
+    return (
+      <View style={styles.deny}>
+        <Text style={styles.denyText}>You're not a moderator of this forum.</Text>
+        <TouchableOpacity onPress={() => router.replace(`/forums/${slug}`)}>
+          <Text style={styles.denyLink}>← Back to forum</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const base = `/forums/${slug}/mod`;
+
+  return (
+    <View style={styles.shell}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.push(`/forums/${slug}`)}>
+          <Text style={styles.crumb}>← {forum.name}</Text>
+        </TouchableOpacity>
+        <Text style={styles.heading}>Moderator panel</Text>
+      </View>
+
+      <View style={styles.tabs}>
+        {TABS.map((t) => {
+          const href = `${base}${t.path}`;
+          const active = pathname === href;
+          return (
+            <TouchableOpacity
+              key={t.path}
+              style={[styles.tab, active && styles.tabActive]}
+              onPress={() => router.push(href as never)}
+            >
+              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <View style={styles.body}>
+        <Slot />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  shell: { flex: 1 },
+  header: { paddingHorizontal: 32, paddingTop: 24, paddingBottom: 8 },
+  crumb: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 6 },
+  heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 30 },
+  tabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 32,
+    paddingTop: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.separator,
+  },
+  tab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+  },
+  tabActive: { backgroundColor: COLORS.yellow, borderColor: COLORS.yellow },
+  tabLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '600' },
+  tabLabelActive: { color: '#000' },
+  body: { flex: 1 },
+  deny: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  denyText: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 16, marginBottom: 12 },
+  denyLink: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 14 },
+});

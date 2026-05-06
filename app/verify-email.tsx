@@ -22,7 +22,7 @@ export default function VerifyEmail() {
       return;
     }
     if (user.emailVerified) {
-      router.replace('/home');
+      router.replace('/forums');
       return;
     }
     // Poll every 5s so the screen advances automatically once they click the link.
@@ -30,7 +30,7 @@ export default function VerifyEmail() {
       try {
         if (!auth.currentUser) return;
         await reload(auth.currentUser);
-        if (auth.currentUser.emailVerified) router.replace('/home');
+        if (auth.currentUser.emailVerified) router.replace('/forums');
       } catch {
         // ignore transient errors
       }
@@ -44,7 +44,7 @@ export default function VerifyEmail() {
     setInfo(null);
     try {
       await reload(auth.currentUser);
-      if (auth.currentUser.emailVerified) router.replace('/home');
+      if (auth.currentUser.emailVerified) router.replace('/forums');
       else setInfo('Still not verified. Check your inbox (and spam folder).');
     } finally {
       setChecking(false);
