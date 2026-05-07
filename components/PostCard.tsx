@@ -7,12 +7,14 @@ import { useAuth } from '../lib/auth';
 import { useUserProfile } from '../lib/user-profile';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { previewText, timeAgo } from '../lib/forum-utils';
-import { logActivity, useIsMod, setPostQuarantine } from '../lib/moderation';
+import { logActivity, muteUser, setPostQuarantine, timeoutUser, useIsMod } from '../lib/moderation';
+import { isAdminUsername, useIsServerAdmin } from '../lib/admins';
 import { Avatar } from './Avatar';
 import { HeartIcon, CommentIcon, MoreIcon } from './Icons';
 import { OverflowMenu, type MenuAction } from './OverflowMenu';
 import { ReportModal } from './ReportModal';
 import { EditModal } from './EditModal';
+import { UserRoleTags } from './RoleTag';
 import type { Timestamp } from 'firebase/firestore';
 
 export type PostSummary = {
@@ -34,15 +36,19 @@ export type PostSummary = {
 export function PostCard({
   forumSlug,
   post,
+  moderatorUids = [],
 }: {
   forumSlug: string;
   post: PostSummary;
+  moderatorUids?: string[];
 }) {
   const router = useRouter();
   const { user } = useAuth();
   const profile = useUserProfile();
   const isMod = useIsMod(forumSlug);
+  const isAdmin = useIsServerAdmin();
   const isAuthor = !!user && user.uid === post.authorUid;
+  const canModerate = (isMod || isAdmin) && !isAdminUsername(post.authorUsername);
   const firstImage = post.mediaUrls?.[0];
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -85,14 +91,46 @@ export function PostCard({
     }
   }
 
+  async function muteAuthor() {
+    if (!user || !profile) return;
+    if (!confirm(`Mute @${post.authorUsername} in this forum?`)) return;
+    try {
+      await muteUser(forumSlug, post.authorUid, user.uid);
+      logActivity(forumSlug, user.uid, profile.username, 'user_muted', {
+        targetType: 'user',
+        targetId: post.authorUid,
+        details: post.authorUsername,
+      });
+    } catch (err) {
+      console.error('[post:mute-author] failed:', err);
+    }
+  }
+
+  async function timeoutAuthor() {
+    if (!user || !profile) return;
+    if (!confirm(`Timeout @${post.authorUsername} globally? This blocks them across every forum.`)) return;
+    try {
+      await timeoutUser(post.authorUid, user.uid, profile.username);
+      logActivity(forumSlug, user.uid, profile.username, 'user_timed_out', {
+        targetType: 'user',
+        targetId: post.authorUid,
+        details: post.authorUsername,
+      });
+    } catch (err) {
+      console.error('[post:timeout-author] failed:', err);
+    }
+  }
+
   const actions: MenuAction[] = [];
   if (isAuthor) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
-  if (isAuthor || isMod) actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
-  if (isMod) {
+  if (isAuthor || canModerate) actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
+  if (canModerate) {
     actions.push({
       label: post.isQuarantined ? 'Remove from quarantine' : 'Move to quarantine',
       onPress: toggleQuarantine,
     });
+    actions.push({ label: `Mute @${post.authorUsername}`, onPress: muteAuthor });
+    actions.push({ label: `Timeout @${post.authorUsername}`, destructive: true, onPress: timeoutAuthor });
   }
   if (!isAuthor) actions.push({ label: 'Report', onPress: () => setReportOpen(true) });
 
@@ -106,13 +144,20 @@ export function PostCard({
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <Avatar size={32} label={post.authorDisplayName || post.authorUsername} />
-            <View style={{ marginLeft: 10 }}>
-              <Text
-                style={styles.username}
-                onPress={() => router.push(`/user/${post.authorUsername}`)}
-              >
-                {post.authorUsername}
-              </Text>
+            <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
+              <View style={styles.usernameRow}>
+                <Text
+                  style={styles.username}
+                  onPress={() => router.push(`/profile/${post.authorUsername}`)}
+                >
+                  {post.authorUsername}
+                </Text>
+                <UserRoleTags
+                  username={post.authorUsername}
+                  uid={post.authorUid}
+                  moderatorUids={moderatorUids}
+                />
+              </View>
               <Text style={styles.timestamp}>
                 {timeAgo(post.createdAt)}
                 {post.editedAt ? ' · edited' : ''}
@@ -196,6 +241,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  usernameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '700' },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
   quarantineTag: {

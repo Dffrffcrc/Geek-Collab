@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
-import { isAdmin } from '../../../lib/admins';
+import { useIsServerAdmin } from '../../../lib/admins';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
 import { slugify } from '../../../lib/forum-utils';
 import { FormInput } from '../../../components/FormInput';
@@ -20,7 +20,7 @@ function toLocalInputValue(d: Date): string {
 export default function NewForum() {
   const router = useRouter();
   const { user } = useAuth();
-  const admin = isAdmin(user?.email);
+  const admin = useIsServerAdmin();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');

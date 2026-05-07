@@ -14,6 +14,7 @@ import {
 import { db } from '../../../lib/firebase';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
 import { Avatar } from '../../../components/Avatar';
+import { UserRoleTags } from '../../../components/RoleTag';
 import { timeAgo } from '../../../lib/forum-utils';
 
 type Profile = { uid: string; username: string; displayName: string };
@@ -84,7 +85,10 @@ export default function PublicProfile() {
       <View style={styles.header}>
         <Avatar size={88} label={profile.displayName} />
         <View style={{ marginLeft: 18, flex: 1 }}>
-          <Text style={styles.name}>{profile.displayName}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name}>{profile.displayName}</Text>
+            <UserRoleTags username={profile.username} />
+          </View>
           <Text style={styles.username}>@{profile.username}</Text>
         </View>
       </View>
@@ -113,6 +117,7 @@ export default function PublicProfile() {
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64, maxWidth: 720 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   name: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 26 },
   username: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, marginTop: 4 },
   sectionHeader: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, marginBottom: 14 },

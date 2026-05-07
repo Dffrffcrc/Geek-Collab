@@ -1,37 +1,41 @@
-import { useEffect, useState } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from './firebase';
-import { useAuth } from './auth';
+import { useUserProfile } from './user-profile';
 
-// Hardcoded email list — used for client-only convenience gates (e.g. showing
-// the "+ New forum" button). For destructive actions like forum deletion,
-// always use `useIsServerAdmin` instead, since rules check the
-// `admins/{uid}` document — see firestore.rules.
-export const ADMIN_EMAILS = [
-  'thesomethingcompany.inc@gmail.com',
+// =============================================================================
+// EDIT THIS LIST TO ADD / REMOVE ADMINS
+// =============================================================================
+// Admins are identified by their forum username (case-sensitive — exact match).
+// Adding a username here grants client-side admin powers immediately on that
+// user's next page load.
+//
+// IMPORTANT — keep this list in sync with the equivalent array inside the
+// `isAdmin()` helper in `firestore.rules`. The Firestore rule file holds the
+// server-side copy that's actually enforced for destructive operations
+// (e.g. "Delete forum"). After editing both files, run:
+//
+//     firebase deploy --only firestore:rules
+//
+// The two lists must match for the Admin button + Admin panel to work
+// end-to-end.
+// =============================================================================
+export const ADMIN_USERNAMES: string[] = [
+  'thesomethingco.',
+  '_burntsandwich',
+  'siyuan',
+  'zwe',
+  'Epic_Blox5',
+  'paul',
+  'julwrites'
 ];
 
-export function isAdmin(email: string | null | undefined): boolean {
-  if (!email) return false;
-  return ADMIN_EMAILS.includes(email.toLowerCase());
+export function isAdminUsername(username: string | null | undefined): boolean {
+  if (!username) return false;
+  return ADMIN_USERNAMES.includes(username);
 }
 
-// True iff the current user has an `admins/{uid}` doc. Kept in Firestore so
-// that security rules can enforce it. Set up by manually creating the doc in
-// the Firebase Console (no fields needed, just the doc).
+// True when the currently signed-in user has an admin-listed username.
+// This drives every client-side admin gate (Admin button visibility, "+ New
+// forum" button, Delete forum action, etc.).
 export function useIsServerAdmin(): boolean {
-  const { user } = useAuth();
-  const [isServerAdmin, setIsServerAdmin] = useState(false);
-
-  useEffect(() => {
-    if (!user) {
-      setIsServerAdmin(false);
-      return;
-    }
-    return onSnapshot(doc(db, 'admins', user.uid), (snap) => {
-      setIsServerAdmin(snap.exists());
-    });
-  }, [user]);
-
-  return isServerAdmin;
+  const profile = useUserProfile();
+  return isAdminUsername(profile?.username);
 }

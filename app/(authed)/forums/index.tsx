@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { collection, onSnapshot, orderBy, query, type Timestamp } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
-import { isAdmin } from '../../../lib/admins';
+import { useIsServerAdmin } from '../../../lib/admins';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
 import { isClosed } from '../../../lib/forum-utils';
 import { ForumRow } from '../../../components/ForumRow';
@@ -20,7 +20,7 @@ type Forum = {
 export default function ActiveForums() {
   const router = useRouter();
   const { user } = useAuth();
-  const admin = isAdmin(user?.email);
+  const admin = useIsServerAdmin();
   const [forums, setForums] = useState<Forum[] | null>(null);
 
   useEffect(() => {

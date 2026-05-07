@@ -220,7 +220,7 @@ export default function AdminReports() {
               </View>
               <Text style={styles.summary}>
                 {isCommentReport ? 'Comment' : 'Post'} reported by{' '}
-                <Text style={styles.username} onPress={() => router.push(`/user/${r.reporterUsername}`)}>
+                <Text style={styles.username} onPress={() => router.push(`/profile/${r.reporterUsername}`)}>
                   @{r.reporterUsername}
                 </Text>
                 {r.targetAuthorUsername && (
@@ -228,7 +228,7 @@ export default function AdminReports() {
                     {' '}against{' '}
                     <Text
                       style={styles.username}
-                      onPress={() => router.push(`/user/${r.targetAuthorUsername}`)}
+                      onPress={() => router.push(`/profile/${r.targetAuthorUsername}`)}
                     >
                       @{r.targetAuthorUsername}
                     </Text>

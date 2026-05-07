@@ -23,14 +23,17 @@ import { COLORS, BODY_FONT, HEADING_FONT } from '../../../../lib/theme';
 import { isClosed, timeAgo } from '../../../../lib/forum-utils';
 import {
   logActivity,
+  muteUser,
   trackParticipant,
   setPostQuarantine,
+  timeoutUser,
   useIsMod,
   useIsMutedInForum,
   useTimeoutStatus,
 } from '../../../../lib/moderation';
-import { useIsServerAdmin } from '../../../../lib/admins';
-import { useContentFilter, violatesContentFilter } from '../../../../lib/admin-tools';
+import { isAdminUsername, useIsServerAdmin } from '../../../../lib/admins';
+import { UserRoleTags } from '../../../../components/RoleTag';
+import { violatesContentFilter } from '../../../../lib/admin-tools';
 import { Avatar } from '../../../../components/Avatar';
 import { FormInput } from '../../../../components/FormInput';
 import { CommentItem, type Comment } from '../../../../components/CommentItem';
@@ -56,7 +59,7 @@ type Post = {
   deletedByUsername?: string;
 };
 
-type Forum = { name: string; closesAt: Timestamp };
+type Forum = { name: string; closesAt: Timestamp; moderatorUids?: string[] };
 
 export default function PostDetail() {
   const router = useRouter();
@@ -67,7 +70,6 @@ export default function PostDetail() {
   const isAdmin = useIsServerAdmin();
   const muted = useIsMutedInForum(slug);
   const { timedOut } = useTimeoutStatus();
-  const filter = useContentFilter();
 
   const [forum, setForum] = useState<Forum | null | undefined>(undefined);
   const [post, setPost] = useState<Post | null | undefined>(undefined);
@@ -142,7 +144,7 @@ export default function PostDetail() {
     if (!user || !profile || !slug || !postSlug) return;
     if (timedOut) return setError('You are timed out and cannot comment.');
     if (muted) return setError('You are muted in this forum.');
-    const blocked = violatesContentFilter(t, filter.words);
+    const blocked = violatesContentFilter(t);
     if (blocked) {
       return setError(`Your comment contains a restricted word ("${blocked}"). Please rewrite.`);
     }
@@ -219,6 +221,36 @@ export default function PostDetail() {
     }
   }
 
+  async function muteAuthor() {
+    if (!post || !slug || !user || !profile) return;
+    if (!confirm(`Mute @${post.authorUsername} in this forum?`)) return;
+    try {
+      await muteUser(slug, post.authorUid, user.uid);
+      logActivity(slug, user.uid, profile.username, 'user_muted', {
+        targetType: 'user',
+        targetId: post.authorUid,
+        details: post.authorUsername,
+      });
+    } catch (err) {
+      console.error('[post:mute-author] failed:', err);
+    }
+  }
+
+  async function timeoutAuthor() {
+    if (!post || !slug || !user || !profile) return;
+    if (!confirm(`Timeout @${post.authorUsername} globally? This blocks them across every forum.`)) return;
+    try {
+      await timeoutUser(post.authorUid, user.uid, profile.username);
+      logActivity(slug, user.uid, profile.username, 'user_timed_out', {
+        targetType: 'user',
+        targetId: post.authorUid,
+        details: post.authorUsername,
+      });
+    } catch (err) {
+      console.error('[post:timeout-author] failed:', err);
+    }
+  }
+
   if (post === undefined || forum === undefined) {
     return <ActivityIndicator color={COLORS.yellow} style={{ marginTop: 32 }} />;
   }
@@ -259,14 +291,17 @@ export default function PostDetail() {
     );
   }
 
+  const canModerate = (isMod || isAdmin) && !isAdminUsername(post.authorUsername);
   const actions: MenuAction[] = [];
   if (isAuthor) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
-  if (isAuthor || isMod) actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
-  if (isMod) {
+  if (isAuthor || canModerate) actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
+  if (canModerate) {
     actions.push({
       label: post.isQuarantined ? 'Remove from quarantine' : 'Move to quarantine',
       onPress: toggleQuarantine,
     });
+    actions.push({ label: `Mute @${post.authorUsername}`, onPress: muteAuthor });
+    actions.push({ label: `Timeout @${post.authorUsername}`, destructive: true, onPress: timeoutAuthor });
   }
   if (!isAuthor) actions.push({ label: 'Report', onPress: () => setReportOpen(true) });
 
@@ -280,13 +315,20 @@ export default function PostDetail() {
         <View style={styles.postHeaderRow}>
           <View style={styles.postHeader}>
             <Avatar size={36} label={post.authorDisplayName || post.authorUsername} />
-            <View style={{ marginLeft: 10 }}>
-              <Text
-                style={styles.author}
-                onPress={() => router.push(`/user/${post.authorUsername}`)}
-              >
-                {post.authorUsername}
-              </Text>
+            <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
+              <View style={styles.authorRow}>
+                <Text
+                  style={styles.author}
+                  onPress={() => router.push(`/profile/${post.authorUsername}`)}
+                >
+                  {post.authorUsername}
+                </Text>
+                <UserRoleTags
+                  username={post.authorUsername}
+                  uid={post.authorUid}
+                  moderatorUids={forum.moderatorUids ?? []}
+                />
+              </View>
               <Text style={styles.timestamp}>
                 {timeAgo(post.createdAt)}
                 {post.editedAt ? ' · edited' : ''}
@@ -364,6 +406,7 @@ export default function PostDetail() {
                   forumSlug={slug!}
                   postSlug={postSlug!}
                   postAuthorUid={post.authorUid}
+                  moderatorUids={forum.moderatorUids ?? []}
                   canReply={!closed && !muted && !timedOut}
                 />
                 {replies.map((r) => (
@@ -373,6 +416,7 @@ export default function PostDetail() {
                     forumSlug={slug!}
                     postSlug={postSlug!}
                     postAuthorUid={post.authorUid}
+                    moderatorUids={forum.moderatorUids ?? []}
                     isReply
                     canReply={!closed && !muted && !timedOut}
                   />
@@ -433,6 +477,7 @@ const styles = StyleSheet.create({
   postCard: { backgroundColor: '#2a2a2a', borderRadius: 14, padding: 22, marginBottom: 24 },
   postHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   postHeader: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  authorRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   author: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
   quarantineTag: {

@@ -133,7 +133,7 @@ export default function AdminQuarantine() {
             <Text style={styles.title}>{p.title}</Text>
             <Text style={styles.meta}>
               by{' '}
-              <Text style={styles.username} onPress={() => router.push(`/user/${p.authorUsername}`)}>
+              <Text style={styles.username} onPress={() => router.push(`/profile/${p.authorUsername}`)}>
                 @{p.authorUsername}
               </Text>{' '}
               in {p.forumSlug} · {timeAgo(p.createdAt)}

@@ -26,21 +26,33 @@ service cloud.firestore {
       );
     }
 
+    // Admin allowlist — must mirror ADMIN_USERNAMES in `lib/admins.ts`.
+    // Edit BOTH files when adding/removing an admin, then redeploy rules.
+    function adminUsernames() {
+      return [
+        'thesomethingco.',
+        '_burntsandwich',
+        'siyuan',
+        'zwe',
+        'Epic_Blox5',
+        'paul',
+        'julwrites',
+      ];
+    }
+
     function isAdmin() {
       return isSignedIn() &&
-             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
+               in adminUsernames();
     }
 
-    // ---- admins (read-only for clients; provisioned via console) --------
-    match /admins/{uid} {
-      allow read: if isSignedIn();
-      allow write: if false;
-    }
-
-    // ---- content filter (banned words list, admin-managed) -------------
-    match /config/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    // True iff the user at /users/{uid} has an admin username. Used to block
+    // mods from acting on admin accounts (mute/timeout/etc.).
+    function targetIsAdmin(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)) &&
+             get(/databases/$(database)/documents/users/$(uid)).data.username
+               in adminUsernames();
     }
 
     // ---- users -----------------------------------------------------------
@@ -59,9 +71,11 @@ service cloud.firestore {
     }
 
     // ---- global timeouts (any signed-in user can write; client-gated) ---
+    // Blocks any timeout/ban against an admin user — admins are immune.
     match /timeouts/{uid} {
       allow read: if isSignedIn();
-      allow create, update, delete: if isSignedIn();
+      allow create, update: if isSignedIn() && !targetIsAdmin(uid);
+      allow delete: if isSignedIn();
     }
 
     // ---- forums ---------------------------------------------------------
@@ -80,10 +94,12 @@ service cloud.firestore {
       // first; subcollection delete rules below also allow admins.
       allow delete: if isAdmin();
 
-      // Per-forum mute list — only mods (or admins) write.
+      // Per-forum mute list — only mods (or admins) write. Admin targets
+      // can't be muted.
       match /mutes/{uid} {
         allow read: if isSignedIn();
-        allow create, delete: if isModOf(slug) || isAdmin();
+        allow create: if (isModOf(slug) || isAdmin()) && !targetIsAdmin(uid);
+        allow delete: if isModOf(slug) || isAdmin();
         allow update: if false;
       }
 
@@ -102,11 +118,13 @@ service cloud.firestore {
         allow delete: if isModOf(slug) || isAdmin();
       }
 
-      // Reports — reporters can read their own, mods/admins read all and update/delete.
+      // Reports — admins/mods read all; reporters can read their own.
+      // Listing rules check reads document-by-document; admin/mod predicates
+      // are evaluated first so collection-group queries work without ever
+      // touching `resource.data`.
       match /reports/{reportId} {
-        allow read: if isSignedIn() && (
-          isModOf(slug) || isAdmin() || resource.data.reporterUid == request.auth.uid
-        );
+        allow read: if isAdmin() || isModOf(slug)
+                    || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
         allow create: if isSignedIn()
                       && !userTimedOut()
                       && request.resource.data.reporterUid == request.auth.uid;
@@ -127,7 +145,8 @@ service cloud.firestore {
         // Anyone signed-in can update only the denormalized counters.
         allow update: if isSignedIn() && (
           (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
-          isModOf(slug) ||
+          // Mods can update anyone's post except admins'.
+          (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
           isAdmin() ||
           // Counter-only writes (any signed-in user — used for likes/comments).
           request.resource.data.diff(resource.data).affectedKeys()
@@ -141,7 +160,7 @@ service cloud.firestore {
 
         allow delete: if isSignedIn() && (
           resource.data.authorUid == request.auth.uid ||
-          isModOf(slug) ||
+          (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
           isAdmin()
         );
 
@@ -155,7 +174,8 @@ service cloud.firestore {
                         && forumIsActive(slug);
           allow update: if isSignedIn() && (
             (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
-            isModOf(slug) ||
+            // Mods can edit any comment except admins'.
+            (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
             isAdmin() ||
             // Author can soft-delete their own comment regardless of mute/timeout.
             (resource.data.authorUid == request.auth.uid &&
@@ -164,18 +184,18 @@ service cloud.firestore {
           );
           allow delete: if isSignedIn() && (
             resource.data.authorUid == request.auth.uid ||
-            isModOf(slug) ||
+            (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
             isAdmin()
           );
         }
 
-        // Likes (presence-based)
+        // Likes (presence-based) — allowed on closed forums too, so users
+        // can still endorse posts after the event ends.
         match /likes/{likerUid} {
           allow read: if isSignedIn();
           allow create, delete: if isSignedIn()
                                 && request.auth.uid == likerUid
-                                && !userTimedOut()
-                                && forumIsActive(slug);
+                                && !userTimedOut();
           allow update: if false;
         }
       }

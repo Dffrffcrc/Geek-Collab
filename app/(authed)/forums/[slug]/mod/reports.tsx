@@ -26,6 +26,7 @@ import {
   type Report,
 } from '../../../../../lib/moderation';
 import { FormInput } from '../../../../../components/FormInput';
+import { isAdminUsername } from '../../../../../lib/admins';
 
 export default function ReportsTab() {
   const router = useRouter();
@@ -213,7 +214,7 @@ export default function ReportsTab() {
               </View>
               <Text style={styles.summary}>
                 {isCommentReport ? 'Comment' : 'Post'} reported by{' '}
-                <Text style={styles.username} onPress={() => router.push(`/user/${r.reporterUsername}`)}>
+                <Text style={styles.username} onPress={() => router.push(`/profile/${r.reporterUsername}`)}>
                   @{r.reporterUsername}
                 </Text>
               </Text>
@@ -221,29 +222,34 @@ export default function ReportsTab() {
 
               <View style={styles.actions}>
                 <ActBtn label="View" onPress={() => router.push(targetPath as never)} />
-                {!isCommentReport && (
-                  <ActBtn label="Quarantine" onPress={() => quarantine(r.targetId)} />
-                )}
-                <ActBtn
-                  label={isCommentReport ? 'Delete comment' : 'Delete post'}
-                  destructive
-                  onPress={() =>
-                    isCommentReport
-                      ? deleteComment(r.parentPostSlug!, r.targetId)
-                      : deletePost(r.targetId)
-                  }
-                />
-                {r.targetAuthorUid && r.targetAuthorUsername && (
+                {/* Mods can't act on admin authors. */}
+                {!isAdminUsername(r.targetAuthorUsername) && (
                   <>
+                    {!isCommentReport && (
+                      <ActBtn label="Quarantine" onPress={() => quarantine(r.targetId)} />
+                    )}
                     <ActBtn
-                      label={`Mute @${r.targetAuthorUsername}`}
-                      onPress={() => muteAuthor(r.targetAuthorUid!, r.targetAuthorUsername!)}
-                    />
-                    <ActBtn
-                      label="Timeout author"
+                      label={isCommentReport ? 'Delete comment' : 'Delete post'}
                       destructive
-                      onPress={() => timeoutAuthor(r.targetAuthorUid!, r.targetAuthorUsername!)}
+                      onPress={() =>
+                        isCommentReport
+                          ? deleteComment(r.parentPostSlug!, r.targetId)
+                          : deletePost(r.targetId)
+                      }
                     />
+                    {r.targetAuthorUid && r.targetAuthorUsername && (
+                      <>
+                        <ActBtn
+                          label={`Mute @${r.targetAuthorUsername}`}
+                          onPress={() => muteAuthor(r.targetAuthorUid!, r.targetAuthorUsername!)}
+                        />
+                        <ActBtn
+                          label="Timeout author"
+                          destructive
+                          onPress={() => timeoutAuthor(r.targetAuthorUid!, r.targetAuthorUsername!)}
+                        />
+                      </>
+                    )}
                   </>
                 )}
                 <ActBtn label="Resolve" onPress={() => resolveReport(r.id)} />

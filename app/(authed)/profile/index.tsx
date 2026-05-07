@@ -14,6 +14,7 @@ import { useAuth } from '../../../lib/auth';
 import { useUserProfile } from '../../../lib/user-profile';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
 import { Avatar } from '../../../components/Avatar';
+import { UserRoleTags } from '../../../components/RoleTag';
 import { timeAgo } from '../../../lib/forum-utils';
 import { useRouter } from 'expo-router';
 
@@ -66,7 +67,10 @@ export default function MyProfile() {
       <View style={styles.header}>
         <Avatar size={88} label={profile?.displayName ?? profile?.username} />
         <View style={{ marginLeft: 18, flex: 1 }}>
-          <Text style={styles.name}>{profile?.displayName ?? '...'}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name}>{profile?.displayName ?? '...'}</Text>
+            <UserRoleTags username={profile?.username} />
+          </View>
           <Text style={styles.username}>@{profile?.username ?? '...'}</Text>
           <Text style={styles.email}>{profile?.email ?? ''}</Text>
         </View>
@@ -100,6 +104,7 @@ export default function MyProfile() {
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64, maxWidth: 720 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   name: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 26 },
   username: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, marginTop: 4 },
   email: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginTop: 4 },

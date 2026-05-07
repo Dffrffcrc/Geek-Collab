@@ -15,14 +15,16 @@ import { useAuth } from '../lib/auth';
 import { useUserProfile } from '../lib/user-profile';
 import { COLORS, BODY_FONT } from '../lib/theme';
 import { timeAgo } from '../lib/forum-utils';
-import { logActivity, trackParticipant, useIsMod } from '../lib/moderation';
-import { useContentFilter, violatesContentFilter } from '../lib/admin-tools';
+import { logActivity, muteUser, timeoutUser, trackParticipant, useIsMod } from '../lib/moderation';
+import { isAdminUsername, useIsServerAdmin } from '../lib/admins';
+import { violatesContentFilter } from '../lib/admin-tools';
 import { Avatar } from './Avatar';
 import { MoreIcon } from './Icons';
 import { OverflowMenu, type MenuAction } from './OverflowMenu';
 import { ReportModal } from './ReportModal';
 import { EditModal } from './EditModal';
 import { FormInput } from './FormInput';
+import { UserRoleTags } from './RoleTag';
 import type { Timestamp } from 'firebase/firestore';
 
 export type Comment = {
@@ -42,6 +44,7 @@ export function CommentItem({
   forumSlug,
   postSlug,
   postAuthorUid,
+  moderatorUids = [],
   isReply = false,
   canReply = true,
 }: {
@@ -49,6 +52,7 @@ export function CommentItem({
   forumSlug: string;
   postSlug: string;
   postAuthorUid: string;
+  moderatorUids?: string[];
   isReply?: boolean;
   canReply?: boolean;
 }) {
@@ -56,9 +60,10 @@ export function CommentItem({
   const { user } = useAuth();
   const profile = useUserProfile();
   const isMod = useIsMod(forumSlug);
-  const filter = useContentFilter();
+  const isAdmin = useIsServerAdmin();
   const isAuthor = !!user && user.uid === comment.authorUid;
   const isPostAuthor = comment.authorUid === postAuthorUid;
+  const canModerate = (isMod || isAdmin) && !isAdminUsername(comment.authorUsername);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -82,7 +87,7 @@ export function CommentItem({
     const t = replyText.trim();
     if (!t) return;
     if (!user || !profile) return setReplyError('You must be signed in.');
-    const blocked = violatesContentFilter(t, filter.words);
+    const blocked = violatesContentFilter(t);
     if (blocked) {
       return setReplyError(`Restricted word ("${blocked}") detected. Please rewrite.`);
     }
@@ -155,9 +160,43 @@ export function CommentItem({
     }
   }
 
+  async function muteAuthor() {
+    if (!user || !profile) return;
+    if (!confirm(`Mute @${comment.authorUsername} in this forum?`)) return;
+    try {
+      await muteUser(forumSlug, comment.authorUid, user.uid);
+      logActivity(forumSlug, user.uid, profile.username, 'user_muted', {
+        targetType: 'user',
+        targetId: comment.authorUid,
+        details: comment.authorUsername,
+      });
+    } catch (err) {
+      console.error('[comment:mute-author] failed:', err);
+    }
+  }
+
+  async function timeoutAuthor() {
+    if (!user || !profile) return;
+    if (!confirm(`Timeout @${comment.authorUsername} globally? This blocks them across every forum.`)) return;
+    try {
+      await timeoutUser(comment.authorUid, user.uid, profile.username);
+      logActivity(forumSlug, user.uid, profile.username, 'user_timed_out', {
+        targetType: 'user',
+        targetId: comment.authorUid,
+        details: comment.authorUsername,
+      });
+    } catch (err) {
+      console.error('[comment:timeout-author] failed:', err);
+    }
+  }
+
   const actions: MenuAction[] = [];
   if (isAuthor) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
-  if (isAuthor || isMod) actions.push({ label: 'Delete', destructive: true, onPress: deleteComment });
+  if (isAuthor || canModerate) actions.push({ label: 'Delete', destructive: true, onPress: deleteComment });
+  if (canModerate) {
+    actions.push({ label: `Mute @${comment.authorUsername}`, onPress: muteAuthor });
+    actions.push({ label: `Timeout @${comment.authorUsername}`, destructive: true, onPress: timeoutAuthor });
+  }
   if (!isAuthor) actions.push({ label: 'Report', onPress: () => setReportOpen(true) });
 
   return (
@@ -168,11 +207,16 @@ export function CommentItem({
           <View style={styles.meta}>
             <Text
               style={styles.username}
-              onPress={() => router.push(`/user/${comment.authorUsername}`)}
+              onPress={() => router.push(`/profile/${comment.authorUsername}`)}
             >
               {comment.authorUsername}
             </Text>
-            {isPostAuthor && <Text style={styles.authorTag}>AUTHOR</Text>}
+            <UserRoleTags
+              username={comment.authorUsername}
+              uid={comment.authorUid}
+              moderatorUids={moderatorUids}
+              isAuthor={isPostAuthor}
+            />
             <Text style={styles.timestamp}>
               {' '}· {timeAgo(comment.createdAt)}
               {comment.editedAt ? ' · edited' : ''}
@@ -261,21 +305,8 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.separator,
   },
   bubble: { flex: 1, backgroundColor: '#2a2a2a', padding: 12, borderRadius: 10 },
-  meta: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  meta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 },
   username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12, fontWeight: '700' },
-  authorTag: {
-    marginLeft: 6,
-    backgroundColor: COLORS.yellow,
-    color: '#000',
-    fontSize: 9,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    fontFamily: BODY_FONT,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    overflow: 'hidden',
-  },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
   moreBtn: { marginLeft: 'auto', padding: 2 },
   body: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, lineHeight: 18 },

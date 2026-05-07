@@ -1,10 +1,15 @@
+import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
-import { useUserProfile } from '../lib/user-profile';
+import { useUserProfile, type RecentForum } from '../lib/user-profile';
+import { useAuth } from '../lib/auth';
+import { isAdminUsername } from '../lib/admins';
 import { Avatar } from './Avatar';
+import { RoleTag } from './RoleTag';
 import { HomeIcon, ClockIcon } from './Icons';
 
 const SIDEBAR_INNER_WIDTH = 240;
@@ -13,8 +18,9 @@ export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const profile = useUserProfile();
+  const { user } = useAuth();
 
-  const recent = profile?.recentForums ?? [];
+  const recent = useExistingRecentForums(user?.uid, profile?.recentForums);
 
   return (
     <View style={styles.container}>
@@ -22,7 +28,12 @@ export function Sidebar() {
         {/* --- Profile block ----------------------------------------- */}
         <TouchableOpacity style={styles.profileBlock} onPress={() => router.push('/profile')}>
           <Avatar size={56} label={profile?.displayName ?? profile?.username} />
-          <Text style={styles.name}>{profile?.displayName ?? '...'}</Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={1}>
+              {profile?.displayName ?? '...'}
+            </Text>
+            {isAdminUsername(profile?.username) && <RoleTag role="ADMIN" />}
+          </View>
           <Text style={styles.username}>@{profile?.username ?? '...'}</Text>
         </TouchableOpacity>
 
@@ -92,6 +103,41 @@ export function Sidebar() {
   );
 }
 
+// Filters the user's recentForums array against the live forum docs so we
+// hide forums that have been deleted. Also prunes the user-doc array as a
+// best-effort cleanup so the absence sticks across reloads.
+function useExistingRecentForums(
+  uid: string | undefined,
+  recent: RecentForum[] | undefined,
+): RecentForum[] {
+  const [missing, setMissing] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!recent || recent.length === 0) return;
+    const unsubs = recent.map((f) =>
+      onSnapshot(doc(db, 'forums', f.slug), (snap) => {
+        setMissing((prev) => {
+          const exists = snap.exists();
+          if (prev[f.slug] === !exists) return prev;
+          return { ...prev, [f.slug]: !exists };
+        });
+      }),
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [recent]);
+
+  // Prune the stored array opportunistically when we discover a missing forum.
+  useEffect(() => {
+    if (!uid || !recent || recent.length === 0) return;
+    const survivors = recent.filter((f) => !missing[f.slug]);
+    if (survivors.length === recent.length) return;
+    updateDoc(doc(db, 'users', uid), { recentForums: survivors }).catch(() => {});
+  }, [uid, recent, missing]);
+
+  if (!recent) return [];
+  return recent.filter((f) => !missing[f.slug]);
+}
+
 function Divider() {
   return <View style={styles.divider} />;
 }
@@ -137,7 +183,8 @@ const styles = StyleSheet.create({
   inner: { paddingBottom: 24 },
 
   profileBlock: { alignItems: 'flex-start', paddingHorizontal: 4, marginBottom: 6 },
-  name: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 17, marginTop: 10 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 10 },
+  name: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 17 },
   username: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12, marginTop: 2 },
 
   divider: {
@@ -168,7 +215,8 @@ const styles = StyleSheet.create({
     color: COLORS.yellow,
     fontFamily: HEADING_FONT,
     fontSize: 14,
-    marginBottom: 8,
+    marginTop: 10,
+    marginBottom: 10,
     paddingHorizontal: 4,
   },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, paddingHorizontal: 4 },
@@ -178,13 +226,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    paddingVertical: 7,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 6,
     backgroundColor: '#252525',
     borderWidth: 1,
     borderColor: '#3a3a3a',
-    marginBottom: 5,
+    marginBottom: 6,
+    alignSelf: 'stretch',
   },
   recentItemActive: { backgroundColor: COLORS.yellow, borderColor: COLORS.yellow },
   recentText: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12, flex: 1 },

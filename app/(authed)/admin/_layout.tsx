@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Slot, Redirect, useRouter, usePathname } from 'expo-router';
 import { useAuth } from '../../../lib/auth';
 import { useIsServerAdmin } from '../../../lib/admins';
@@ -12,7 +12,6 @@ const TABS = [
   { label: 'Forums', path: '/forums' },
   { label: 'Users', path: '/users' },
   { label: 'Activity', path: '/activity' },
-  { label: 'Filters', path: '/filters' },
 ];
 
 export default function AdminLayout() {
@@ -43,11 +42,7 @@ export default function AdminLayout() {
         <Text style={styles.sub}>App-wide moderation, user management, and safety tools.</Text>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabs}
-      >
+      <View style={styles.tabs}>
         {TABS.map((t) => {
           const href = `/admin${t.path}`;
           const active = pathname === href;
@@ -61,7 +56,7 @@ export default function AdminLayout() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
       <View style={styles.body}>
         <Slot />
@@ -76,6 +71,8 @@ const styles = StyleSheet.create({
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 30 },
   sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 6 },
   tabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: 32,
     paddingTop: 16,

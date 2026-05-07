@@ -15,7 +15,8 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { PasswordStrength, passwordScore } from '../components/PasswordStrength';
 
 const MIN_PASSWORD_LENGTH = 8;
-const REQUIRED_STRENGTH = 4; 
+const REQUIRED_STRENGTH = 4;
+const MAX_DISPLAY_NAME_LENGTH = 35;
 
 export default function Signup() {
   const router = useRouter();
@@ -39,6 +40,10 @@ export default function Signup() {
     }
     if (!/^[a-zA-Z0-9_.-]{1,20}$/.test(u)) {
       setError('Username can only contain letters, numbers, _, . and -, with no spaces (max 20 characters).');
+      return;
+    }
+    if (d.length > MAX_DISPLAY_NAME_LENGTH) {
+      setError(`Display name must be ${MAX_DISPLAY_NAME_LENGTH} characters or fewer.`);
       return;
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
@@ -109,6 +114,7 @@ export default function Signup() {
         value={displayName}
         onChangeText={setDisplayName}
         autoCapitalize="words"
+        maxLength={MAX_DISPLAY_NAME_LENGTH}
       />
       <FormInput
         placeholder={`Password (at least ${MIN_PASSWORD_LENGTH} characters)`}

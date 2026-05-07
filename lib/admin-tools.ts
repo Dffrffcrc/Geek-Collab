@@ -1,10 +1,8 @@
-import { useEffect, useState } from 'react';
 import {
   arrayRemove,
   arrayUnion,
   deleteDoc,
   doc,
-  onSnapshot,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -108,47 +106,31 @@ export async function reopenForum(forumSlug: string, newClosesAt: Date): Promise
   });
 }
 
-// ----- Content filter ----------------------------------------------------
-export type ContentFilter = { words: string[]; updatedAt?: Timestamp; updatedBy?: string };
+// ----- Auto-mod block list ----------------------------------------------
+// Backed by the `bad-words` package. We extend its default English list with
+// extra slurs that aren't covered by default. There is intentionally no admin
+// UI; the policy lives in version control.
+import { Filter } from 'bad-words';
 
-export function useContentFilter(): ContentFilter {
-  const [filter, setFilter] = useState<ContentFilter>({ words: [] });
-  useEffect(() => {
-    return onSnapshot(doc(db, 'config', 'contentFilter'), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        setFilter({
-          words: Array.isArray(data.words) ? data.words : [],
-          updatedAt: data.updatedAt,
-          updatedBy: data.updatedBy,
-        });
-      } else {
-        setFilter({ words: [] });
-      }
-    });
-  }, []);
-  return filter;
-}
+const EXTRA_BLOCKED = [
+  'nigger', 'nigga', 'faggot', 'fag', 'tranny', 'retard', 'retarded',
+  'chink', 'spic', 'kike', 'gook', 'wetback', 'coon', 'dyke',
+  'paedo', 'paedophile', 'pedo', 'pedophile',
+];
 
-export async function setContentFilterWords(words: string[], byUid: string): Promise<void> {
-  // Lowercased + de-duped + trimmed for consistent matching.
-  const normalized = Array.from(
-    new Set(words.map((w) => w.trim().toLowerCase()).filter((w) => w.length > 0)),
-  );
-  await setDoc(doc(db, 'config', 'contentFilter'), {
-    words: normalized,
-    updatedAt: serverTimestamp(),
-    updatedBy: byUid,
-  });
-}
+const filter = new Filter();
+filter.addWords(...EXTRA_BLOCKED);
 
-// Returns the offending word if the text contains one, else null.
-export function violatesContentFilter(text: string, words: string[]): string | null {
-  if (!text || words.length === 0) return null;
-  const lower = text.toLowerCase();
-  for (const w of words) {
-    if (!w) continue;
-    if (lower.includes(w)) return w;
+// Returns the offending word if the text contains one, else null. Splits on
+// whitespace + punctuation so we can name which token tripped the filter.
+export function violatesContentFilter(text: string): string | null {
+  if (!text) return null;
+  if (!filter.isProfane(text)) return null;
+  const tokens = text.split(/[\s.,;:!?'"()[\]{}<>/\\|`~@#$%^&*_+=-]+/);
+  for (const t of tokens) {
+    if (t && filter.isProfane(t)) return t;
   }
-  return null;
+  // Fallback: bad-words flagged the string but our tokenizer didn't catch
+  // the word (e.g. concatenated profanity). Surface a generic placeholder.
+  return '***';
 }

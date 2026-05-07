@@ -23,6 +23,7 @@ import {
   timeoutUser,
 } from '../../../../../lib/moderation';
 import { FormInput } from '../../../../../components/FormInput';
+import { isAdminUsername } from '../../../../../lib/admins';
 
 type QPost = {
   id: string;
@@ -145,12 +146,14 @@ export default function QuarantineTab() {
       ) : filtered.length === 0 ? (
         <Text style={styles.empty}>Nothing in quarantine.</Text>
       ) : (
-        filtered.map((p) => (
+        filtered.map((p) => {
+          const adminAuthor = isAdminUsername(p.authorUsername);
+          return (
           <View key={p.id} style={styles.card}>
             <Text style={styles.cardTitle}>{p.title}</Text>
             <Text style={styles.cardMeta}>
               by{' '}
-              <Text style={styles.username} onPress={() => router.push(`/user/${p.authorUsername}`)}>
+              <Text style={styles.username} onPress={() => router.push(`/profile/${p.authorUsername}`)}>
                 @{p.authorUsername}
               </Text>{' '}
               · {timeAgo(p.createdAt as Timestamp)}
@@ -159,13 +162,19 @@ export default function QuarantineTab() {
 
             <View style={styles.actions}>
               <ActBtn label="View" onPress={() => router.push(`/forums/${slug}/${p.id}` as never)} />
-              <ActBtn label="Remove from quarantine" onPress={() => unquarantine(p.id)} />
-              <ActBtn label="Delete" destructive onPress={() => deletePost(p.id)} />
-              <ActBtn label="Mute author" onPress={() => muteAuthor(p.authorUid, p.authorUsername)} />
-              <ActBtn label="Timeout author" destructive onPress={() => timeoutAuthor(p.authorUid, p.authorUsername)} />
+              {/* Mods can't mute/timeout/delete an admin's content. */}
+              {!adminAuthor && (
+                <>
+                  <ActBtn label="Remove from quarantine" onPress={() => unquarantine(p.id)} />
+                  <ActBtn label="Delete" destructive onPress={() => deletePost(p.id)} />
+                  <ActBtn label="Mute author" onPress={() => muteAuthor(p.authorUid, p.authorUsername)} />
+                  <ActBtn label="Timeout author" destructive onPress={() => timeoutAuthor(p.authorUid, p.authorUsername)} />
+                </>
+              )}
             </View>
           </View>
-        ))
+          );
+        })
       )}
     </ScrollView>
   );

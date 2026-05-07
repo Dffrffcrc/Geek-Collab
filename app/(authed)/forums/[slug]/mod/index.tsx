@@ -3,19 +3,21 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   collection,
+  doc,
   onSnapshot,
   query,
+  updateDoc,
+  Timestamp,
   where,
   orderBy,
   limit,
-  type Timestamp,
 } from 'firebase/firestore';
 import { db } from '../../../../../lib/firebase';
 import { useAuth } from '../../../../../lib/auth';
 import { useUserProfile } from '../../../../../lib/user-profile';
 import { useIsServerAdmin } from '../../../../../lib/admins';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../../../lib/theme';
-import { timeAgo } from '../../../../../lib/forum-utils';
+import { isClosed, timeAgo } from '../../../../../lib/forum-utils';
 import { deleteForumCascading, logActivity, type Activity } from '../../../../../lib/moderation';
 
 export default function ModDashboard() {
@@ -31,10 +33,20 @@ export default function ModDashboard() {
   const [activeUsers, setActiveUsers] = useState<number | null>(null);
   const [recentActivity, setRecentActivity] = useState<Activity[] | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [forumClosed, setForumClosed] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!slug) return;
     const unsubs: Array<() => void> = [];
+
+    unsubs.push(
+      onSnapshot(doc(db, 'forums', slug), (snap) => {
+        if (!snap.exists()) return;
+        const closesAt = snap.data().closesAt as Timestamp | undefined;
+        setForumClosed(closesAt ? isClosed(closesAt) : false);
+      }),
+    );
 
     unsubs.push(
       onSnapshot(collection(db, 'forums', slug, 'posts'), (snap) => {
@@ -68,6 +80,34 @@ export default function ModDashboard() {
 
     return () => unsubs.forEach((u) => u());
   }, [slug]);
+
+  async function closeForum() {
+    if (!slug || !user || !profile) return;
+    if (
+      !confirm(
+        `Close the forum "${slug}"? Posts and comments will become read-only. Likes still work. You can reopen later from the admin panel.`,
+      )
+    )
+      return;
+    setClosing(true);
+    try {
+      // Setting closesAt to "now" trips isClosed() everywhere.
+      await updateDoc(doc(db, 'forums', slug), {
+        closesAt: Timestamp.fromMillis(Date.now()),
+      });
+      await logActivity(slug, user.uid, profile.username, 'post_edited', {
+        targetType: 'post',
+        targetId: slug,
+        details: 'forum closed',
+      });
+    } catch (err: unknown) {
+      console.error('[forum:close] failed:', err);
+      const e = err as { code?: string; message?: string };
+      alert(`Could not close forum (${e.code ?? e.message ?? 'unknown error'}).`);
+    } finally {
+      setClosing(false);
+    }
+  }
 
   async function deleteForum() {
     if (!slug || !user || !profile) return;
@@ -127,16 +167,28 @@ export default function ModDashboard() {
         <View style={styles.dangerZone}>
           <Text style={styles.dangerHeading}>Danger zone</Text>
           <Text style={styles.dangerHelp}>
-            Admin-only. Deletes the forum and every post, comment, report, mute, and activity event
-            inside it. Cannot be undone.
+            Admin-only. Closing makes the forum read-only (posts and comments stop, likes still
+            work). Deleting permanently removes the forum and every post, comment, report, mute,
+            and activity event inside it.
           </Text>
-          <TouchableOpacity style={styles.deleteBtn} onPress={deleteForum} disabled={deleting}>
-            {deleting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.deleteBtnLabel}>Delete forum</Text>
+          <View style={styles.dangerBtnRow}>
+            {!forumClosed && (
+              <TouchableOpacity style={styles.closeBtn} onPress={closeForum} disabled={closing}>
+                {closing ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.closeBtnLabel}>Close forum</Text>
+                )}
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+            <TouchableOpacity style={styles.deleteBtn} onPress={deleteForum} disabled={deleting}>
+              {deleting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.deleteBtnLabel}>Delete forum</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </ScrollView>
@@ -195,8 +247,15 @@ const styles = StyleSheet.create({
   },
   dangerHeading: { color: COLORS.error, fontFamily: HEADING_FONT, fontSize: 16, marginBottom: 6 },
   dangerHelp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginBottom: 12, lineHeight: 18 },
+  dangerBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  closeBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: COLORS.yellow,
+  },
+  closeBtnLabel: { color: '#000', fontFamily: BODY_FONT, fontWeight: '700', fontSize: 13 },
   deleteBtn: {
-    alignSelf: 'flex-start',
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 16,

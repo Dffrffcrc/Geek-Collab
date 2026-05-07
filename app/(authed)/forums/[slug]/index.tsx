@@ -32,6 +32,7 @@ type Forum = {
   name: string;
   description: string;
   closesAt: Timestamp;
+  moderatorUids?: string[];
 };
 
 export default function ForumPage() {
@@ -124,7 +125,7 @@ export default function ForumPage() {
                 style={styles.modBtn}
                 onPress={() => router.push(`/forums/${slug}/mod` as never)}
               >
-                <Text style={styles.modBtnLabel}>Mod panel</Text>
+                <Text style={styles.modBtnLabel}>Mod Activity</Text>
               </TouchableOpacity>
             )}
             <Text style={[styles.badge, closed ? styles.badgeClosed : styles.badgeActive]}>
@@ -194,7 +195,14 @@ export default function ForumPage() {
             {search.trim() ? 'No matching posts.' : `No posts yet. ${closed ? '' : 'Be the first.'}`}
           </Text>
         ) : (
-          visiblePosts.map((p) => <PostCard key={p.id} forumSlug={slug!} post={p} />)
+          visiblePosts.map((p) => (
+            <PostCard
+              key={p.id}
+              forumSlug={slug!}
+              post={p}
+              moderatorUids={forum.moderatorUids ?? []}
+            />
+          ))
         )}
       </ScrollView>
 

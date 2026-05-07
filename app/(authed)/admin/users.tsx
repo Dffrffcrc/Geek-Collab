@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { collection, onSnapshot, type Timestamp } from 'firebase/firestore';
@@ -14,11 +13,11 @@ import { db } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
 import { useUserProfile } from '../../../lib/user-profile';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
-import { addModerator, banUser, liftBan, removeModerator } from '../../../lib/admin-tools';
-import { logActivity } from '../../../lib/moderation';
+import { banUser, liftBan } from '../../../lib/admin-tools';
+import { isAdminUsername } from '../../../lib/admins';
 import { Avatar } from '../../../components/Avatar';
 import { FormInput } from '../../../components/FormInput';
-import { XIcon } from '../../../components/Icons';
+import { RoleTag } from '../../../components/RoleTag';
 
 type UserRow = {
   uid: string;
@@ -45,7 +44,6 @@ export default function AdminUsers() {
   const [forums, setForums] = useState<ForumLite[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const [modPickerFor, setModPickerFor] = useState<UserRow | null>(null);
 
   useEffect(() => {
     return onSnapshot(collection(db, 'users'), (snap) => {
@@ -95,7 +93,8 @@ export default function AdminUsers() {
         if (filter === 'banned') return bannedUids.has(u.uid);
         if (filter === 'mods')
           return forums.some((f) => f.moderatorUids.includes(u.uid));
-        return true;
+        // 'all' excludes banned users — they live exclusively in the Banned tab.
+        return !bannedUids.has(u.uid);
       })
       .filter(
         (u) =>
@@ -157,137 +156,47 @@ export default function AdminUsers() {
       ) : (
         filtered.map((u) => {
           const isBanned = bannedUids.has(u.uid);
+          const isAdmin = isAdminUsername(u.username);
           const modOf = modForumsFor(u);
           return (
-            <View key={u.uid} style={styles.card}>
-              <View style={styles.cardLeft}>
-                <Avatar size={40} label={u.displayName || u.username} />
-                <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
-                  <Text style={styles.displayName} onPress={() => router.push(`/user/${u.username}`)}>
+            <TouchableOpacity
+              key={u.uid}
+              style={styles.card}
+              activeOpacity={0.85}
+              onPress={() => router.push(`/profile/${u.username}`)}
+            >
+              <Avatar size={42} label={u.displayName || u.username} />
+              <View style={styles.identity}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.displayName} numberOfLines={1}>
                     {u.displayName || u.username}
                   </Text>
-                  <Text style={styles.username}>@{u.username}</Text>
-                  <View style={styles.tagRow}>
-                    {isBanned && <Text style={[styles.tag, styles.tagBanned]}>BANNED</Text>}
-                    {modOf.length > 0 && (
-                      <Text style={[styles.tag, styles.tagMod]}>MOD · {modOf.length}</Text>
-                    )}
-                    {u.email && <Text style={styles.email}>{u.email}</Text>}
-                  </View>
+                  {isAdmin && <RoleTag role="ADMIN" />}
+                  {isBanned && <Text style={[styles.tag, styles.tagBanned]}>BANNED</Text>}
+                  {!isAdmin && modOf.length > 0 && (
+                    <Text style={[styles.tag, styles.tagMod]}>MOD · {modOf.length}</Text>
+                  )}
                 </View>
+                <Text style={styles.username} numberOfLines={1}>
+                  @{u.username}
+                  {u.email ? ` · ${u.email}` : ''}
+                </Text>
               </View>
               <View style={styles.actions}>
-                <ActBtn label="View profile" onPress={() => router.push(`/user/${u.username}`)} />
-                <ActBtn
-                  label={isBanned ? 'Lift ban' : 'Ban'}
-                  destructive
-                  onPress={() => toggleBan(u)}
-                />
-                <ActBtn label="Mod assignments" onPress={() => setModPickerFor(u)} />
+                {!isAdmin && (
+                  <ActBtn
+                    label={isBanned ? 'Lift ban' : 'Ban'}
+                    destructive
+                    onPress={() => toggleBan(u)}
+                  />
+                )}
+                <ActBtn label="View" onPress={() => router.push(`/profile/${u.username}`)} />
               </View>
-            </View>
+            </TouchableOpacity>
           );
         })
       )}
 
-      {/* Per-user mod assignments modal */}
-      <Modal
-        visible={modPickerFor !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModPickerFor(null)}
-      >
-        <View style={styles.backdrop}>
-          <View style={styles.modal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Mod assignments · @{modPickerFor?.username}
-              </Text>
-              <TouchableOpacity onPress={() => setModPickerFor(null)}>
-                <XIcon size={18} color={COLORS.textPrimary} />
-              </TouchableOpacity>
-            </View>
-            {modPickerFor && (
-              <ModAssignments
-                forums={forums}
-                userUid={modPickerFor.uid}
-                username={modPickerFor.username}
-                actor={me?.uid}
-                actorUsername={profile?.username}
-                onClose={() => setModPickerFor(null)}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
-    </ScrollView>
-  );
-}
-
-function ModAssignments({
-  forums,
-  userUid,
-  username,
-  actor,
-  actorUsername,
-  onClose,
-}: {
-  forums: ForumLite[];
-  userUid: string;
-  username: string;
-  actor: string | undefined;
-  actorUsername: string | undefined;
-  onClose: () => void;
-}) {
-  const [busy, setBusy] = useState<string | null>(null);
-
-  async function toggle(forum: ForumLite) {
-    if (!actor || !actorUsername) return;
-    const isMod = forum.moderatorUids.includes(userUid);
-    setBusy(forum.slug);
-    try {
-      if (isMod) await removeModerator(forum.slug, userUid);
-      else await addModerator(forum.slug, userUid);
-      logActivity(forum.slug, actor, actorUsername, isMod ? 'user_unmuted' : 'user_muted', {
-        targetType: 'user',
-        targetId: userUid,
-        details: `${username} ${isMod ? 'removed as mod' : 'added as mod'}`,
-      });
-    } catch (err) {
-      console.error('[admin:users:mod-toggle] failed:', err);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  if (forums.length === 0) {
-    return <Text style={styles.empty}>No forums yet.</Text>;
-  }
-
-  return (
-    <ScrollView style={{ maxHeight: 400 }}>
-      {forums.map((f) => {
-        const isMod = f.moderatorUids.includes(userUid);
-        return (
-          <View key={f.slug} style={styles.modRow}>
-            <Text style={styles.modName} numberOfLines={1}>
-              {f.name}
-            </Text>
-            <TouchableOpacity
-              style={[styles.modBtn, isMod && styles.modBtnActive]}
-              onPress={() => toggle(f)}
-              disabled={busy === f.slug}
-            >
-              <Text style={[styles.modBtnLabel, isMod && styles.modBtnLabelActive]}>
-                {busy === f.slug ? '…' : isMod ? 'Remove' : 'Make mod'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        );
-      })}
-      <TouchableOpacity onPress={onClose} style={[styles.cancelBtn, { alignSelf: 'flex-end', marginTop: 12 }]}>
-        <Text style={styles.cancelLabel}>Done</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -323,53 +232,31 @@ const styles = StyleSheet.create({
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 16 },
   card: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#2a2a2a',
-    borderRadius: 12, padding: 14, marginBottom: 10, gap: 12,
+    borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14,
+    marginBottom: 8, gap: 14,
   },
-  cardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
+  identity: { flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 0 },
   displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
-  username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12 },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 4 },
+  username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12, marginTop: 2 },
   tag: {
+    marginLeft: 6,
     fontSize: 9, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4,
     fontFamily: BODY_FONT, fontWeight: '700', overflow: 'hidden',
+    letterSpacing: 0.4,
   },
   tagBanned: { backgroundColor: 'rgba(255,118,118,0.18)', color: COLORS.error },
-  tagMod: { backgroundColor: 'rgba(239,235,69,0.18)', color: COLORS.yellow },
-  email: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
-  actions: { flexDirection: 'column', gap: 6 },
+  tagMod: {
+    backgroundColor: 'rgba(239,235,69,0.18)', color: COLORS.yellow,
+    borderWidth: 1, borderColor: 'rgba(239,235,69,0.5)',
+  },
+  actions: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   actBtn: {
     paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12,
     backgroundColor: '#1f1f1f', borderWidth: 1, borderColor: '#3a3a3a',
-    minWidth: 130, alignItems: 'center',
+    alignItems: 'center',
   },
   actBtnDestructive: { borderColor: COLORS.error },
   actBtnLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12 },
   actBtnLabelDestructive: { color: COLORS.error },
-
-  backdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center',
-    alignItems: 'center', padding: 24,
-  },
-  modal: {
-    backgroundColor: '#2a2a2a', borderRadius: 14, padding: 22,
-    width: '100%', maxWidth: 560, maxHeight: '85%',
-  },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  modalTitle: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, flex: 1, paddingRight: 12 },
-  cancelBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border },
-  cancelLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14 },
-
-  modRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#1f1f1f', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12,
-    marginBottom: 6,
-  },
-  modName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, flex: 1, paddingRight: 8 },
-  modBtn: {
-    paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12,
-    borderWidth: 1, borderColor: COLORS.border, backgroundColor: '#2a2a2a',
-  },
-  modBtnActive: { backgroundColor: COLORS.error, borderColor: COLORS.error },
-  modBtnLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12 },
-  modBtnLabelActive: { color: '#fff', fontWeight: '700' },
 });

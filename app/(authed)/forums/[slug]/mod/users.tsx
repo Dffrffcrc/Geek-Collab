@@ -21,6 +21,8 @@ import {
 } from '../../../../../lib/moderation';
 import { Avatar } from '../../../../../components/Avatar';
 import { FormInput } from '../../../../../components/FormInput';
+import { UserRoleTags } from '../../../../../components/RoleTag';
+import { isAdminUsername } from '../../../../../lib/admins';
 
 type Participant = {
   uid: string;
@@ -173,14 +175,18 @@ export default function UsersTab() {
         filtered.map((p) => {
           const isMuted = mutedUids.has(p.uid);
           const isTimedOut = timedOutUids.has(p.uid);
+          const isAdmin = isAdminUsername(p.username);
           return (
             <View key={p.uid} style={styles.card}>
               <View style={styles.cardLeft}>
                 <Avatar size={40} label={p.displayName || p.username} />
                 <View style={{ marginLeft: 12, flex: 1 }}>
-                  <Text style={styles.displayName} onPress={() => router.push(`/user/${p.username}`)}>
-                    {p.displayName}
-                  </Text>
+                  <View style={styles.nameRow}>
+                    <Text style={styles.displayName} onPress={() => router.push(`/profile/${p.username}`)}>
+                      {p.displayName}
+                    </Text>
+                    <UserRoleTags username={p.username} />
+                  </View>
                   <Text style={styles.username}>@{p.username}</Text>
                   <View style={styles.tagRow}>
                     {isMuted && <Text style={[styles.tag, styles.tagMuted]}>MUTED</Text>}
@@ -192,24 +198,27 @@ export default function UsersTab() {
                   </View>
                 </View>
               </View>
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={[styles.actBtn, isMuted && styles.actBtnActive]}
-                  onPress={() => toggleMute(p)}
-                >
-                  <Text style={[styles.actBtnLabel, isMuted && styles.actBtnLabelActive]}>
-                    {isMuted ? 'Unmute' : 'Mute'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actBtn, styles.actBtnDestructive, isTimedOut && styles.actBtnActive]}
-                  onPress={() => toggleTimeout(p)}
-                >
-                  <Text style={[styles.actBtnLabel, styles.actBtnLabelDestructive]}>
-                    {isTimedOut ? 'Lift timeout' : 'Timeout'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              {/* Mods cannot act on admins. */}
+              {!isAdmin && (
+                <View style={styles.actions}>
+                  <TouchableOpacity
+                    style={[styles.actBtn, isMuted && styles.actBtnActive]}
+                    onPress={() => toggleMute(p)}
+                  >
+                    <Text style={[styles.actBtnLabel, isMuted && styles.actBtnLabelActive]}>
+                      {isMuted ? 'Unmute' : 'Mute'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actBtn, styles.actBtnDestructive, isTimedOut && styles.actBtnActive]}
+                    onPress={() => toggleTimeout(p)}
+                  >
+                    <Text style={[styles.actBtnLabel, styles.actBtnLabelDestructive]}>
+                      {isTimedOut ? 'Lift timeout' : 'Timeout'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           );
         })
@@ -245,6 +254,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cardLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
   username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12 },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 4 },
