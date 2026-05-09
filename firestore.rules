@@ -58,27 +58,31 @@ service cloud.firestore {
     // ---- users -----------------------------------------------------------
     match /users/{uid} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && request.auth.uid == uid;
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      // username, usernameLower, and email are immutable after creation —
+      // changing them would bypass the admin allowlist check in isAdmin().
+      allow update: if isSignedIn()
+        && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['username', 'usernameLower', 'email']);
       allow delete: if false;
     }
 
-    // ---- usernames index (public read for username->email lookup) -------
+    // ---- usernames index (username->uid lookup) -------
     match /usernames/{name} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
       allow update: if false;
     }
 
-    // ---- global timeouts (any signed-in user can write; client-gated) ---
-    // Mods can only write timeouts against non-admin users. Admins can
-    // write timeouts against anyone, including other admins — escalation
-    // disputes between admins are resolved at the human level, not by the
-    // rule engine.
+    // ---- global timeouts (admin-only write) ---
+    // Only admins can issue or lift global timeouts/bans. Mods use the
+    // per-forum /mutes subcollection instead.
     match /timeouts/{uid} {
       allow read: if isSignedIn();
-      allow create, update: if isAdmin() || (isSignedIn() && !targetIsAdmin(uid));
-      allow delete: if isSignedIn();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     // ---- forums ---------------------------------------------------------

@@ -78,7 +78,7 @@ export default function Signup() {
         displayName: d,
         createdAt: serverTimestamp(),
       });
-      await setDoc(doc(db, 'usernames', uname), { uid: cred.user.uid, email: e });
+      await setDoc(doc(db, 'usernames', uname), { uid: cred.user.uid });
       await sendEmailVerification(cred.user);
       router.replace('/verify-email');
     } catch (err: unknown) {
