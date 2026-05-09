@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 24, marginBottom: 4 },
   sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 16 },
-  card: { backgroundColor: '#2a2a2a', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#7a4a4a' },
+  card: { backgroundColor: '#2a2a2a', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: COLORS.warnBorder },
   title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 18, marginBottom: 4 },
   meta: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginBottom: 8 },
   username: { color: COLORS.yellow, fontWeight: '700' },

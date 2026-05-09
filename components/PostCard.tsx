@@ -1,7 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import {
+  deleteDoc,
+  doc,
+  increment,
+  onSnapshot,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../lib/auth';
 import { useUserProfile } from '../lib/user-profile';
@@ -9,6 +18,7 @@ import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { previewText, timeAgo } from '../lib/forum-utils';
 import { logActivity, muteUser, setPostQuarantine, timeoutUser, useIsMod } from '../lib/moderation';
 import { isAdminUsername, useIsServerAdmin } from '../lib/admins';
+import { describeActionError } from '../lib/admin-tools';
 import { Avatar } from './Avatar';
 import { HeartIcon, CommentIcon, MoreIcon } from './Icons';
 import { OverflowMenu, type MenuAction } from './OverflowMenu';
@@ -31,6 +41,7 @@ export type PostSummary = {
   commentCount: number;
   mediaUrls?: string[];
   isQuarantined?: boolean;
+  isDeleted?: boolean;
 };
 
 export function PostCard({
@@ -48,14 +59,55 @@ export function PostCard({
   const isMod = useIsMod(forumSlug);
   const isAdmin = useIsServerAdmin();
   const isAuthor = !!user && user.uid === post.authorUid;
-  const canModerate = (isMod || isAdmin) && !isAdminUsername(post.authorUsername);
+  // Admins can moderate any author including other admins. Mods can only
+  // moderate non-admins; the author-is-admin check stays for the mod branch.
+  const canModerate = isAdmin || (isMod && !isAdminUsername(post.authorUsername));
   const firstImage = post.mediaUrls?.[0];
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [liked, setLiked] = useState(false);
+
+  // Subscribe to the user's like presence on this post so the heart reflects
+  // truth across tabs/devices.
+  useEffect(() => {
+    if (!user) {
+      setLiked(false);
+      return;
+    }
+    return onSnapshot(
+      doc(db, 'forums', forumSlug, 'posts', post.slug, 'likes', user.uid),
+      (snap) => setLiked(snap.exists()),
+    );
+  }, [user, forumSlug, post.slug]);
+
+  async function toggleLike() {
+    if (!user) return;
+    const likeRef = doc(db, 'forums', forumSlug, 'posts', post.slug, 'likes', user.uid);
+    const postRef = doc(db, 'forums', forumSlug, 'posts', post.slug);
+    try {
+      if (liked) {
+        await deleteDoc(likeRef);
+        await runTransaction(db, async (tx) => {
+          const p = await tx.get(postRef);
+          if (p.exists()) {
+            tx.update(postRef, { likeCount: Math.max(0, (p.data().likeCount ?? 1) - 1) });
+          }
+        });
+      } else {
+        await setDoc(likeRef, { createdAt: serverTimestamp() });
+        await runTransaction(db, async (tx) => {
+          tx.update(postRef, { likeCount: increment(1) });
+        });
+      }
+    } catch (err) {
+      console.error('[post-card:like] failed:', err);
+    }
+  }
 
   async function deletePost() {
+    if (post.isDeleted) return;
     if (!confirm('Delete this post?')) return;
     if (!user || !profile) return;
     try {
@@ -73,7 +125,13 @@ export function PostCard({
       });
     } catch (err) {
       console.error('[post:delete] failed:', err);
+      alert(describeActionError('delete post', err));
     }
+  }
+
+  function reportFailure(scope: string, err: unknown) {
+    console.error(`[post:${scope}] failed:`, err);
+    alert(describeActionError(scope, err));
   }
 
   async function toggleQuarantine() {
@@ -87,7 +145,7 @@ export function PostCard({
         });
       }
     } catch (err) {
-      console.error('[post:quarantine] failed:', err);
+      reportFailure('quarantine', err);
     }
   }
 
@@ -102,7 +160,7 @@ export function PostCard({
         details: post.authorUsername,
       });
     } catch (err) {
-      console.error('[post:mute-author] failed:', err);
+      reportFailure('mute-author', err);
     }
   }
 
@@ -117,13 +175,15 @@ export function PostCard({
         details: post.authorUsername,
       });
     } catch (err) {
-      console.error('[post:timeout-author] failed:', err);
+      reportFailure('timeout-author', err);
     }
   }
 
   const actions: MenuAction[] = [];
-  if (isAuthor) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
-  if (isAuthor || canModerate) actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
+  if (isAuthor && !post.isDeleted) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
+  if ((isAuthor || canModerate) && !post.isDeleted) {
+    actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
+  }
   if (canModerate) {
     actions.push({
       label: post.isQuarantined ? 'Remove from quarantine' : 'Move to quarantine',
@@ -147,10 +207,16 @@ export function PostCard({
             <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
               <View style={styles.usernameRow}>
                 <Text
-                  style={styles.username}
+                  style={styles.displayName}
                   onPress={() => router.push(`/profile/${post.authorUsername}`)}
                 >
-                  {post.authorUsername}
+                  {post.authorDisplayName || post.authorUsername}
+                </Text>
+                <Text
+                  style={styles.handle}
+                  onPress={() => router.push(`/profile/${post.authorUsername}`)}
+                >
+                  @{post.authorUsername}
                 </Text>
                 <UserRoleTags
                   username={post.authorUsername}
@@ -196,12 +262,21 @@ export function PostCard({
         )}
 
         <View style={styles.footer}>
+          <TouchableOpacity
+            style={[styles.iconRow, liked && styles.iconRowActive]}
+            onPress={toggleLike}
+            activeOpacity={0.7}
+            accessibilityLabel={liked ? 'Unlike post' : 'Like post'}
+          >
+            <HeartIcon
+              size={16}
+              color={liked ? COLORS.yellow : COLORS.textMuted}
+              filled={liked}
+            />
+            <Text style={[styles.count, liked && styles.countActive]}>{post.likeCount ?? 0}</Text>
+          </TouchableOpacity>
           <View style={styles.iconRow}>
-            <HeartIcon size={16} color={COLORS.yellow} filled />
-            <Text style={styles.count}>{post.likeCount ?? 0}</Text>
-          </View>
-          <View style={styles.iconRow}>
-            <CommentIcon size={15} color={COLORS.yellow} />
+            <CommentIcon size={15} color={COLORS.textMuted} />
             <Text style={styles.count}>{post.commentCount ?? 0}</Text>
           </View>
         </View>
@@ -237,20 +312,23 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 16,
   },
-  quarantined: { borderWidth: 1, borderColor: '#7a4a4a' },
+  quarantined: { borderWidth: 1, borderColor: COLORS.warnBorder },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  usernameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '700' },
+  usernameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
+  handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
   quarantineTag: {
-    backgroundColor: 'rgba(255,118,118,0.18)',
-    color: COLORS.error,
+    backgroundColor: COLORS.warnBg,
+    color: COLORS.warn,
     fontSize: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+    borderWidth: 1,
+    borderColor: COLORS.warnBorder,
     fontFamily: BODY_FONT,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -280,6 +358,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  count: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12 },
+  iconRowActive: { borderColor: COLORS.yellow },
+  count: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
+  countActive: { color: COLORS.yellow, fontWeight: '700' },
 });

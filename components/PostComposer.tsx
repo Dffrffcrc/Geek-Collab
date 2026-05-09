@@ -112,6 +112,9 @@ export function PostComposer({
         multiline
         style={{ height: 140, paddingTop: 14 }}
       />
+      <Text style={styles.hint}>
+        Markdown supported: **bold**, *italic*, [links](url), `code`, &gt; quote, # headings.
+      </Text>
 
       {error && <Text style={styles.error}>{error}</Text>}
 
@@ -141,6 +144,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18 },
   closeBtn: { padding: 4 },
+  hint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginTop: 6, marginBottom: 4 },
   error: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 8 },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
   submit: {

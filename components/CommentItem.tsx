@@ -17,8 +17,9 @@ import { COLORS, BODY_FONT } from '../lib/theme';
 import { timeAgo } from '../lib/forum-utils';
 import { logActivity, muteUser, timeoutUser, trackParticipant, useIsMod } from '../lib/moderation';
 import { isAdminUsername, useIsServerAdmin } from '../lib/admins';
-import { violatesContentFilter } from '../lib/admin-tools';
+import { describeActionError, violatesContentFilter } from '../lib/admin-tools';
 import { Avatar } from './Avatar';
+import { MarkdownBody } from './MarkdownBody';
 import { MoreIcon } from './Icons';
 import { OverflowMenu, type MenuAction } from './OverflowMenu';
 import { ReportModal } from './ReportModal';
@@ -37,7 +38,15 @@ export type Comment = {
   editedAt?: Timestamp | null;
   parentCommentId?: string | null;
   rootCommentId?: string | null;
+  isDeleted?: boolean;
+  deletedAt?: Timestamp | null;
+  deletedByUsername?: string;
 };
+
+// Cap visual indent at this depth so deep threads stay readable on narrow
+// screens. Past the cap the tree still grows logically but visually the
+// indent stops nesting deeper.
+const INDENT_CAP = 5;
 
 export function CommentItem({
   comment,
@@ -45,7 +54,8 @@ export function CommentItem({
   postSlug,
   postAuthorUid,
   moderatorUids = [],
-  isReply = false,
+  childrenByParent,
+  depth = 0,
   canReply = true,
 }: {
   comment: Comment;
@@ -53,7 +63,8 @@ export function CommentItem({
   postSlug: string;
   postAuthorUid: string;
   moderatorUids?: string[];
-  isReply?: boolean;
+  childrenByParent?: Map<string | null, Comment[]>;
+  depth?: number;
   canReply?: boolean;
 }) {
   const router = useRouter();
@@ -63,7 +74,9 @@ export function CommentItem({
   const isAdmin = useIsServerAdmin();
   const isAuthor = !!user && user.uid === comment.authorUid;
   const isPostAuthor = comment.authorUid === postAuthorUid;
-  const canModerate = (isMod || isAdmin) && !isAdminUsername(comment.authorUsername);
+  // Admins can moderate every author including other admins. Mods retain
+  // the original "no acting on admins" guard.
+  const canModerate = isAdmin || (isMod && !isAdminUsername(comment.authorUsername));
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -74,10 +87,20 @@ export function CommentItem({
   const [replyBusy, setReplyBusy] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
 
+  // Direct children of this comment (one level down). Sorted oldest-first so
+  // a stable conversation order stays as new replies arrive.
+  const children = childrenByParent?.get(comment.id) ?? [];
+  // Default-collapsed beyond the top level so deep threads don't dominate
+  // the page on first paint. Top-level shows its replies by default.
+  const [repliesOpen, setRepliesOpen] = useState(depth === 0);
+
+  const isReply = depth > 0;
+  const atIndentCap = depth >= INDENT_CAP;
+
   function openReply() {
     setReplyError(null);
-    // Pre-fill an @mention so the recipient is obvious in the body, since we
-    // flatten threads to a single visual indent level.
+    // Pre-fill an @mention so the recipient is obvious even as nesting gets
+    // deep and indent visually compresses.
     setReplyText(`@${comment.authorUsername} `);
     setReplyOpen(true);
   }
@@ -132,6 +155,9 @@ export function CommentItem({
   }
 
   async function deleteComment() {
+    // Guard against re-running on an already-deleted comment, which would
+    // otherwise double-decrement commentCount and push it negative.
+    if (comment.isDeleted) return;
     if (!confirm('Delete this comment?')) return;
     if (!user || !profile) return;
     try {
@@ -157,7 +183,13 @@ export function CommentItem({
       });
     } catch (err) {
       console.error('[comment:delete] failed:', err);
+      alert(describeActionError('delete comment', err));
     }
+  }
+
+  function reportFailure(scope: string, err: unknown) {
+    console.error(`[comment:${scope}] failed:`, err);
+    alert(describeActionError(scope, err));
   }
 
   async function muteAuthor() {
@@ -171,7 +203,7 @@ export function CommentItem({
         details: comment.authorUsername,
       });
     } catch (err) {
-      console.error('[comment:mute-author] failed:', err);
+      reportFailure('mute-author', err);
     }
   }
 
@@ -186,30 +218,40 @@ export function CommentItem({
         details: comment.authorUsername,
       });
     } catch (err) {
-      console.error('[comment:timeout-author] failed:', err);
+      reportFailure('timeout-author', err);
     }
   }
 
   const actions: MenuAction[] = [];
-  if (isAuthor) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
-  if (isAuthor || canModerate) actions.push({ label: 'Delete', destructive: true, onPress: deleteComment });
+  if (isAuthor && !comment.isDeleted) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
+  if ((isAuthor || canModerate) && !comment.isDeleted) {
+    actions.push({ label: 'Delete', destructive: true, onPress: deleteComment });
+  }
   if (canModerate) {
     actions.push({ label: `Mute @${comment.authorUsername}`, onPress: muteAuthor });
     actions.push({ label: `Timeout @${comment.authorUsername}`, destructive: true, onPress: timeoutAuthor });
   }
   if (!isAuthor) actions.push({ label: 'Report', onPress: () => setReportOpen(true) });
 
+  const displayLabel = comment.authorDisplayName || comment.authorUsername;
+
   return (
     <>
-      <View style={[styles.row, isReply && styles.rowReply]}>
-        <Avatar size={isReply ? 24 : 28} label={comment.authorDisplayName || comment.authorUsername} />
+      <View style={styles.row}>
+        <Avatar size={28} label={displayLabel} />
         <View style={styles.bubble}>
           <View style={styles.meta}>
             <Text
-              style={styles.username}
+              style={styles.author}
               onPress={() => router.push(`/profile/${comment.authorUsername}`)}
             >
-              {comment.authorUsername}
+              {displayLabel}
+            </Text>
+            <Text
+              style={styles.handle}
+              onPress={() => router.push(`/profile/${comment.authorUsername}`)}
+            >
+              @{comment.authorUsername}
             </Text>
             <UserRoleTags
               username={comment.authorUsername}
@@ -231,7 +273,9 @@ export function CommentItem({
               </TouchableOpacity>
             )}
           </View>
-          <Text style={styles.body}>{comment.body}</Text>
+          <View style={styles.body}>
+            <MarkdownBody size="small">{comment.body}</MarkdownBody>
+          </View>
 
           {canReply && !replyOpen && (
             <TouchableOpacity onPress={openReply} style={styles.replyTrigger}>
@@ -248,6 +292,7 @@ export function CommentItem({
                 multiline
                 style={{ height: 60, paddingTop: 10, fontSize: 13 }}
               />
+              <Text style={styles.markdownHint}>Markdown supported.</Text>
               {replyError && <Text style={styles.replyError}>{replyError}</Text>}
               <View style={styles.replyActions}>
                 <TouchableOpacity
@@ -269,8 +314,39 @@ export function CommentItem({
               </View>
             </View>
           )}
+
+          {children.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setRepliesOpen((v) => !v)}
+              style={styles.repliesToggle}
+            >
+              <Text style={styles.repliesToggleLabel}>
+                {repliesOpen
+                  ? `Hide ${children.length === 1 ? 'reply' : `${children.length} replies`}`
+                  : `View ${children.length === 1 ? '1 reply' : `${children.length} replies`}`}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
+
+      {repliesOpen && children.length > 0 && (
+        <View style={[styles.repliesWrap, atIndentCap && styles.repliesWrapCapped]}>
+          {children.map((child) => (
+            <CommentItem
+              key={child.id}
+              comment={child}
+              forumSlug={forumSlug}
+              postSlug={postSlug}
+              postAuthorUid={postAuthorUid}
+              moderatorUids={moderatorUids}
+              childrenByParent={childrenByParent}
+              depth={depth + 1}
+              canReply={canReply}
+            />
+          ))}
+        </View>
+      )}
 
       <OverflowMenu visible={menuOpen} onClose={() => setMenuOpen(false)} actions={actions} />
       <ReportModal
@@ -298,21 +374,34 @@ export function CommentItem({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
-  rowReply: {
-    marginLeft: 36,
-    paddingLeft: 12,
-    borderLeftWidth: 1,
+  // Wraps every direct-reply set in a single bordered column. The
+  // border-left is what gives threaded replies a visible "thread" line —
+  // and because the wrapper holds *all* siblings at this depth, the line
+  // connects them properly instead of each reply having its own stub.
+  repliesWrap: {
+    marginLeft: 14,
+    paddingLeft: 16,
+    borderLeftWidth: 2,
     borderLeftColor: COLORS.separator,
+    marginBottom: 4,
   },
+  // Beyond INDENT_CAP the tree keeps growing logically but we stop
+  // adding visible indent — drop the border so it doesn't keep stacking
+  // a thicker and thicker rule on the left.
+  repliesWrapCapped: { marginLeft: 0, paddingLeft: 0, borderLeftWidth: 0 },
   bubble: { flex: 1, backgroundColor: '#2a2a2a', padding: 12, borderRadius: 10 },
   meta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 },
-  username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12, fontWeight: '700' },
+  author: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '700' },
+  handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginLeft: 6 },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
   moreBtn: { marginLeft: 'auto', padding: 2 },
-  body: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, lineHeight: 18 },
+  body: { marginTop: 0 },
 
   replyTrigger: { alignSelf: 'flex-start', marginTop: 6, paddingVertical: 2, paddingHorizontal: 4 },
   replyTriggerLabel: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
+  repliesToggle: { alignSelf: 'flex-start', marginTop: 6, paddingVertical: 2, paddingHorizontal: 4 },
+  repliesToggleLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
+  markdownHint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 10, marginTop: 4, marginBottom: 2 },
 
   replyBox: { marginTop: 8 },
   replyError: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 11, marginBottom: 4 },

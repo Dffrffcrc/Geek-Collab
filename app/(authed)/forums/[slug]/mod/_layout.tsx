@@ -4,6 +4,7 @@ import { Slot, Redirect, useLocalSearchParams, useRouter, usePathname } from 'ex
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../../../lib/firebase';
 import { useAuth } from '../../../../../lib/auth';
+import { useIsServerAdmin } from '../../../../../lib/admins';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../../../lib/theme';
 
 type Forum = { name: string; moderatorUids?: string[] };
@@ -21,6 +22,7 @@ export default function ModLayout() {
   const pathname = usePathname();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user, initializing } = useAuth();
+  const isAdmin = useIsServerAdmin();
   const [forum, setForum] = useState<Forum | null | undefined>(undefined);
 
   useEffect(() => {
@@ -41,8 +43,11 @@ export default function ModLayout() {
       </View>
     );
   }
+  // Admins are implicitly moderators of every forum, even if they aren't
+  // explicitly added to moderatorUids. Without this branch an admin who
+  // hasn't been added as a forum mod gets locked out of their own panel.
   const isMod = (forum.moderatorUids ?? []).includes(user.uid);
-  if (!isMod) {
+  if (!isMod && !isAdmin) {
     return (
       <View style={styles.deny}>
         <Text style={styles.denyText}>You're not a moderator of this forum.</Text>

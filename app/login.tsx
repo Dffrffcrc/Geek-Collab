@@ -94,7 +94,7 @@ function mapAuthError(code?: string) {
     case 'auth/too-many-requests':
       return 'Too many attempts. Try again later.';
     case 'auth/network-request-failed':
-      return 'Network error — check your internet connection.';
+      return "Couldn't reach the server. Please check your internet connection.";
     case 'permission-denied':
       return 'Firestore rules denied this read. Re-deploy firestore.rules.';
     default:

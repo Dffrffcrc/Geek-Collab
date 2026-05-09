@@ -129,7 +129,7 @@ export default function UsersTab() {
     if (!user || !profile) return;
     const isTimedOut = timedOutUids.has(p.uid);
     const verb = isTimedOut ? 'Lift timeout for' : 'Timeout';
-    if (!confirm(`${verb} @${p.username} (this is GLOBAL — affects every forum).`)) return;
+    if (!confirm(`${verb} @${p.username}? This is global and affects every forum.`)) return;
     try {
       if (isTimedOut) {
         await liftTimeout(p.uid);

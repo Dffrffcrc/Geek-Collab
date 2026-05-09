@@ -126,7 +126,7 @@ export function ReportModal({
 
           {done ? (
             <View>
-              <Text style={styles.body}>Thanks — moderators will review this.</Text>
+              <Text style={styles.body}>Thanks. Moderators will review this.</Text>
               <TouchableOpacity
                 style={styles.submit}
                 onPress={() => {
@@ -161,7 +161,7 @@ export function ReportModal({
 
               <Text style={styles.label}>Details</Text>
               <FormInput
-                placeholder="Optional — give moderators more context"
+                placeholder="Optional. Give moderators more context."
                 value={details}
                 onChangeText={setDetails}
                 multiline

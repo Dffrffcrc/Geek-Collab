@@ -6,6 +6,7 @@ import {
   collectionGroup,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -35,6 +36,13 @@ export default function AdminReports() {
   const [search, setSearch] = useState('');
   const [reasonFilter, setReasonFilter] = useState<string>('All');
   const [forumFilter, setForumFilter] = useState<string>('All');
+  // Track which targets have already been actioned so the matching button
+  // can disappear and the row reads as "done" instead of inviting another
+  // (no-op) click. Keys are scoped by forumSlug to avoid collisions across
+  // forums that happen to use the same post slug.
+  const [deletedTargets, setDeletedTargets] = useState<Record<string, boolean>>({});
+  const [quarantinedPosts, setQuarantinedPosts] = useState<Record<string, boolean>>({});
+  const [bannedUids, setBannedUids] = useState<Set<string>>(new Set());
 
   // Forum names for the filter dropdown.
   useEffect(() => {
@@ -68,6 +76,69 @@ export default function AdminReports() {
     );
   }, []);
 
+  // For each open report, fetch the underlying post/comment once so we
+  // know whether Delete/Quarantine have already been applied.
+  useEffect(() => {
+    if (!reports) return;
+    const open = reports.filter((r) => r.status === 'open' || r.status === 'quarantined');
+    let cancelled = false;
+    (async () => {
+      const deletedUpdates: Record<string, boolean> = {};
+      const quarantineUpdates: Record<string, boolean> = {};
+      await Promise.all(
+        open.map(async (r) => {
+          const key = `${r.forumSlug}:${r.targetType}:${r.targetId}`;
+          const qKey = `${r.forumSlug}:${r.targetId}`;
+          const needsDeleted = deletedTargets[key] === undefined;
+          const needsQuarantine =
+            r.targetType === 'post' && quarantinedPosts[qKey] === undefined;
+          if (!needsDeleted && !needsQuarantine) return;
+          try {
+            const ref =
+              r.targetType === 'comment'
+                ? doc(db, 'forums', r.forumSlug, 'posts', r.parentPostSlug ?? '_', 'comments', r.targetId)
+                : doc(db, 'forums', r.forumSlug, 'posts', r.targetId);
+            const snap = await getDoc(ref);
+            if (needsDeleted) {
+              deletedUpdates[key] = snap.exists() ? !!snap.data().isDeleted : true;
+            }
+            if (needsQuarantine && snap.exists()) {
+              quarantineUpdates[qKey] = !!snap.data().isQuarantined;
+            }
+          } catch {
+            /* ignore — leave undefined so we re-check on next snapshot */
+          }
+        }),
+      );
+      if (cancelled) return;
+      if (Object.keys(deletedUpdates).length > 0) {
+        setDeletedTargets((prev) => ({ ...prev, ...deletedUpdates }));
+      }
+      if (Object.keys(quarantineUpdates).length > 0) {
+        setQuarantinedPosts((prev) => ({ ...prev, ...quarantineUpdates }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reports, deletedTargets, quarantinedPosts]);
+
+  // Active-ban presence — drives the "Ban" button's disabled state.
+  // Filters out expired timeouts so an old expired entry doesn't permanently
+  // grey out the button.
+  useEffect(() => {
+    return onSnapshot(collection(db, 'timeouts'), (snap) => {
+      const now = Date.now();
+      const active = new Set<string>();
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        const expMs = (data.expiresAt as Timestamp | null | undefined)?.toMillis?.() ?? null;
+        if (expMs === null || expMs > now) active.add(d.id);
+      });
+      setBannedUids(active);
+    });
+  }, []);
+
   const filtered = useMemo(() => {
     if (!reports) return [];
     const q = search.trim().toLowerCase();
@@ -91,6 +162,7 @@ export default function AdminReports() {
     if (!user || !profile) return;
     try {
       await softDeletePost(forumSlug, postSlug, user.uid, profile.username);
+      setDeletedTargets((prev) => ({ ...prev, [`${forumSlug}:post:${postSlug}`]: true }));
       logActivity(forumSlug, user.uid, profile.username, 'post_deleted', {
         targetType: 'post',
         targetId: postSlug,
@@ -105,6 +177,7 @@ export default function AdminReports() {
     if (!user || !profile) return;
     try {
       await softDeleteComment(forumSlug, postSlug, commentId, user.uid, profile.username);
+      setDeletedTargets((prev) => ({ ...prev, [`${forumSlug}:comment:${commentId}`]: true }));
       logActivity(forumSlug, user.uid, profile.username, 'comment_deleted', {
         targetType: 'comment',
         targetId: commentId,
@@ -118,6 +191,7 @@ export default function AdminReports() {
     if (!user || !profile) return;
     try {
       await setPostQuarantine(forumSlug, postSlug, true);
+      setQuarantinedPosts((prev) => ({ ...prev, [`${forumSlug}:${postSlug}`]: true }));
       logActivity(forumSlug, user.uid, profile.username, 'post_quarantined', {
         targetType: 'post',
         targetId: postSlug,
@@ -237,30 +311,56 @@ export default function AdminReports() {
               </Text>
               {!!r.details && <Text style={styles.details}>{r.details}</Text>}
 
-              <View style={styles.actions}>
-                <ActBtn label="View" onPress={() => router.push(targetPath as never)} />
-                {!isCommentReport && (
-                  <ActBtn label="Quarantine" onPress={() => quarantine(r.forumSlug, r.targetId)} />
-                )}
-                <ActBtn
-                  label={isCommentReport ? 'Delete comment' : 'Delete post'}
-                  destructive
-                  onPress={() =>
-                    isCommentReport
-                      ? deleteComment(r.forumSlug, r.parentPostSlug!, r.targetId)
-                      : deletePost(r.forumSlug, r.targetId)
-                  }
-                />
-                {r.targetAuthorUid && r.targetAuthorUsername && (
-                  <ActBtn
-                    label={`Ban @${r.targetAuthorUsername}`}
-                    destructive
-                    onPress={() => ban(r.targetAuthorUid!, r.targetAuthorUsername!, r.forumSlug)}
-                  />
-                )}
-                <ActBtn label="Resolve" onPress={() => resolveReport(r.forumSlug, r.id)} />
-                <ActBtn label="Dismiss" destructive onPress={() => dismissReport(r.forumSlug, r.id)} />
-              </View>
+              {(() => {
+                const targetAlreadyDeleted =
+                  !!deletedTargets[`${r.forumSlug}:${r.targetType}:${r.targetId}`];
+                const postAlreadyQuarantined =
+                  r.targetType === 'post' &&
+                  !!quarantinedPosts[`${r.forumSlug}:${r.targetId}`];
+                const authorAlreadyBanned =
+                  !!r.targetAuthorUid && bannedUids.has(r.targetAuthorUid);
+                return (
+                  <View style={styles.actions}>
+                    <ActBtn label="View" onPress={() => router.push(targetPath as never)} />
+                    {!isCommentReport && !postAlreadyQuarantined && (
+                      <ActBtn label="Quarantine" onPress={() => quarantine(r.forumSlug, r.targetId)} />
+                    )}
+                    {!isCommentReport && postAlreadyQuarantined && (
+                      <Text style={styles.alreadyDone}>Already quarantined</Text>
+                    )}
+                    {!targetAlreadyDeleted && (
+                      <ActBtn
+                        label={isCommentReport ? 'Delete comment' : 'Delete post'}
+                        destructive
+                        onPress={() =>
+                          isCommentReport
+                            ? deleteComment(r.forumSlug, r.parentPostSlug!, r.targetId)
+                            : deletePost(r.forumSlug, r.targetId)
+                        }
+                      />
+                    )}
+                    {targetAlreadyDeleted && (
+                      <Text style={styles.alreadyDone}>
+                        {isCommentReport ? 'Comment' : 'Post'} already deleted
+                      </Text>
+                    )}
+                    {r.targetAuthorUid && r.targetAuthorUsername && !authorAlreadyBanned && (
+                      <ActBtn
+                        label={`Ban @${r.targetAuthorUsername}`}
+                        destructive
+                        onPress={() => ban(r.targetAuthorUid!, r.targetAuthorUsername!, r.forumSlug)}
+                      />
+                    )}
+                    {r.targetAuthorUid && r.targetAuthorUsername && authorAlreadyBanned && (
+                      <Text style={styles.alreadyDone}>
+                        @{r.targetAuthorUsername} already banned
+                      </Text>
+                    )}
+                    <ActBtn label="Resolve" onPress={() => resolveReport(r.forumSlug, r.id)} />
+                    <ActBtn label="Dismiss" destructive onPress={() => dismissReport(r.forumSlug, r.id)} />
+                  </View>
+                );
+              })()}
             </View>
           );
         })
@@ -314,8 +414,9 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#2a2a2a', borderRadius: 12, padding: 16, marginBottom: 12 },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
   reasonTag: {
-    backgroundColor: 'rgba(255,118,118,0.18)', color: COLORS.error,
+    backgroundColor: COLORS.warnBg, color: COLORS.warn,
     fontSize: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4,
+    borderWidth: 1, borderColor: COLORS.warnBorder,
     fontFamily: BODY_FONT, fontWeight: '700', overflow: 'hidden',
   },
   statusTag: {
@@ -336,4 +437,12 @@ const styles = StyleSheet.create({
   actBtnDestructive: { borderColor: COLORS.error },
   actBtnLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12 },
   actBtnLabelDestructive: { color: COLORS.error },
+  alreadyDone: {
+    color: COLORS.textMuted,
+    fontFamily: BODY_FONT,
+    fontSize: 11,
+    fontStyle: 'italic',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
 });

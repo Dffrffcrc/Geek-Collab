@@ -12,7 +12,7 @@ import {
 import { db } from '../../../../../lib/firebase';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../../../lib/theme';
 import { timeAgo } from '../../../../../lib/forum-utils';
-import type { Activity, ActivityType } from '../../../../../lib/moderation';
+import { describeActivity, type Activity, type ActivityType } from '../../../../../lib/moderation';
 import { FormInput } from '../../../../../components/FormInput';
 
 const FILTERS: Array<{ label: string; types: ActivityType[] | null }> = [
@@ -29,16 +29,29 @@ export default function ActivityTab() {
   const [search, setSearch] = useState('');
   const [filterIdx, setFilterIdx] = useState(0);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!slug) return;
+    setLoadError(null);
     const q = query(
       collection(db, 'forums', slug, 'activity'),
       orderBy('createdAt', 'desc'),
       fsLimit(200),
     );
-    return onSnapshot(q, (snap) => {
-      setItems(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Activity, 'id'>) })));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        setItems(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Activity, 'id'>) })));
+      },
+      (err) => {
+        console.warn('[mod:activity] subscribe failed:', err);
+        // Clear the spinner so the page stops looking stuck and surface
+        // why we got nothing.
+        setItems([]);
+        setLoadError(`${err.code ?? err.message}`);
+      },
+    );
   }, [slug]);
 
   const filtered = useMemo(() => {
@@ -53,7 +66,7 @@ export default function ActivityTab() {
           it.actorUsername.toLowerCase().includes(q) ||
           it.type.toLowerCase().includes(q) ||
           (it.details ?? '').toLowerCase().includes(q) ||
-          (it.targetId ?? '').toLowerCase().includes(q),
+          describeActivity(it).toLowerCase().includes(q),
       );
   }, [items, search, filterIdx]);
 
@@ -63,6 +76,12 @@ export default function ActivityTab() {
       <Text style={styles.sub}>Most recent 200 events. Search by actor, type, target, details.</Text>
 
       <FormInput placeholder="Search…" value={search} onChangeText={setSearch} />
+
+      {loadError && (
+        <View style={styles.errBanner}>
+          <Text style={styles.errBannerText}>Could not load activity: {loadError}</Text>
+        </View>
+      )}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
         {FILTERS.map((f, i) => {
@@ -86,13 +105,15 @@ export default function ActivityTab() {
       ) : (
         filtered.map((a) => (
           <View key={a.id} style={styles.row}>
-            <Text style={styles.type}>{a.type.replace(/_/g, ' ')}</Text>
+            <View style={styles.rowHead}>
+              <Text style={styles.type}>{a.type.replace(/_/g, ' ')}</Text>
+              <Text style={styles.time}>{timeAgo(a.createdAt as Timestamp)}</Text>
+            </View>
             <Text style={styles.body}>
               <Text style={styles.actor}>@{a.actorUsername}</Text>
-              {a.details ? ` — ${a.details}` : ''}
-              {a.targetId && !a.details ? ` — ${a.targetId}` : ''}
+              {' '}
+              {describeActivity(a)}
             </Text>
-            <Text style={styles.time}>{timeAgo(a.createdAt as Timestamp)}</Text>
           </View>
         ))
       )}
@@ -117,14 +138,24 @@ const styles = StyleSheet.create({
   chipText: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12 },
   chipTextActive: { color: '#000', fontWeight: '700' },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 16 },
+  errBanner: {
+    backgroundColor: 'rgba(255,118,118,0.12)',
+    borderColor: COLORS.error,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginVertical: 8,
+  },
+  errBannerText: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 12 },
   row: {
     backgroundColor: '#2a2a2a',
     borderRadius: 8,
     padding: 12,
     marginBottom: 6,
   },
+  rowHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
   type: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  body: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, marginTop: 4 },
+  body: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, lineHeight: 18 },
   actor: { color: COLORS.yellow, fontWeight: '700' },
-  time: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginTop: 4 },
+  time: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginLeft: 'auto' },
 });

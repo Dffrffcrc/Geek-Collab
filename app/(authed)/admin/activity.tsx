@@ -11,7 +11,7 @@ import {
 import { db } from '../../../lib/firebase';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
 import { timeAgo } from '../../../lib/forum-utils';
-import type { Activity, ActivityType } from '../../../lib/moderation';
+import { describeActivity, type Activity, type ActivityType } from '../../../lib/moderation';
 import { FormInput } from '../../../components/FormInput';
 
 type ActivityWithForum = Activity & { forumSlug: string };
@@ -73,7 +73,7 @@ export default function AdminActivity() {
           it.type.toLowerCase().includes(q) ||
           it.forumSlug.toLowerCase().includes(q) ||
           (it.details ?? '').toLowerCase().includes(q) ||
-          (it.targetId ?? '').toLowerCase().includes(q),
+          describeActivity(it).toLowerCase().includes(q),
       );
   }, [items, search, filterIdx]);
 
@@ -117,8 +117,8 @@ export default function AdminActivity() {
             </View>
             <Text style={styles.body}>
               <Text style={styles.actor}>@{a.actorUsername}</Text>
-              {a.details ? ` — ${a.details}` : ''}
-              {a.targetId && !a.details ? ` — ${a.targetId}` : ''}
+              {' '}
+              {describeActivity(a)}
             </Text>
           </View>
         ))

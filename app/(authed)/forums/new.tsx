@@ -90,8 +90,8 @@ export default function NewForum() {
       <Text style={styles.heading}>Create a forum</Text>
 
       <Text style={styles.label}>Name</Text>
-      <FormInput placeholder="e.g. Workshop #3 — Intro to Linux" value={name} onChangeText={setName} />
-      {!!name.trim() && <Text style={styles.slugHint}>URL: /forums/{slugify(name) || '—'}</Text>}
+      <FormInput placeholder="e.g. Workshop 3: Intro to Linux" value={name} onChangeText={setName} />
+      {!!name.trim() && <Text style={styles.slugHint}>URL: /forums/{slugify(name) || '...'}</Text>}
 
       <Text style={styles.label}>Description (optional)</Text>
       <FormInput

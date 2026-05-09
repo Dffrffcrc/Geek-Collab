@@ -245,7 +245,12 @@ const styles = StyleSheet.create({
     fontFamily: BODY_FONT, fontWeight: '700', overflow: 'hidden',
     letterSpacing: 0.4,
   },
-  tagBanned: { backgroundColor: 'rgba(255,118,118,0.18)', color: COLORS.error },
+  tagBanned: {
+    backgroundColor: COLORS.warnBg,
+    color: COLORS.warn,
+    borderWidth: 1,
+    borderColor: COLORS.warnBorder,
+  },
   tagMod: {
     backgroundColor: 'rgba(239,235,69,0.18)', color: COLORS.yellow,
     borderWidth: 1, borderColor: 'rgba(239,235,69,0.5)',

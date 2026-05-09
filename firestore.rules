@@ -71,10 +71,13 @@ service cloud.firestore {
     }
 
     // ---- global timeouts (any signed-in user can write; client-gated) ---
-    // Blocks any timeout/ban against an admin user — admins are immune.
+    // Mods can only write timeouts against non-admin users. Admins can
+    // write timeouts against anyone, including other admins — escalation
+    // disputes between admins are resolved at the human level, not by the
+    // rule engine.
     match /timeouts/{uid} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && !targetIsAdmin(uid);
+      allow create, update: if isAdmin() || (isSignedIn() && !targetIsAdmin(uid));
       allow delete: if isSignedIn();
     }
 
@@ -94,11 +97,11 @@ service cloud.firestore {
       // first; subcollection delete rules below also allow admins.
       allow delete: if isAdmin();
 
-      // Per-forum mute list — only mods (or admins) write. Admin targets
-      // can't be muted.
+      // Per-forum mute list. Mods can only mute non-admins; admins can mute
+      // anyone (including other admins).
       match /mutes/{uid} {
         allow read: if isSignedIn();
-        allow create: if (isModOf(slug) || isAdmin()) && !targetIsAdmin(uid);
+        allow create: if isAdmin() || (isModOf(slug) && !targetIsAdmin(uid));
         allow delete: if isModOf(slug) || isAdmin();
         allow update: if false;
       }
@@ -111,11 +114,16 @@ service cloud.firestore {
       }
 
       // Activity log — anyone signed in can append; mods/admins read & delete.
+      // `isAdmin()` is intentionally evaluated first: admin doesn't depend on
+      // `slug`, so it short-circuits without an extra `get()` on the parent
+      // forum doc. That keeps the collection-group query in /admin working
+      // even if `isModOf(slug)` would otherwise throw on an orphan activity
+      // doc whose parent forum has been removed.
       match /activity/{eventId} {
-        allow read: if isModOf(slug) || isAdmin();
+        allow read: if isAdmin() || isModOf(slug);
         allow create: if isSignedIn();
         allow update: if false;
-        allow delete: if isModOf(slug) || isAdmin();
+        allow delete: if isAdmin() || isModOf(slug);
       }
 
       // Reports — admins/mods read all; reporters can read their own.

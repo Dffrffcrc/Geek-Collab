@@ -15,7 +15,7 @@ import {
 import { db } from '../../../lib/firebase';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
 import { timeAgo } from '../../../lib/forum-utils';
-import type { Activity } from '../../../lib/moderation';
+import { describeActivity, type Activity } from '../../../lib/moderation';
 
 const MOD_ACTION_TYPES = [
   'post_deleted',
@@ -37,19 +37,29 @@ export default function AdminDashboard() {
   const [banned, setBanned] = useState<number | null>(null);
   const [users, setUsers] = useState<number | null>(null);
   const [recentMod, setRecentMod] = useState<Activity[] | null>(null);
+  // Surface query errors instead of silently flattening them to 0 — that
+  // way "missing collection-group index" doesn't look like "no data".
+  const [loadErrors, setLoadErrors] = useState<string[]>([]);
+  const pushErr = (label: string, err: { code?: string; message?: string }) =>
+    setLoadErrors((prev) => [...prev, `${label}: ${err.code ?? err.message ?? 'unknown error'}`]);
 
   useEffect(() => {
+    setLoadErrors([]);
     // One-shot counts for the heavier queries — these don't change every second.
     (async () => {
       try {
         setForums((await getCountFromServer(collection(db, 'forums'))).data().count);
       } catch (err) {
         console.warn('[admin:dashboard] forums count failed:', err);
+        pushErr('forums', err as { code?: string; message?: string });
+        setForums(0);
       }
       try {
         setUsers((await getCountFromServer(collection(db, 'users'))).data().count);
       } catch (err) {
         console.warn('[admin:dashboard] users count failed:', err);
+        pushErr('users', err as { code?: string; message?: string });
+        setUsers(0);
       }
     })();
 
@@ -61,6 +71,7 @@ export default function AdminDashboard() {
         (snap) => setOpenReports(snap.size),
         (err) => {
           console.warn('[admin:dashboard] reports failed:', err);
+          pushErr('open reports', err);
           setOpenReports(0);
         },
       ),
@@ -72,6 +83,7 @@ export default function AdminDashboard() {
         (snap) => setQuarantined(snap.size),
         (err) => {
           console.warn('[admin:dashboard] quarantine failed:', err);
+          pushErr('quarantine', err);
           setQuarantined(0);
         },
       ),
@@ -83,15 +95,22 @@ export default function AdminDashboard() {
         (snap) => setDeleted(snap.size),
         (err) => {
           console.warn('[admin:dashboard] deleted failed:', err);
+          pushErr('deleted', err);
           setDeleted(0);
         },
       ),
     );
 
     unsubs.push(
-      onSnapshot(collection(db, 'timeouts'), (snap) => {
-        setBanned(snap.size);
-      }),
+      onSnapshot(
+        collection(db, 'timeouts'),
+        (snap) => setBanned(snap.size),
+        (err) => {
+          console.warn('[admin:dashboard] timeouts failed:', err);
+          pushErr('timeouts', err);
+          setBanned(0);
+        },
+      ),
     );
 
     // Recent mod actions across all forums.
@@ -109,6 +128,7 @@ export default function AdminDashboard() {
           ),
         (err) => {
           console.warn('[admin:dashboard] activity failed (likely needs index):', err);
+          pushErr('mod actions', err);
           setRecentMod([]);
         },
       ),
@@ -119,6 +139,23 @@ export default function AdminDashboard() {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
+      {loadErrors.length > 0 && (
+        <View style={styles.errBanner}>
+          <Text style={styles.errBannerHead}>Some sections failed to load</Text>
+          <Text style={styles.errBannerSub}>
+            {loadErrors.some((e) => e.includes('permission-denied'))
+              ? 'permission-denied means firestore.rules is out of date. Run "firebase deploy --only firestore:rules".'
+              : loadErrors.some((e) => e.includes('failed-precondition'))
+              ? 'failed-precondition means a Firestore index is missing. Run "firebase deploy --only firestore:indexes" (and wait a few minutes for indexes to build).'
+              : 'Run both "firebase deploy --only firestore:rules" and "firebase deploy --only firestore:indexes".'}
+          </Text>
+          {loadErrors.map((line, i) => (
+            <Text key={i} style={styles.errBannerLine}>
+              {line}
+            </Text>
+          ))}
+        </View>
+      )}
       <View style={styles.tilesRow}>
         <Tile label="Open reports" value={openReports} accent={openReports && openReports > 0 ? 'warn' : 'normal'} />
         <Tile label="Quarantined" value={quarantined} />
@@ -136,12 +173,15 @@ export default function AdminDashboard() {
       ) : (
         recentMod.map((a) => (
           <View key={a.id} style={styles.actRow}>
-            <Text style={styles.actType}>{a.type.replace(/_/g, ' ')}</Text>
+            <View style={styles.actHead}>
+              <Text style={styles.actType}>{a.type.replace(/_/g, ' ')}</Text>
+              <Text style={styles.actTime}>{timeAgo(a.createdAt as Timestamp)}</Text>
+            </View>
             <Text style={styles.actBody}>
               <Text style={styles.actActor}>@{a.actorUsername}</Text>
-              {a.details ? ` — ${a.details}` : ''}
+              {' '}
+              {describeActivity(a)}
             </Text>
-            <Text style={styles.actTime}>{timeAgo(a.createdAt as Timestamp)}</Text>
           </View>
         ))
       )}
@@ -160,7 +200,7 @@ function Tile({
 }) {
   return (
     <View style={[styles.tile, accent === 'warn' && styles.tileWarn]}>
-      <Text style={[styles.tileValue, accent === 'warn' && { color: COLORS.error }]}>
+      <Text style={[styles.tileValue, accent === 'warn' && { color: COLORS.warn }]}>
         {value === null ? '…' : value}
       </Text>
       <Text style={styles.tileLabel}>{label}</Text>
@@ -181,14 +221,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#3a3a3a',
   },
-  tileWarn: { borderColor: COLORS.error },
+  tileWarn: { borderColor: COLORS.warn },
   tileValue: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 28 },
   tileLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginTop: 4 },
   sectionHeading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, marginBottom: 12 },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13 },
+  errBanner: {
+    backgroundColor: 'rgba(255,118,118,0.12)',
+    borderColor: COLORS.error,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    gap: 4,
+  },
+  errBannerHead: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '700' },
+  errBannerSub: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 12, marginBottom: 4 },
+  errBannerLine: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 12 },
+  code: { fontFamily: BODY_FONT, fontWeight: '700' },
   actRow: { backgroundColor: '#2a2a2a', borderRadius: 8, padding: 12, marginBottom: 8 },
+  actHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
   actType: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  actBody: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, marginTop: 4 },
+  actBody: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, lineHeight: 18 },
   actActor: { color: COLORS.yellow, fontWeight: '700' },
-  actTime: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginTop: 4 },
+  actTime: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginLeft: 'auto' },
 });

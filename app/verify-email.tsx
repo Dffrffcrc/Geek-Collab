@@ -77,6 +77,10 @@ export default function VerifyEmail() {
         We sent a verification link to {user?.email ?? 'your email'}. Click the link in that email
         to finish creating your account, this page will move you forward automatically.
       </Text>
+      <Text style={styles.spam}>
+        Heads up: the email almost always lands in your spam or junk folder, so please check there
+        if you don't see it in your inbox.
+      </Text>
       {info && <Text style={styles.info}>{info}</Text>}
       <PrimaryButton label="I've verified" onPress={manualCheck} loading={checking} />
       <TouchableOpacity style={styles.secondary} onPress={resend} disabled={resending}>
@@ -91,7 +95,16 @@ export default function VerifyEmail() {
 
 const styles = StyleSheet.create({
   heading: { color: COLORS.textPrimary, fontSize: 24, marginBottom: 12, textAlign: 'center', fontFamily: HEADING_FONT },
-  body: { color: '#bbb', fontSize: 14, marginBottom: 16, textAlign: 'center', lineHeight: 20, fontFamily: BODY_FONT },
+  body: { color: '#bbb', fontSize: 14, marginBottom: 12, textAlign: 'center', lineHeight: 20, fontFamily: BODY_FONT },
+  spam: {
+    color: COLORS.yellow,
+    fontSize: 13,
+    marginBottom: 16,
+    textAlign: 'center',
+    lineHeight: 18,
+    fontFamily: BODY_FONT,
+    fontWeight: '700',
+  },
   info: { color: COLORS.yellow, fontSize: 13, marginBottom: 8, textAlign: 'center', fontFamily: BODY_FONT },
   secondary: {
     height: 48,

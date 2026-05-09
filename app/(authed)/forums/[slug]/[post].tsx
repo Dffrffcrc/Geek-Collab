@@ -33,8 +33,9 @@ import {
 } from '../../../../lib/moderation';
 import { isAdminUsername, useIsServerAdmin } from '../../../../lib/admins';
 import { UserRoleTags } from '../../../../components/RoleTag';
-import { violatesContentFilter } from '../../../../lib/admin-tools';
+import { describeActionError, violatesContentFilter } from '../../../../lib/admin-tools';
 import { Avatar } from '../../../../components/Avatar';
+import { MarkdownBody } from '../../../../components/MarkdownBody';
 import { FormInput } from '../../../../components/FormInput';
 import { CommentItem, type Comment } from '../../../../components/CommentItem';
 import { HeartIcon, CommentIcon, MoreIcon } from '../../../../components/Icons';
@@ -187,6 +188,7 @@ export default function PostDetail() {
 
   async function deletePost() {
     if (!post || !slug || !postSlug || !user || !profile) return;
+    if (post.isDeleted) return;
     if (!confirm('Delete this post?')) return;
     try {
       // Soft delete — admins can still see and restore.
@@ -204,7 +206,13 @@ export default function PostDetail() {
       router.replace(`/forums/${slug}`);
     } catch (err) {
       console.error('[post:delete] failed:', err);
+      alert(describeActionError('delete post', err));
     }
+  }
+
+  function reportFailure(scope: string, err: unknown) {
+    console.error(`[post:${scope}] failed:`, err);
+    alert(describeActionError(scope, err));
   }
 
   async function toggleQuarantine() {
@@ -217,7 +225,7 @@ export default function PostDetail() {
         targetId: postSlug,
       });
     } catch (err) {
-      console.error('[post:quarantine] failed:', err);
+      reportFailure('quarantine', err);
     }
   }
 
@@ -232,7 +240,7 @@ export default function PostDetail() {
         details: post.authorUsername,
       });
     } catch (err) {
-      console.error('[post:mute-author] failed:', err);
+      reportFailure('mute-author', err);
     }
   }
 
@@ -247,7 +255,7 @@ export default function PostDetail() {
         details: post.authorUsername,
       });
     } catch (err) {
-      console.error('[post:timeout-author] failed:', err);
+      reportFailure('timeout-author', err);
     }
   }
 
@@ -291,10 +299,14 @@ export default function PostDetail() {
     );
   }
 
-  const canModerate = (isMod || isAdmin) && !isAdminUsername(post.authorUsername);
+  // Admins can moderate any author (including other admins). Mods keep
+  // the no-acting-on-admins guard.
+  const canModerate = isAdmin || (isMod && !isAdminUsername(post.authorUsername));
   const actions: MenuAction[] = [];
-  if (isAuthor) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
-  if (isAuthor || canModerate) actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
+  if (isAuthor && !post.isDeleted) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
+  if ((isAuthor || canModerate) && !post.isDeleted) {
+    actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
+  }
   if (canModerate) {
     actions.push({
       label: post.isQuarantined ? 'Remove from quarantine' : 'Move to quarantine',
@@ -321,7 +333,13 @@ export default function PostDetail() {
                   style={styles.author}
                   onPress={() => router.push(`/profile/${post.authorUsername}`)}
                 >
-                  {post.authorUsername}
+                  {post.authorDisplayName || post.authorUsername}
+                </Text>
+                <Text
+                  style={styles.handle}
+                  onPress={() => router.push(`/profile/${post.authorUsername}`)}
+                >
+                  @{post.authorUsername}
                 </Text>
                 <UserRoleTags
                   username={post.authorUsername}
@@ -347,7 +365,11 @@ export default function PostDetail() {
         </View>
 
         <Text style={styles.title}>{post.title}</Text>
-        {!!post.body && <Text style={styles.body}>{post.body}</Text>}
+        {!!post.body && (
+          <View style={styles.bodyBox}>
+            <MarkdownBody>{post.body}</MarkdownBody>
+          </View>
+        )}
 
         {post.mediaUrls && post.mediaUrls.length > 0 && (
           <View style={styles.mediaList}>
@@ -383,47 +405,44 @@ export default function PostDetail() {
       ) : comments.length === 0 ? (
         <Text style={styles.empty}>No comments yet.</Text>
       ) : (
-        // Render top-level comments with their replies grouped underneath.
-        // Threading is flattened to a single visual indent level: any reply,
-        // regardless of depth, lives directly under its top-level ancestor.
-        // Deleted comments are filtered out unless the viewer is a mod/admin.
-        comments
-          .filter((c) => !c.parentCommentId && (!c.isDeleted || isMod || isAdmin))
-          .map((top) => {
-            const replies = comments
-              .filter(
-                (c) =>
-                  c.rootCommentId === top.id && (!c.isDeleted || isMod || isAdmin),
-              )
-              .sort(
-                (a, b) =>
-                  (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0),
-              );
-            return (
-              <View key={top.id}>
-                <CommentItem
-                  comment={top}
-                  forumSlug={slug!}
-                  postSlug={postSlug!}
-                  postAuthorUid={post.authorUid}
-                  moderatorUids={forum.moderatorUids ?? []}
-                  canReply={!closed && !muted && !timedOut}
-                />
-                {replies.map((r) => (
-                  <CommentItem
-                    key={r.id}
-                    comment={r}
-                    forumSlug={slug!}
-                    postSlug={postSlug!}
-                    postAuthorUid={post.authorUid}
-                    moderatorUids={forum.moderatorUids ?? []}
-                    isReply
-                    canReply={!closed && !muted && !timedOut}
-                  />
-                ))}
-              </View>
+        (() => {
+          // Build a parent→children map so CommentItem can render the tree
+          // recursively. Soft-deleted comments stay visible to per-forum
+          // mods (they need an audit view inside the thread). Admins
+          // intentionally do NOT see them here — they're meant to use the
+          // dedicated deleted view, and the previous behavior made it look
+          // like "delete didn't work" because the comment kept appearing
+          // tagged DELETED. Note the admin exclusion still applies even
+          // when the admin happens to also be in the forum's moderatorUids.
+          const visible = comments.filter((c) => !c.isDeleted || (isMod && !isAdmin));
+          const map = new Map<string | null, Comment[]>();
+          for (const c of visible) {
+            const k = c.parentCommentId ?? null;
+            const list = map.get(k) ?? [];
+            list.push(c);
+            map.set(k, list);
+          }
+          for (const [, list] of map) {
+            list.sort(
+              (a, b) =>
+                (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0),
             );
-          })
+          }
+          const topLevel = map.get(null) ?? [];
+          return topLevel.map((c) => (
+            <CommentItem
+              key={c.id}
+              comment={c}
+              forumSlug={slug!}
+              postSlug={postSlug!}
+              postAuthorUid={post.authorUid}
+              moderatorUids={forum.moderatorUids ?? []}
+              childrenByParent={map}
+              depth={0}
+              canReply={!closed && !muted && !timedOut}
+            />
+          ));
+        })()
       )}
 
       {closed ? (
@@ -441,6 +460,7 @@ export default function PostDetail() {
             multiline
             style={{ height: 70, paddingTop: 12 }}
           />
+          <Text style={styles.markdownHint}>Markdown supported.</Text>
           {error && <Text style={styles.error}>{error}</Text>}
           <TouchableOpacity style={styles.commentSubmit} onPress={postComment} disabled={busy}>
             {busy ? <ActivityIndicator color="#000" /> : <Text style={styles.commentSubmitLabel}>Comment</Text>}
@@ -477,16 +497,19 @@ const styles = StyleSheet.create({
   postCard: { backgroundColor: '#2a2a2a', borderRadius: 14, padding: 22, marginBottom: 24 },
   postHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   postHeader: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  authorRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
-  author: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
+  authorRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  author: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 15, fontWeight: '700' },
+  handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
   quarantineTag: {
-    backgroundColor: 'rgba(255,118,118,0.18)',
-    color: COLORS.error,
+    backgroundColor: COLORS.warnBg,
+    color: COLORS.warn,
     fontSize: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+    borderWidth: 1,
+    borderColor: COLORS.warnBorder,
     fontFamily: BODY_FONT,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -506,7 +529,7 @@ const styles = StyleSheet.create({
   },
   moreBtn: { padding: 4 },
   title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 26, marginBottom: 12 },
-  body: { color: '#dddddd', fontFamily: BODY_FONT, fontSize: 15, lineHeight: 22 },
+  bodyBox: { marginBottom: 4 },
   actions: { flexDirection: 'row', gap: 12, marginTop: 18 },
   likeButton: {
     flexDirection: 'row',
@@ -533,6 +556,7 @@ const styles = StyleSheet.create({
   commentsHeading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, marginBottom: 14 },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
   commentBox: { marginTop: 8 },
+  markdownHint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginTop: 4, marginBottom: 4 },
   commentSubmit: {
     alignSelf: 'flex-end',
     backgroundColor: COLORS.yellow,

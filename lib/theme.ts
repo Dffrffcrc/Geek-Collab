@@ -16,4 +16,10 @@ export const COLORS = {
   textMuted: '#aaaaaa',
   textPlaceholder: '#888888',
   error: '#ff7676',
+  // Warm amber used for status pills (QUARANTINED, BANNED, report reasons).
+  // Distinct from `yellow` (primary accent) and `error` (form/system errors)
+  // so warning-state UI doesn't clash with the primary palette.
+  warn: '#e0b150',
+  warnBg: 'rgba(224, 177, 80, 0.16)',
+  warnBorder: 'rgba(224, 177, 80, 0.5)',
 };

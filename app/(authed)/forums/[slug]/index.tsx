@@ -23,6 +23,8 @@ import { trackForumVisit } from '../../../../lib/user-profile';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../../lib/theme';
 import { isClosed, popularity, timeRemaining } from '../../../../lib/forum-utils';
 import { useIsMod, useIsMutedInForum, useTimeoutStatus } from '../../../../lib/moderation';
+import { useIsServerAdmin } from '../../../../lib/admins';
+import { ShieldIcon } from '../../../../components/Icons';
 import { PostCard, type PostSummary } from '../../../../components/PostCard';
 import { PostComposer } from '../../../../components/PostComposer';
 import { InfoIcon, PlusIcon } from '../../../../components/Icons';
@@ -40,8 +42,12 @@ export default function ForumPage() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
   const isMod = useIsMod(slug);
+  const isAdmin = useIsServerAdmin();
   const muted = useIsMutedInForum(slug);
   const timeoutState = useTimeoutStatus();
+  // Admins can open the mod panel of any forum even if they aren't listed
+  // in moderatorUids — that's the whole point of being a server admin.
+  const canOpenModPanel = isMod || isAdmin;
 
   const [forum, setForum] = useState<Forum | null | undefined>(undefined);
   const [posts, setPosts] = useState<PostSummary[] | null>(null);
@@ -79,10 +85,10 @@ export default function ForumPage() {
   // breaks the rules of hooks.
   const visiblePosts = useMemo(() => {
     // Hide soft-deleted posts in the regular forum view (admin sees them in
-    // /admin/deleted). Quarantined posts are visible to mods only.
+    // /admin/deleted). Quarantined posts are visible to mods + admins only.
     const base = (posts ?? [])
       .filter((p) => !p.isDeleted)
-      .filter((p) => isMod || !p.isQuarantined);
+      .filter((p) => isMod || isAdmin || !p.isQuarantined);
     const q = search.trim().toLowerCase();
     const filtered = !q
       ? base
@@ -98,7 +104,7 @@ export default function ForumPage() {
     return [...filtered].sort(
       (a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0),
     );
-  }, [posts, isMod, search, sort]);
+  }, [posts, isMod, isAdmin, search, sort]);
 
   if (forum === undefined) {
     return <ActivityIndicator color={COLORS.yellow} style={{ marginTop: 32 }} />;
@@ -119,19 +125,11 @@ export default function ForumPage() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
           <Text style={styles.heading}>{forum.name}</Text>
-          <View style={styles.headerRight}>
-            {isMod && (
-              <TouchableOpacity
-                style={styles.modBtn}
-                onPress={() => router.push(`/forums/${slug}/mod` as never)}
-              >
-                <Text style={styles.modBtnLabel}>Mod Activity</Text>
-              </TouchableOpacity>
-            )}
-            <Text style={[styles.badge, closed ? styles.badgeClosed : styles.badgeActive]}>
-              {closed ? 'Read-only' : timeRemaining(forum.closesAt)}
-            </Text>
-          </View>
+        </View>
+        <View style={[styles.timeBadge, closed ? styles.timeBadgeClosed : styles.timeBadgeActive]}>
+          <Text style={[styles.timeBadgeText, closed && styles.timeBadgeTextClosed]}>
+            {closed ? 'Read-only' : timeRemaining(forum.closesAt)}
+          </Text>
         </View>
         {!!forum.description && <Text style={styles.description}>{forum.description}</Text>}
 
@@ -217,6 +215,18 @@ export default function ForumPage() {
         </TouchableOpacity>
       )}
 
+      {canOpenModPanel && (
+        <TouchableOpacity
+          style={[styles.modFab, canPost ? styles.modFabStacked : styles.modFabAlone]}
+          onPress={() => router.push(`/forums/${slug}/mod` as never)}
+          activeOpacity={0.85}
+          accessibilityLabel="Open moderator panel"
+        >
+          <ShieldIcon size={20} color="#000" />
+          <Text style={styles.modFabLabel}>Mod Panel</Text>
+        </TouchableOpacity>
+      )}
+
       <Modal
         visible={composerOpen}
         animationType="fade"
@@ -240,19 +250,21 @@ export default function ForumPage() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { padding: 32, paddingBottom: 120 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  modBtn: {
-    backgroundColor: COLORS.yellow,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-  },
-  modBtnLabel: { color: '#000', fontFamily: BODY_FONT, fontWeight: '700', fontSize: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 32, flexShrink: 1, paddingRight: 12 },
-  badge: { fontFamily: BODY_FONT, fontSize: 12, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, overflow: 'hidden' },
-  badgeActive: { backgroundColor: COLORS.yellow, color: '#000' },
-  badgeClosed: { backgroundColor: '#444', color: COLORS.textMuted },
+  // Bumped up from a small chip to a clearly readable tag — the
+  // "remaining time" is a key signal in this app, easy to miss before.
+  timeBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  timeBadgeActive: { backgroundColor: COLORS.yellow },
+  timeBadgeClosed: { backgroundColor: '#3a3a3a' },
+  timeBadgeText: { color: '#000', fontFamily: BODY_FONT, fontSize: 15, fontWeight: '700', letterSpacing: 0.3 },
+  timeBadgeTextClosed: { color: COLORS.textMuted },
   description: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 14, marginBottom: 24, lineHeight: 20 },
 
   banner: {
@@ -305,6 +317,30 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
+
+  // Mod panel button: lives in the same floating-action zone as the post
+  // FAB so it doesn't compete with the title for visual weight. When the
+  // user can also post, we stack it directly above the post FAB; when
+  // they can't (closed forum / muted) it sits where the post FAB would.
+  modFab: {
+    position: 'absolute',
+    right: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.yellow,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modFabStacked: { bottom: 108 },
+  modFabAlone: { bottom: 32 },
+  modFabLabel: { color: '#000', fontFamily: BODY_FONT, fontWeight: '700', fontSize: 14, letterSpacing: 0.3 },
 
   modalBackdrop: {
     flex: 1,

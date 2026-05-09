@@ -75,6 +75,55 @@ export type Activity = {
   createdAt: Timestamp;
 };
 
+// Renders an activity event as a single human-readable phrase like
+//   "deleted post \"My Title\""   /   "muted @bob"   /   "commented"
+// for the moderator + admin activity views. Avoids ever surfacing raw UIDs
+// or random Firestore doc IDs, which made the old log unreadable. Returns
+// just the predicate — the caller renders the actor (e.g. "@alice") in
+// front of it.
+//
+// Convention (set by the call sites in PostCard / [post].tsx / etc.):
+//   user_*      → details = the target's username (no @)
+//   post_*      → details = the post title when available; targetId = slug
+//   comment_*   → targetId = comment id (always opaque, never shown)
+//   report_*    → targetId = report id (always opaque, never shown)
+export function describeActivity(a: Pick<Activity, 'type' | 'targetId' | 'details'>): string {
+  const { type, targetId, details } = a;
+  const postLabel = details ? `"${details}"` : targetId ? `"${targetId}"` : '';
+  switch (type) {
+    case 'post_created':
+      return postLabel ? `posted ${postLabel}` : 'posted';
+    case 'post_edited':
+      return postLabel ? `edited ${postLabel}` : 'edited a post';
+    case 'post_deleted':
+      return postLabel ? `deleted post ${postLabel}` : 'deleted a post';
+    case 'post_quarantined':
+      return postLabel ? `quarantined ${postLabel}` : 'quarantined a post';
+    case 'post_unquarantined':
+      return postLabel ? `un-quarantined ${postLabel}` : 'un-quarantined a post';
+    case 'comment_created':
+      return details === 'reply' ? 'replied to a comment' : 'commented';
+    case 'comment_edited':
+      return 'edited a comment';
+    case 'comment_deleted':
+      return 'deleted a comment';
+    case 'user_muted':
+      return details ? `muted @${details}` : 'muted a user';
+    case 'user_unmuted':
+      return details ? `unmuted @${details}` : 'unmuted a user';
+    case 'user_timed_out':
+      return details ? `timed out @${details}` : 'timed out a user';
+    case 'report_filed':
+      return 'filed a report';
+    case 'report_resolved':
+      return 'resolved a report';
+    default:
+      // Exhaustive switch — but if a new ActivityType ships before this
+      // helper is updated, fall back to the snake-case name with spaces.
+      return String(type).replace(/_/g, ' ');
+  }
+}
+
 // Best-effort: log an activity event to forums/{slug}/activity.
 // Failures are swallowed because activity logging shouldn't block UX.
 export async function logActivity(

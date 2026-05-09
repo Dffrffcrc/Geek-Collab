@@ -106,6 +106,24 @@ export async function reopenForum(forumSlug: string, newClosesAt: Date): Promise
   });
 }
 
+// ----- User-facing error helper -----------------------------------------
+// Turns a Firestore / FirebaseError into a sentence we can put in an
+// alert(). Permission-denied is by far the most common failure mode in
+// this app — and almost always means firestore.rules wasn't redeployed
+// after the admin list changed — so we call that out specifically.
+export function describeActionError(scope: string, err: unknown): string {
+  const e = err as { code?: string; message?: string };
+  const action = scope.replace(/-/g, ' ');
+  if (e?.code === 'permission-denied') {
+    return (
+      `Could not ${action}. Firestore rules denied this. ` +
+      `If you're an admin, ask whoever deploys the project to run ` +
+      `"firebase deploy --only firestore:rules" so the latest rules are live.`
+    );
+  }
+  return `Could not ${action}. ${e?.code ?? e?.message ?? 'Please try again.'}`;
+}
+
 // ----- Auto-mod block list ----------------------------------------------
 // Backed by the `bad-words` package. We extend its default English list with
 // extra slurs that aren't covered by default. There is intentionally no admin

@@ -71,10 +71,25 @@ export function popularity(post: {
   return likes + engagement * COMMENT_WEIGHT;
 }
 
-// Trim a body for the forum-list preview card.
+// Trim a body for the forum-list preview card. Strips common markdown
+// syntax so headings, bold/italic, links, code fences etc. don't render as
+// literal asterisks/hashes/backticks in the preview.
 export function previewText(body: string, max = 160): string {
   if (!body) return '';
-  const trimmed = body.trim();
+  const stripped = body
+    .replace(/```[\s\S]*?```/g, '') // fenced code blocks
+    .replace(/`([^`]+)`/g, '$1') // inline code
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links → label
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '') // headings
+    .replace(/^\s*>+\s?/gm, '') // blockquotes
+    .replace(/^\s*[-*+]\s+/gm, '') // bullet lists
+    .replace(/^\s*\d+\.\s+/gm, '') // numbered lists
+    .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold
+    .replace(/(\*|_)(.*?)\1/g, '$2') // italic
+    .replace(/~~(.*?)~~/g, '$1') // strikethrough
+    .replace(/\s+/g, ' ');
+  const trimmed = stripped.trim();
   if (trimmed.length <= max) return trimmed;
   return trimmed.slice(0, max).trimEnd() + '…';
 }
