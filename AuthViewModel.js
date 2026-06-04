@@ -84,8 +84,8 @@ export const useAuthViewModel = () => {
       setAuthError('This username is reserved and cannot be registered.');
       return;
     }
-    if (password.length < 6) {
-      setAuthError('Password must be at least 6 characters');
+    if (password.length < 10) {
+      setAuthError('Password must be at least 10 characters');
       return;
     }
     if (password.length > 256) {

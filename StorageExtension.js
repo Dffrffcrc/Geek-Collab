@@ -7,18 +7,85 @@ import { getFirestoreDb, isFirebaseConfigured } from './FirebaseClient';
 
 // --- Password hashing --------------------------------------------------------
 // Passwords are hashed client-side with a per-user random salt before they are
-// ever persisted (Firestore or AsyncStorage). SHA-256(salt + password) means a
-// leak of the world-readable `users` collection no longer discloses reusable
-// plaintext credentials. This is a mitigation, NOT real authentication —
-// server-side auth (verifying identity, slow KDF, rate limiting) is DEFERRED
-// because there is no server identity in this app.
+// ever persisted (Firestore or AsyncStorage), so a leak of the world-readable
+// `users` collection no longer discloses reusable plaintext credentials.
+//
+// We prefer PBKDF2-HMAC-SHA256 (a slow, salted KDF) via Web Crypto, which is
+// available on the web deployment target (react-native-web / Firebase Hosting)
+// and Node. A high iteration count makes offline brute force of any leaked
+// hash far more expensive than a single SHA-256 round. Where Web Crypto is
+// unavailable (some bare native runtimes), we fall back to a single SHA-256
+// round via expo-crypto; that fallback is weak against offline brute force and
+// is tracked as a deferred follow-up.
+//
+// Hashes are self-describing — "pbkdf2$<iterations>$<hex>" or "sha256$<hex>" —
+// so verifyPassword() always re-derives with the same algorithm and parameters
+// the stored hash was created with (handles mixed runtimes + the fallback).
+//
+// This remains a mitigation, NOT real authentication: verifying a password
+// against a world-readable document is fundamentally client-side. Real auth
+// (server-verified identity + rate limiting) is DEFERRED — there is no server
+// identity in this app.
 export const generateSalt = () => String(uuid.v4());
 
-export const hashPassword = async (password, salt) => {
-  return Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    `${salt}${password}`
+const PBKDF2_ITERATIONS = 150000;
+
+const getSubtle = () =>
+  typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.subtle
+    ? globalThis.crypto.subtle
+    : null;
+
+const toHex = (buffer) =>
+  Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+
+const pbkdf2Hex = async (subtle, password, salt, iterations) => {
+  const enc = new TextEncoder();
+  const keyMaterial = await subtle.importKey(
+    'raw',
+    enc.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
   );
+  const bits = await subtle.deriveBits(
+    { name: 'PBKDF2', salt: enc.encode(salt), iterations, hash: 'SHA-256' },
+    keyMaterial,
+    256
+  );
+  return toHex(bits);
+};
+
+const sha256Hex = (password, salt) =>
+  Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${salt}${password}`);
+
+export const hashPassword = async (password, salt) => {
+  const subtle = getSubtle();
+  if (subtle) {
+    const hex = await pbkdf2Hex(subtle, password, salt, PBKDF2_ITERATIONS);
+    return `pbkdf2$${PBKDF2_ITERATIONS}$${hex}`;
+  }
+  const hex = await sha256Hex(password, salt);
+  return `sha256$${hex}`;
+};
+
+// Re-derive using the algorithm + parameters encoded in the stored hash.
+export const verifyPassword = async (password, salt, storedHash) => {
+  if (typeof storedHash !== 'string' || !storedHash) return false;
+  const parts = storedHash.split('$');
+
+  if (parts[0] === 'pbkdf2' && parts.length === 3) {
+    const subtle = getSubtle();
+    if (!subtle) return false; // cannot verify a PBKDF2 hash without Web Crypto
+    const iterations = parseInt(parts[1], 10) || PBKDF2_ITERATIONS;
+    return (await pbkdf2Hex(subtle, password, salt, iterations)) === parts[2];
+  }
+  if (parts[0] === 'sha256' && parts.length === 2) {
+    return (await sha256Hex(password, salt)) === parts[1];
+  }
+  // Untagged legacy hash (raw SHA-256 hex): verify against that format.
+  return (await sha256Hex(password, salt)) === storedHash;
 };
 
 const USERS_KEY = 'geekcollab_users';
@@ -283,10 +350,10 @@ export const getUser = async (username, password) => {
   );
   if (!candidate) return null;
 
-  // Preferred path: salted-hash comparison.
+  // Preferred path: salted-hash comparison (format-aware: PBKDF2 or SHA-256).
   if (candidate.passwordHash && candidate.passwordSalt) {
-    const computed = await hashPassword(password, candidate.passwordSalt);
-    return computed === candidate.passwordHash ? candidate : null;
+    const ok = await verifyPassword(password, candidate.passwordSalt, candidate.passwordHash);
+    return ok ? candidate : null;
   }
 
   // Legacy path: record still holds a plaintext `password`. Compare once, and
