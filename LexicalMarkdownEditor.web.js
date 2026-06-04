@@ -1,7 +1,7 @@
 import React from 'react';
 import { TextInput } from 'react-native';
 
-const LexicalMarkdownEditor = ({ value, onChange, placeholder, style }) => {
+const LexicalMarkdownEditor = ({ value, onChange, placeholder, style, maxLength = 20000 }) => {
   return (
     <TextInput
       style={style}
@@ -9,6 +9,7 @@ const LexicalMarkdownEditor = ({ value, onChange, placeholder, style }) => {
       placeholderTextColor="#B6BFCC"
       value={value}
       onChangeText={onChange}
+      maxLength={maxLength}
       multiline
       textAlignVertical="top"
       autoCorrect={false}

@@ -1,11 +1,40 @@
- 
+
+
+// Centralized client-side admin allowlist.
+//
+// SECURITY NOTE: this is a client-side-only convenience flag. The admin check
+// (DiscussionViewModel.getPermissionSummary) runs entirely in client code and
+// is trivially bypassable from the JS console / direct Firestore writes. It is
+// NOT a security boundary. Authoritative admin/role/ban/moderation enforcement
+// requires a server identity (Firebase Auth or trusted backend) and is
+// DEFERRED. We additionally reserve these usernames at signup (see
+// isReservedUsername) so an attacker can't simply register one and inherit the
+// flag — but that too is only a client-side guard.
+export const ADMIN_USERNAMES = [
+  'varun',
+  'ekansh_mishra',
+  'si_yuan',
+  'zwe',
+  'paul',
+  'joel',
+  'julianteh',
+  'rogeryeo',
+];
+
+export const isAdminUsername = (username) =>
+  ADMIN_USERNAMES.includes(String(username || '').trim().toLowerCase());
+
+// Usernames that may not be registered (currently the admin allowlist).
+export const isReservedUsername = (username) =>
+  ADMIN_USERNAMES.includes(String(username || '').trim().toLowerCase());
 
 /**
  * @typedef {Object} User
  * @property {string} id
  * @property {string} username
  * @property {string} displayName
- * @property {string} password
+ * @property {string} passwordHash - SHA-256(salt + password); never plaintext
+ * @property {string} passwordSalt - per-user random salt
  * @property {'admin'|'user'} role
  * @property {string} displayName - Display name for user
  * @property {string} bio
@@ -15,11 +44,17 @@
  * @property {string[]} forumModerators - Array of forum IDs where user is a moderator
  * @property {string} createdAt - ISO date string
  */
+// NOTE: passwords are never stored in plaintext. The caller (AuthViewModel)
+// hashes the password client-side and passes passwordHash + passwordSalt.
+// Client-side hashing prevents plaintext-credential disclosure/reuse if the
+// (world-readable) users collection leaks, but it is NOT a substitute for
+// server-side authentication — that is DEFERRED (no server identity yet).
 export const createUser = ({
   id,
   username,
   displayName = '',
-  password,
+  passwordHash = '',
+  passwordSalt = '',
   role = 'user',
   bio = '',
   profileImage = null,
@@ -30,8 +65,8 @@ export const createUser = ({
 }) => ({
   id,
   username,
-  displayName,
-  password,
+  passwordHash,
+  passwordSalt,
   role,
   displayName: displayName || username,
   bio,

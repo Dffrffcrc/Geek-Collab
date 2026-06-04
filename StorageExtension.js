@@ -1,7 +1,25 @@
  
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, doc, getDoc, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import * as Crypto from 'expo-crypto';
+import uuid from 'react-native-uuid';
 import { getFirestoreDb, isFirebaseConfigured } from './FirebaseClient';
+
+// --- Password hashing --------------------------------------------------------
+// Passwords are hashed client-side with a per-user random salt before they are
+// ever persisted (Firestore or AsyncStorage). SHA-256(salt + password) means a
+// leak of the world-readable `users` collection no longer discloses reusable
+// plaintext credentials. This is a mitigation, NOT real authentication —
+// server-side auth (verifying identity, slow KDF, rate limiting) is DEFERRED
+// because there is no server identity in this app.
+export const generateSalt = () => String(uuid.v4());
+
+export const hashPassword = async (password, salt) => {
+  return Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    `${salt}${password}`
+  );
+};
 
 const USERS_KEY = 'geekcollab_users';
 const FORUM_STATE_KEY = 'geekcollab_forum_state';
@@ -44,19 +62,46 @@ const getRemoteUsers = async (firestoreDb) => {
   return Array.isArray(users) ? users : [];
 };
 
+// Strip any plaintext `password` before a record is persisted. New records
+// only carry passwordHash/passwordSalt; this defends against legacy objects or
+// spread-in updates re-writing plaintext to Firestore/AsyncStorage.
+const stripPlaintextPassword = (user) => {
+  if (!user || typeof user !== 'object') return user;
+  if (!('password' in user)) return user;
+  const { password, ...rest } = user;
+  return rest;
+};
+
+const secureUserForPersistence = async (user) => {
+  if (!user || typeof user !== 'object') return user;
+  if (typeof user.password === 'string' && (!user.passwordHash || !user.passwordSalt)) {
+    const passwordSalt = generateSalt();
+    const passwordHash = await hashPassword(user.password, passwordSalt);
+    return {
+      ...stripPlaintextPassword(user),
+      passwordHash,
+      passwordSalt,
+    };
+  }
+  return stripPlaintextPassword(user);
+};
+
+const secureUsersForPersistence = async (users) =>
+  Promise.all((Array.isArray(users) ? users : []).map(secureUserForPersistence));
+
+// ADDITIVE/TARGETED sync: write or update each provided user doc, but do NOT
+// delete remote docs that merely aren't in the local list. This removes the
+// one-call "delete-by-diff" full-collection wipe primitive. Explicit deletions
+// go through deleteUserRemote().
+// Residual risk: a client can still overwrite an individual existing user doc
+// (e.g. clobber another user's record) — there is no server identity to scope
+// writes to the caller's own doc. That is DEFERRED to server auth.
 const saveRemoteUsers = async (firestoreDb, users) => {
   const usersCollection = collection(firestoreDb, FIREBASE_USERS_COLLECTION);
-  const existingUsersSnapshot = await getDocs(usersCollection);
-  const currentIds = new Set(users.map((user) => String(user.id)));
+  const safeUsers = await secureUsersForPersistence(users);
 
   await Promise.all(
-    existingUsersSnapshot.docs
-      .filter((snapshot) => !currentIds.has(snapshot.id))
-      .map((snapshot) => deleteDoc(snapshot.ref))
-  );
-
-  await Promise.all(
-    users.map((user) => setDoc(doc(usersCollection, String(user.id)), {
+    safeUsers.map((user) => setDoc(doc(usersCollection, String(user.id)), {
       ...user,
       id: String(user.id),
       updatedAt: new Date().toISOString(),
@@ -77,16 +122,16 @@ const getRemoteForumCollection = async (firestoreDb, collectionName) => {
   return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
 };
 
+// ADDITIVE/TARGETED sync: write or update each provided doc, but never
+// delete-by-diff across the whole collection. Removing the old "delete every
+// remote doc not in the local list" behavior eliminates a one-call wipe
+// primitive (a stale/malicious client could otherwise drop every other forum
+// or discussion). Explicit removals go through deleteForumRemote /
+// deleteDiscussionRemote, called from the discrete delete handlers.
+// Residual risk: individual existing docs can still be overwritten by any
+// client (no server identity to scope writes); DEFERRED to server auth.
 const syncRemoteForumCollection = async (firestoreDb, collectionName, items) => {
   const forumCollection = collection(firestoreDb, collectionName);
-  const existingSnapshot = await getDocs(forumCollection);
-  const currentIds = new Set(items.map((item) => String(item.id)));
-
-  await Promise.all(
-    existingSnapshot.docs
-      .filter((snapshot) => !currentIds.has(snapshot.id))
-      .map((snapshot) => deleteDoc(snapshot.ref))
-  );
 
   await Promise.all(
     items.map((item) => setDoc(doc(forumCollection, String(item.id)), {
@@ -96,6 +141,26 @@ const syncRemoteForumCollection = async (firestoreDb, collectionName, items) => 
     }))
   );
 };
+
+// Targeted single-doc remote deletes. These replace the destructive
+// delete-by-diff path for explicit user-initiated deletions, so removing one
+// item touches only that one Firestore document.
+const deleteRemoteDoc = async (collectionName, id) => {
+  if (!id) return;
+  const firestoreDb = getFirestoreDb();
+  if (!firestoreDb) return;
+  try {
+    await deleteDoc(doc(firestoreDb, collectionName, String(id)));
+  } catch {
+    // local state removal still proceeds even if remote delete fails
+  }
+};
+
+export const deleteDiscussionRemote = async (discussionID) =>
+  deleteRemoteDoc(FIREBASE_DISCUSSIONS_COLLECTION, discussionID);
+
+export const deleteForumRemote = async (forumID) =>
+  deleteRemoteDoc(FIREBASE_FORUMS_COLLECTION, forumID);
 
 const getLegacyForumState = async (firestoreDb) => {
   const forumStateRef = doc(
@@ -116,8 +181,9 @@ const setUsersSyncStatus = ({ source, error = null }) => {
 };
 
 export const saveUser = async (user) => {
+  const safeUser = await secureUserForPersistence(user);
   const users = await getAllUsers();
-  users.push(user);
+  users.push(safeUser);
   await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users));
 
   const firestoreDb = getFirestoreDb();
@@ -136,16 +202,23 @@ export const saveUser = async (user) => {
 
 export const getAllUsers = async () => {
   const data = await AsyncStorage.getItem(USERS_KEY);
-  const localUsers = parseStoredUsers(data);
+  const localUsers = await secureUsersForPersistence(parseStoredUsers(data));
+  if (JSON.stringify(localUsers) !== (data || '[]')) {
+    await AsyncStorage.setItem(USERS_KEY, JSON.stringify(localUsers));
+  }
 
   const firestoreDb = getFirestoreDb();
   if (firestoreDb) {
     try {
       const remoteUsers = await getRemoteUsers(firestoreDb);
+      const safeRemoteUsers = await secureUsersForPersistence(remoteUsers);
       setUsersSyncStatus({ source: 'remote', error: null });
-      if (remoteUsers.length > 0) {
-        await AsyncStorage.setItem(USERS_KEY, JSON.stringify(remoteUsers));
-        return remoteUsers;
+      if (safeRemoteUsers.length > 0) {
+        await AsyncStorage.setItem(USERS_KEY, JSON.stringify(safeRemoteUsers));
+        if (JSON.stringify(safeRemoteUsers) !== JSON.stringify(remoteUsers)) {
+          await saveRemoteUsers(firestoreDb, safeRemoteUsers);
+        }
+        return safeRemoteUsers;
       }
       if (localUsers.length > 0) {
         await saveRemoteUsers(firestoreDb, localUsers);
@@ -186,45 +259,78 @@ export const isUsernameAvailable = async (username, excludeUserID = null) => {
   });
 };
 
+// Persist a single user's record (additive/targeted — no collection wipe).
+const persistUserRecord = async (user) => {
+  const firestoreDb = getFirestoreDb();
+  if (!firestoreDb) return;
+  try {
+    const safeUser = await secureUserForPersistence(user);
+    const usersCollection = collection(firestoreDb, FIREBASE_USERS_COLLECTION);
+    await setDoc(doc(usersCollection, String(safeUser.id)), {
+      ...safeUser,
+      id: String(safeUser.id),
+      updatedAt: new Date().toISOString(),
+    });
+  } catch {
+    // best-effort; local cache already holds the value
+  }
+};
+
 export const getUser = async (username, password) => {
   const users = await getAllUsers();
-  return users.find(
-    (u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password
-  ) || null;
+  const candidate = users.find(
+    (u) => u.username && u.username.toLowerCase() === username.toLowerCase()
+  );
+  if (!candidate) return null;
+
+  // Preferred path: salted-hash comparison.
+  if (candidate.passwordHash && candidate.passwordSalt) {
+    const computed = await hashPassword(password, candidate.passwordSalt);
+    return computed === candidate.passwordHash ? candidate : null;
+  }
+
+  // Legacy path: record still holds a plaintext `password`. Compare once, and
+  // on success transparently migrate it to a salted hash so plaintext is never
+  // written again.
+  if (typeof candidate.password === 'string') {
+    if (candidate.password !== password) return null;
+    const salt = generateSalt();
+    const passwordHash = await hashPassword(password, salt);
+    const migrated = { ...candidate, passwordHash, passwordSalt: salt };
+    delete migrated.password;
+
+    const users2 = users.map((u) => (u.id === migrated.id ? migrated : u));
+    await AsyncStorage.setItem(USERS_KEY, JSON.stringify(users2));
+    await persistUserRecord(migrated);
+    return migrated;
+  }
+
+  return null;
 };
 
 export const updateUserBanStatus = async (userID, isBanned) => {
   const users = await getAllUsers();
-  const nextUsers = users.map((user) =>
-    user.id === userID ? { ...user, isBanned } : user
-  );
+  let changed = null;
+  const nextUsers = users.map((user) => {
+    if (user.id !== userID) return user;
+    changed = { ...user, isBanned };
+    return changed;
+  });
   await AsyncStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
-
-  const firestoreDb = getFirestoreDb();
-  if (firestoreDb) {
-    try {
-      await saveRemoteUsers(firestoreDb, nextUsers);
-    } catch {
-      // keep local update even if remote fails
-    }
-  }
+  // Targeted write of only the affected user doc (no full-collection rewrite).
+  if (changed) await persistUserRecord(changed);
 };
 
 export const updateUserMuteStatus = async (userID, mutedUntil) => {
   const users = await getAllUsers();
-  const nextUsers = users.map((user) =>
-    user.id === userID ? { ...user, mutedUntil: mutedUntil || null } : user
-  );
+  let changed = null;
+  const nextUsers = users.map((user) => {
+    if (user.id !== userID) return user;
+    changed = { ...user, mutedUntil: mutedUntil || null };
+    return changed;
+  });
   await AsyncStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
-
-  const firestoreDb = getFirestoreDb();
-  if (firestoreDb) {
-    try {
-      await saveRemoteUsers(firestoreDb, nextUsers);
-    } catch {
-      // keep local update even if remote fails
-    }
-  }
+  if (changed) await persistUserRecord(changed);
 };
 
 export const updateUserRole = async (userID, role, options = {}) => {
@@ -234,68 +340,64 @@ export const updateUserRole = async (userID, role, options = {}) => {
   const { addForumModerator, removeForumModerator } = options;
 
   const users = await getAllUsers();
-  let didUpdate = false;
+  let changed = null;
   const nextUsers = users.map((user) => {
     if (user.id !== userID) return user;
-    didUpdate = true;
-    
+
     let forumModerators = Array.isArray(user.forumModerators) ? [...user.forumModerators] : [];
-    
+
     if (addForumModerator) {
       if (!forumModerators.includes(addForumModerator)) {
         forumModerators.push(addForumModerator);
       }
     }
-    
+
     if (removeForumModerator) {
       forumModerators = forumModerators.filter((fid) => fid !== removeForumModerator);
     }
-    
-    return { ...user, role: normalizedRole, forumModerators };
+
+    changed = { ...user, role: normalizedRole, forumModerators };
+    return changed;
   });
-  if (!didUpdate) return false;
+  if (!changed) return false;
 
   await AsyncStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
-  const firestoreDb = getFirestoreDb();
-  if (firestoreDb) {
-    try {
-      await saveRemoteUsers(firestoreDb, nextUsers);
-    } catch {
-      // keep local role update even if remote fails
-    }
-  }
+  // Targeted write of only the affected user doc (no full-collection rewrite).
+  await persistUserRecord(changed);
   return true;
 };
 
 export const updateUserProfile = async (userID, updates = {}) => {
   if (!userID) return null;
 
+  // Never let a profile update (re)introduce a plaintext password field, and
+  // cap free-text bio length to bound document size.
+  const { password: _ignoredPassword, ...safeUpdates } = updates || {};
+  const MAX_BIO_LEN = 500;
+
   const users = await getAllUsers();
   let updatedUser = null;
   const nextUsers = users.map((user) => {
     if (user.id !== userID) return user;
-    const nextUsername = updates.username !== undefined ? String(updates.username).trim() : user.username;
+    const nextUsername = safeUpdates.username !== undefined ? String(safeUpdates.username).trim() : user.username;
+    const nextBio = safeUpdates.bio !== undefined
+      ? String(safeUpdates.bio).trim().slice(0, MAX_BIO_LEN)
+      : user.bio;
     updatedUser = {
-      ...user,
-      ...updates,
+      ...stripPlaintextPassword(user),
+      ...safeUpdates,
       username: nextUsername,
-      displayName: updates.displayName !== undefined ? String(updates.displayName).trim() : user.displayName,
-      bio: updates.bio !== undefined ? String(updates.bio).trim() : user.bio,
-      profileImage: updates.profileImage !== undefined ? updates.profileImage : user.profileImage,
+      displayName: safeUpdates.displayName !== undefined ? String(safeUpdates.displayName).trim() : user.displayName,
+      bio: nextBio,
+      profileImage: safeUpdates.profileImage !== undefined ? safeUpdates.profileImage : user.profileImage,
     };
     return updatedUser;
   });
 
   if (!updatedUser) return null;
   await AsyncStorage.setItem(USERS_KEY, JSON.stringify(nextUsers));
-  const firestoreDb = getFirestoreDb();
-  if (firestoreDb) {
-    try {
-      await saveRemoteUsers(firestoreDb, nextUsers);
-    } catch {
-      // keep local update even if remote fails
-    }
-  }
+  // Targeted write of only the affected user doc (no full-collection rewrite).
+  await persistUserRecord(updatedUser);
 
   return updatedUser;
 };

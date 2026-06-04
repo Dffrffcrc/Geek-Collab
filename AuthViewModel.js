@@ -1,6 +1,6 @@
  
 import { useState, useEffect, useCallback } from 'react';
-import { createUser } from './Models';
+import { createUser, isReservedUsername } from './Models';
 import {
   saveUser,
   userExists,
@@ -13,9 +13,15 @@ import {
   saveActiveSessionUserID,
   getActiveSessionUserID,
   clearActiveSessionUserID,
+  generateSalt,
+  hashPassword,
 } from './StorageExtension';
 import { hasModerationMatch } from './ContentModeration';
 import uuid from 'react-native-uuid';
+
+// Field length caps — mirrored in firestore.rules so client and rules agree.
+const MAX_USERNAME_LEN = 64;
+const MAX_DISPLAY_NAME_LEN = 64;
 
 export const useAuthViewModel = () => {
   const [currentUser, setCurrentUser] = useState(null);
@@ -62,12 +68,28 @@ export const useAuthViewModel = () => {
       setAuthError('Username must be at least 3 characters');
       return;
     }
+    if (normalizedUsername.length > MAX_USERNAME_LEN) {
+      setAuthError(`Username must be at most ${MAX_USERNAME_LEN} characters`);
+      return;
+    }
+    if (normalizedDisplayName.length > MAX_DISPLAY_NAME_LEN) {
+      setAuthError(`Display name must be at most ${MAX_DISPLAY_NAME_LEN} characters`);
+      return;
+    }
     if (hasModerationMatch(normalizedUsername)) {
       setAuthError('Username contains disallowed language');
       return;
     }
+    if (isReservedUsername(normalizedUsername)) {
+      setAuthError('This username is reserved and cannot be registered.');
+      return;
+    }
     if (password.length < 6) {
       setAuthError('Password must be at least 6 characters');
+      return;
+    }
+    if (password.length > 256) {
+      setAuthError('Password is too long');
       return;
     }
     if (password !== confirmPassword) {
@@ -86,11 +108,15 @@ export const useAuthViewModel = () => {
 
     await new Promise((r) => setTimeout(r, 500));
 
+    const passwordSalt = generateSalt();
+    const passwordHash = await hashPassword(password, passwordSalt);
+
     const newUser = createUser({
       id: uuid.v4(),
       username: normalizedUsername,
       displayName: normalizedDisplayName,
-      password,
+      passwordHash,
+      passwordSalt,
       role: 'user',
       bio: '',
       profileImage: null,

@@ -1442,6 +1442,7 @@ const ForumHomeView = ({ authVM, currentUser, onLogout, newUserNotice, clearNewU
               placeholderTextColor="#B6BFCC"
               value={forumTitle}
               onChangeText={setForumTitle}
+              maxLength={200}
             />
             {forumTitleHasBlockedLanguage ? (
               <Text style={styles.validationText}>Blocked language detected in forum title.</Text>

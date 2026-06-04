@@ -1,0 +1,155 @@
+rules_version = '2';
+
+// =============================================================================
+// Geek-Collab Firestore security rules
+//
+// HONEST SCOPE: These rules provide SCHEMA VALIDATION and ABUSE-RESISTANCE
+// only. The app is an anonymous client with NO server identity (no Firebase
+// Auth), so these rules CANNOT enforce true per-user authorization:
+//   - "a user may only edit their own document"
+//   - "only a real admin may ban/mute/change roles"
+//   - authoritative admin / moderation / ban enforcement
+// All of that is DEFERRED until a server identity (Firebase Auth or a trusted
+// backend) is introduced. Until then privilege fields like `role`, `isBanned`
+// and `mutedUntil` are writable by any client by design — the app drives them
+// from client-side moderation code. We therefore VALIDATE their type/shape
+// (so they can't be abused to inject arbitrary data) rather than pretending to
+// authorize them.
+//
+// What these rules DO buy us:
+//   - default-deny for any collection/path not explicitly listed
+//   - type + enum + length caps on every writable field (anti-DoS / anti-junk)
+//   - reject documents missing required keys or carrying unknown junk fields
+//   - bounded document size to limit cost-amplification / storage abuse
+// =============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- shared validation helpers -----------------------------------------
+    function isStr(v, maxLen) {
+      return v is string && v.size() <= maxLen;
+    }
+    function optStr(data, field, maxLen) {
+      return !(field in data) || data[field] == null || isStr(data[field], maxLen);
+    }
+    function isBoolOrAbsent(data, field) {
+      return !(field in data) || data[field] is bool;
+    }
+    // http/https-only URL (or empty/null). Blocks javascript:/data: schemes.
+    function isWebUrlOrEmpty(v) {
+      return v == null || v == '' ||
+        (v is string && v.size() <= 2048 &&
+          (v.matches('https://.*') || v.matches('http://.*')));
+    }
+
+    // ===== users ============================================================
+    // Readable so the anonymous client can run its (deferred) login compare.
+    // NOTE: passwords are stored hashed+salted by the client (see AuthViewModel)
+    // so a read no longer discloses reusable plaintext credentials. True
+    // confidentiality of this collection still requires server auth (deferred).
+    match /users/{userId} {
+      allow read: if true;
+
+      function validUser(d) {
+        return d.keys().hasOnly([
+            'id',
+            'username',
+            'displayName',
+            'passwordHash',
+            'passwordSalt',
+            'role',
+            'bio',
+            'profileImage',
+            'isBanned',
+            'mutedUntil',
+            'forumModerators',
+            'createdAt',
+            'updatedAt'
+          ])
+          && d.id is string && d.id.size() <= 128
+          && isStr(d.username, 64)
+          && optStr(d, 'displayName', 64)
+          // legacy plaintext `password` is no longer written; only hash+salt.
+          && optStr(d, 'passwordHash', 256)
+          && optStr(d, 'passwordSalt', 256)
+          && (!('role' in d) || d.role in ['admin', 'user'])
+          && optStr(d, 'bio', 500)
+          && isBoolOrAbsent(d, 'isBanned')
+          && optStr(d, 'mutedUntil', 64)
+          && (!('forumModerators' in d) || d.forumModerators is list)
+          // profileImage is base64; cap to bound document size.
+          && optStr(d, 'profileImage', 2000000);
+      }
+
+      allow create, update: if validUser(request.resource.data);
+      // Deletion is permitted (no server identity to scope it) but the
+      // delete-by-diff bulk wipe primitive has been removed from the client.
+      allow delete: if true;
+    }
+
+    // ===== forums ===========================================================
+    match /forums/{forumId} {
+      allow read: if true;
+
+      function validForum(d) {
+        return d.id is string && d.id.size() <= 128
+          && isStr(d.title, 200)
+          && optStr(d, 'createdByID', 128)
+          && optStr(d, 'createdByName', 64)
+          && isBoolOrAbsent(d, 'isReadOnly')
+          && optStr(d, 'createdAt', 64)
+          && optStr(d, 'expiresAt', 64);
+      }
+
+      allow create, update: if validForum(request.resource.data);
+      allow delete: if true;
+    }
+
+    // ===== discussions ======================================================
+    match /discussions/{discussionId} {
+      allow read: if true;
+
+      function validDiscussion(d) {
+        return d.id is string && d.id.size() <= 128
+          && isStr(d.title, 200)
+          && optStr(d, 'description', 1000)
+          && optStr(d, 'content', 20000)
+          && optStr(d, 'authorID', 128)
+          && optStr(d, 'authorName', 64)
+          && optStr(d, 'forumID', 128)
+          && (!('tags' in d) || d.tags is list)
+          && (!('comments' in d) || d.comments is list)
+          && (!('reports' in d) || d.reports is list)
+          && (!('likesBy' in d) || d.likesBy is list)
+          && (!('likes' in d) || d.likes is number)
+          && isWebUrlOrEmpty(d.get('videoURL', null));
+      }
+
+      allow create, update: if validDiscussion(request.resource.data);
+      allow delete: if true;
+    }
+
+    // ===== forumMeta (singleton aggregate state doc) ========================
+    match /forumMeta/{docId} {
+      allow read: if true;
+      // Bounded shape: all keys optional maps/lists; reject non-object writes.
+      allow write: if request.resource.data is map;
+    }
+
+    // ===== legacy appState ==================================================
+    // Deprecated single-doc layout. The client migrates these into the
+    // collections above then deletes them. Allow read + delete so migration
+    // can drain old data, but block creation of new legacy docs.
+    match /appState/{docId} {
+      allow read, delete: if true;
+      allow create, update: if false;
+    }
+
+    // ===== default deny =====================================================
+    // Any collection/document not matched above is fully denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

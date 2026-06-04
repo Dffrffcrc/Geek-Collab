@@ -9,11 +9,54 @@ import {
   Image,
   StyleSheet,
   SafeAreaView,
+  Linking,
 } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import LexicalMarkdownEditor from './LexicalMarkdownEditor';
 import MediaPicker from './MediaPicker';
 import { hasModerationMatch } from './ContentModeration';
+import { isSafeUrl, isHttpUrl } from './urlSafety';
+
+// Caps mirror the view-model validation limits (MAX_TITLE_LEN/MAX_DESCRIPTION_LEN/
+// MAX_CONTENT_LEN and MAX_TAGS * MAX_TAG_LEN) so the UI never blocks a valid post.
+const TITLE_MAX_LENGTH = 200;
+const DESCRIPTION_MAX_LENGTH = 1000;
+const TAGS_MAX_LENGTH = 500; // ~10 tags x 40 chars plus separators
+const CONTENT_MAX_LENGTH = 20000;
+
+// Only allow http(s) image handlers; everything else is dropped.
+const SAFE_IMAGE_HANDLERS = ['http://', 'https://'];
+
+// Open links only when their scheme is allowlisted; never hand a
+// javascript:/data:/vbscript:/file: URL to Linking.openURL.
+const handleMarkdownLinkPress = (url) => {
+  if (isSafeUrl(url)) {
+    Linking.openURL(url).catch(() => {});
+  }
+  // Always return false so the library never opens the URL itself.
+  return false;
+};
+
+// Render rules that neutralize unsafe link/image hrefs while leaving normal
+// http(s) links and images fully functional.
+const safeMarkdownRules = {
+  link: (node, children, parent, styles) => {
+    const href = node.attributes?.href;
+    if (!isSafeUrl(href)) {
+      return <Text key={node.key} style={styles.text}>{children}</Text>;
+    }
+    return (
+      <Text key={node.key} style={styles.link} onPress={() => handleMarkdownLinkPress(href)}>
+        {children}
+      </Text>
+    );
+  },
+  image: (node, children, parent, styles) => {
+    const src = node.attributes?.src;
+    if (!isHttpUrl(src)) return null;
+    return <Image key={node.key} style={styles.image} source={{ uri: src }} />;
+  },
+};
 
 const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
   const [title, setTitle] = useState('');
@@ -120,6 +163,7 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             placeholderTextColor="#B6BFCC"
             value={title}
             onChangeText={setTitle}
+            maxLength={TITLE_MAX_LENGTH}
           />
           {hasModerationMatch(title, viewModel.blockedWords) ? (
             <Text style={styles.validationText}>Blocked language detected in title.</Text>
@@ -134,6 +178,7 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             placeholderTextColor="#B6BFCC"
             value={description}
             onChangeText={setDescription}
+            maxLength={DESCRIPTION_MAX_LENGTH}
           />
           {hasModerationMatch(description, viewModel.blockedWords) ? (
             <Text style={styles.validationText}>Blocked language detected in description.</Text>
@@ -153,11 +198,18 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             placeholder="Enter some text..."
             value={content}
             onChange={setContent}
+            maxLength={CONTENT_MAX_LENGTH}
           />
           {showMarkdownPreview ? (
             <View style={styles.markdownPreviewCard}>
               <Text style={styles.markdownPreviewLabel}>Preview</Text>
-              <Markdown style={styles.markdownBodyStyles}>
+              <Markdown
+                style={styles.markdownBodyStyles}
+                rules={safeMarkdownRules}
+                onLinkPress={handleMarkdownLinkPress}
+                allowedImageHandlers={SAFE_IMAGE_HANDLERS}
+                defaultImageHandler={null}
+              >
                 {content.trim() || '*Nothing to preview yet.*'}
               </Markdown>
             </View>
@@ -176,6 +228,7 @@ const NewDiscussionView = ({ viewModel, currentUser, onDismiss }) => {
             value={tags}
             onChangeText={setTags}
             autoCapitalize="none"
+            maxLength={TAGS_MAX_LENGTH}
           />
           {hasModerationMatch(tags, viewModel.blockedWords) ? (
             <Text style={styles.validationText}>Blocked language detected in tags.</Text>

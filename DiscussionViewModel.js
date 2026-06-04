@@ -1,8 +1,9 @@
  
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { createDiscussion, createComment, createForumConfig } from './Models';
+import { createDiscussion, createComment, createForumConfig, isAdminUsername } from './Models';
 import { getForumState, saveForumState } from './StorageExtension';
 import { updateUserBanStatus, updateUserMuteStatus, updateUserRole } from './StorageExtension';
+import { deleteDiscussionRemote, deleteForumRemote } from './StorageExtension';
 import { moderateText } from './ContentModeration';
 import uuid from 'react-native-uuid';
 
@@ -17,16 +18,12 @@ const SAMPLE_USER_IDS = {
   paul: 'sample-user-paul',
 };
 
-const ADMIN_IDS = [
-  'Varun',
-  'ekansh_mishra',
-  'si_yuan',
-  'zwe',
-  'paul',
-  'joel',
-  'julianteh',
-  'rogeryeo'
-];
+// Field length caps — mirrored in firestore.rules so client and rules agree.
+const MAX_TITLE_LEN = 200;
+const MAX_DESCRIPTION_LEN = 1000;
+const MAX_CONTENT_LEN = 20000;
+const MAX_TAG_LEN = 40;
+const MAX_TAGS = 10;
 
 const nowIso = () => new Date().toISOString();
 const isForumExpired = (forum) => new Date(forum.expiresAt).getTime() <= Date.now();
@@ -358,7 +355,7 @@ export const useDiscussionViewModel = () => {
     if (!userID) return false;
     const username = knownUsers[userID];
     if (!username) return false;
-    return ADMIN_IDS.map((id) => id.toLowerCase()).includes(String(username).trim().toLowerCase());
+    return isAdminUsername(username);
   }, [knownUsers]);
 
   const getPermissionSummary = useCallback((user) => {
@@ -376,7 +373,7 @@ export const useDiscussionViewModel = () => {
     }
     const role = String(user?.role || 'user').trim().toLowerCase();
     const username = String(user?.username || '').trim().toLowerCase();
-    const isAdmin = ADMIN_IDS.map((id) => id.toLowerCase()).includes(username);
+    const isAdmin = isAdminUsername(username);
     const forumModerators = Array.isArray(user?.forumModerators) ? user.forumModerators : [];
     const isModerator = selectedForum?.id ? forumModerators.includes(selectedForum.id) : false;
     const persistedMutedUntil = user?.mutedUntil || null;
@@ -411,6 +408,10 @@ export const useDiscussionViewModel = () => {
     }
     if (expiresAtMs <= Date.now()) {
       enqueueNotification('Forum end date/time must be in the future.');
+      return false;
+    }
+    if (title.trim().length > MAX_TITLE_LEN) {
+      enqueueNotification(`Forum title must be at most ${MAX_TITLE_LEN} characters.`, 'danger');
       return false;
     }
     const titleResult = moderateText(title.trim(), blockedWords);
@@ -467,6 +468,28 @@ export const useDiscussionViewModel = () => {
     if (targetForumIsReadOnly) {
       enqueueNotification('This forum is read-only.', 'info');
       return;
+    }
+    // Input validation (length caps mirror firestore.rules).
+    if ((title || '').trim().length > MAX_TITLE_LEN) {
+      enqueueNotification(`Title must be at most ${MAX_TITLE_LEN} characters.`, 'danger');
+      return false;
+    }
+    if ((description || '').trim().length > MAX_DESCRIPTION_LEN) {
+      enqueueNotification(`Description must be at most ${MAX_DESCRIPTION_LEN} characters.`, 'danger');
+      return false;
+    }
+    if ((content || '').trim().length > MAX_CONTENT_LEN) {
+      enqueueNotification(`Content must be at most ${MAX_CONTENT_LEN} characters.`, 'danger');
+      return false;
+    }
+    const tagList = Array.isArray(tags) ? tags : [];
+    if (tagList.length > MAX_TAGS) {
+      enqueueNotification(`A post may have at most ${MAX_TAGS} tags.`, 'danger');
+      return false;
+    }
+    if (tagList.some((tag) => String(tag || '').length > MAX_TAG_LEN)) {
+      enqueueNotification(`Each tag must be at most ${MAX_TAG_LEN} characters.`, 'danger');
+      return false;
     }
     const titleResult = moderateText(title.trim(), blockedWords);
     const descriptionResult = moderateText((description || '').trim(), blockedWords);
@@ -718,6 +741,8 @@ export const useDiscussionViewModel = () => {
       deletedByName: actor?.username || 'moderator',
     };
     setDeletedDiscussions((prev) => [archived, ...prev]);
+    // Targeted remote delete (write-only sync no longer removes diffed docs).
+    deleteDiscussionRemote(discussionID);
     enqueueNotification('Post archived by moderation team.', 'danger');
     return true;
   }, [enqueueNotification, getPermissionSummary]);
@@ -852,13 +877,15 @@ export const useDiscussionViewModel = () => {
     }
 
     setDiscussions((prev) => {
-      const removedCount = prev.filter((discussion) => discussion.authorID === userID).length;
+      const removed = prev.filter((discussion) => discussion.authorID === userID);
       enqueueNotification(
-        removedCount > 0
-          ? `User banned and ${removedCount} post(s) removed.`
+        removed.length > 0
+          ? `User banned and ${removed.length} post(s) removed.`
           : 'User banned by admin.',
         'danger'
       );
+      // Targeted remote deletes for each removed post.
+      removed.forEach((discussion) => deleteDiscussionRemote(discussion.id));
       return prev.filter((discussion) => discussion.authorID !== userID);
     });
     return true;
@@ -1072,12 +1099,14 @@ export const useDiscussionViewModel = () => {
         return normalizeName(discussion.authorName) === normalizedAuthorName;
       };
 
-      const removedCount = prev.filter(matchesTarget).length;
+      const removed = prev.filter(matchesTarget);
       enqueueNotification(
-        removedCount > 0
-          ? `${removedCount} post(s) removed for this user.`
+        removed.length > 0
+          ? `${removed.length} post(s) removed for this user.`
           : 'No posts found for this user.'
       );
+      // Targeted remote deletes for each removed post.
+      removed.forEach((discussion) => deleteDiscussionRemote(discussion.id));
       return prev.filter((discussion) => !matchesTarget(discussion));
     });
     return true;
@@ -1176,12 +1205,20 @@ export const useDiscussionViewModel = () => {
 
     const remaining = forums.filter((forum) => forum.id !== forumID);
     setForums(remaining);
+    // Targeted remote delete of the forum doc.
+    deleteForumRemote(forumID);
 
     if (selectedForumID === forumID) {
       setSelectedForumID(remaining[0]?.id || null);
     }
 
-    setDiscussions((prev) => prev.filter((discussion) => discussion.forumID !== forumID));
+    setDiscussions((prev) => {
+      // Targeted remote deletes for each child post of the removed forum.
+      prev
+        .filter((discussion) => discussion.forumID === forumID)
+        .forEach((discussion) => deleteDiscussionRemote(discussion.id));
+      return prev.filter((discussion) => discussion.forumID !== forumID);
+    });
     enqueueNotification('Forum deleted with all its posts.', 'danger');
     return true;
   }, [enqueueNotification, getPermissionSummary, forums, selectedForumID]);

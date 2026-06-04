@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// =============================================================================
+// Geek-Collab Cloud Storage security rules
+//
+// This app stores user/post images as base64 fields inside Firestore
+// documents — it does NOT currently use Cloud Storage for uploads. With no
+// server identity (no Firebase Auth) there is no safe way to permit anonymous
+// writes to the storage bucket without handing out an unbounded file-upload /
+// cost-amplification primitive to the whole internet.
+//
+// Therefore: DEFAULT-DENY the entire bucket. If a real upload feature is added
+// later it should go through a server identity (Firebase Auth) so per-user
+// authorization and size/type limits can be enforced. That is DEFERRED.
+// =============================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

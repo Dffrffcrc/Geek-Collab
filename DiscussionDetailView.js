@@ -13,11 +13,50 @@ import {
   Alert,
   Modal,
   Platform,
+  Linking,
 } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { createComment } from './Models';
 import { hasModerationMatch } from './ContentModeration';
+import { isSafeUrl, isHttpUrl } from './urlSafety';
 import uuid from 'react-native-uuid';
+
+const COMMENT_MAX_LENGTH = 5000;
+
+// Only allow http(s) image handlers; everything else is dropped.
+const SAFE_IMAGE_HANDLERS = ['http://', 'https://'];
+
+// Open links only when their scheme is allowlisted; never hand a
+// javascript:/data:/vbscript:/file: URL to Linking.openURL.
+const handleMarkdownLinkPress = (url) => {
+  if (isSafeUrl(url)) {
+    Linking.openURL(url).catch(() => {});
+  }
+  // Always return false so the library never opens the URL itself.
+  return false;
+};
+
+// Render rules that neutralize unsafe link/image hrefs while leaving normal
+// http(s) links and images fully functional.
+const safeMarkdownRules = {
+  link: (node, children, parent, styles) => {
+    const href = node.attributes?.href;
+    if (!isSafeUrl(href)) {
+      // Render the link text inline as plain (inert) text.
+      return <Text key={node.key} style={styles.text}>{children}</Text>;
+    }
+    return (
+      <Text key={node.key} style={styles.link} onPress={() => handleMarkdownLinkPress(href)}>
+        {children}
+      </Text>
+    );
+  },
+  image: (node, children, parent, styles) => {
+    const src = node.attributes?.src;
+    if (!isHttpUrl(src)) return null;
+    return <Image key={node.key} style={styles.image} source={{ uri: src }} />;
+  },
+};
 
 const toImageURI = (image) => {
   if (!image) return null;
@@ -196,7 +235,13 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
         {/* Title & Content */}
         <View style={styles.section}>
           <Text style={styles.title}>{liveDiscussion.title}</Text>
-          <Markdown style={styles.markdownContentStyles}>
+          <Markdown
+            style={styles.markdownContentStyles}
+            rules={safeMarkdownRules}
+            onLinkPress={handleMarkdownLinkPress}
+            allowedImageHandlers={SAFE_IMAGE_HANDLERS}
+            defaultImageHandler={null}
+          >
             {liveDiscussion.content || ''}
           </Markdown>
         </View>
@@ -354,6 +399,7 @@ const DiscussionDetailView = ({ discussion, viewModel, currentUser, onBack, onOp
             value={newCommentText}
             onChangeText={setNewCommentText}
             multiline={false}
+            maxLength={COMMENT_MAX_LENGTH}
             editable={permissions.canPostOrComment}
           />
           <TouchableOpacity
@@ -422,6 +468,14 @@ const styles = StyleSheet.create({
     code_inline: { backgroundColor: '#F3F4F6', color: '#111827', paddingHorizontal: 4 },
     fence: { backgroundColor: '#111827', color: '#F9FAFB', borderRadius: 6, padding: 8 },
     link: { color: '#2563EB' },
+    image: {
+      width: '100%',
+      height: 220,
+      resizeMode: 'contain',
+      marginVertical: 8,
+      borderRadius: 10,
+      backgroundColor: '#F3F4F6',
+    },
   },
   postImage: {
     width: '100%',
