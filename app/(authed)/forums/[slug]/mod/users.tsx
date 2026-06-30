@@ -23,6 +23,7 @@ import { Avatar } from '../../../../../components/Avatar';
 import { FormInput } from '../../../../../components/FormInput';
 import { UserRoleTags } from '../../../../../components/RoleTag';
 import { isAdminUsername } from '../../../../../lib/admins';
+import { promptModerationReason } from '../../../../../lib/admin-tools';
 
 type Participant = {
   uid: string;
@@ -134,7 +135,9 @@ export default function UsersTab() {
       if (isTimedOut) {
         await liftTimeout(p.uid);
       } else {
-        await timeoutUser(p.uid, user.uid, profile.username);
+        const reason = promptModerationReason('Timeout', p.username);
+        if (!reason) return;
+        await timeoutUser(p.uid, user.uid, profile.username, reason);
         logActivity(slug!, user.uid, profile.username, 'user_timed_out', {
           targetType: 'user',
           targetId: p.uid,

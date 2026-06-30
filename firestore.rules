@@ -155,7 +155,9 @@ service cloud.firestore {
 
         // Author can edit own; mods can edit any (including isQuarantined).
         // Anyone signed-in can update only the denormalized counters.
-        allow update: if isSignedIn() && (
+        // isPinned is admin-only — enforced by the outer AND before any branch.
+        allow update: if isSignedIn() &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPinned']) || isAdmin()) && (
           (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
           // Mods can update anyone's post except admins'.
           (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||

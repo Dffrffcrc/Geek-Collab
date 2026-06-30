@@ -69,20 +69,29 @@ export async function banUser(
   uid: string,
   byUid: string,
   byUsername: string,
-  reason?: string,
+  reason: string,
 ): Promise<void> {
   await setDoc(doc(db, 'timeouts', uid), {
     type: 'ban',
     expiresAt: null,
     timedOutBy: byUid,
     timedOutByUsername: byUsername,
-    reason: reason ?? null,
+    reason,
     createdAt: serverTimestamp(),
   });
 }
 
 export async function liftBan(uid: string): Promise<void> {
   await deleteDoc(doc(db, 'timeouts', uid));
+}
+
+// ----- Post pinning (admin-only) ----------------------------------------
+export async function pinPost(forumSlug: string, postSlug: string): Promise<void> {
+  await updateDoc(doc(db, 'forums', forumSlug, 'posts', postSlug), { isPinned: true });
+}
+
+export async function unpinPost(forumSlug: string, postSlug: string): Promise<void> {
+  await updateDoc(doc(db, 'forums', forumSlug, 'posts', postSlug), { isPinned: false });
 }
 
 // ----- Mod assignments (admin-only) -------------------------------------
@@ -111,6 +120,21 @@ export async function reopenForum(forumSlug: string, newClosesAt: Date): Promise
 // alert(). Permission-denied is by far the most common failure mode in
 // this app — and almost always means firestore.rules wasn't redeployed
 // after the admin list changed — so we call that out specifically.
+// Prompt for the moderator-supplied reason shown to the affected user on
+// their block banner. Returns the trimmed reason, or null if the admin
+// cancelled or left it blank (an empty reason would defeat the point —
+// the banner needs *something* to display).
+export function promptModerationReason(action: string, targetUsername: string): string | null {
+  const raw = window.prompt(`${action} @${targetUsername}.\n\nReason (shown to the user):`, '');
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    window.alert('A reason is required.');
+    return null;
+  }
+  return trimmed;
+}
+
 export function describeActionError(scope: string, err: unknown): string {
   const e = err as { code?: string; message?: string };
   const action = scope.replace(/-/g, ' ');

@@ -33,7 +33,7 @@ import {
 } from '../../../../lib/moderation';
 import { isAdminUsername, useIsServerAdmin } from '../../../../lib/admins';
 import { UserRoleTags } from '../../../../components/RoleTag';
-import { describeActionError, violatesContentFilter } from '../../../../lib/admin-tools';
+import { describeActionError, promptModerationReason, violatesContentFilter } from '../../../../lib/admin-tools';
 import { Avatar } from '../../../../components/Avatar';
 import { MarkdownBody } from '../../../../components/MarkdownBody';
 import { FormInput } from '../../../../components/FormInput';
@@ -70,7 +70,8 @@ export default function PostDetail() {
   const isMod = useIsMod(slug);
   const isAdmin = useIsServerAdmin();
   const muted = useIsMutedInForum(slug);
-  const { timedOut } = useTimeoutStatus();
+  const timeoutState = useTimeoutStatus();
+  const { timedOut } = timeoutState;
 
   const [forum, setForum] = useState<Forum | null | undefined>(undefined);
   const [post, setPost] = useState<Post | null | undefined>(undefined);
@@ -246,9 +247,10 @@ export default function PostDetail() {
 
   async function timeoutAuthor() {
     if (!post || !slug || !user || !profile) return;
-    if (!confirm(`Timeout @${post.authorUsername} globally? This blocks them across every forum.`)) return;
+    const reason = promptModerationReason('Timeout', post.authorUsername);
+    if (!reason) return;
     try {
-      await timeoutUser(post.authorUid, user.uid, profile.username);
+      await timeoutUser(post.authorUid, user.uid, profile.username, reason);
       logActivity(slug, user.uid, profile.username, 'user_timed_out', {
         targetType: 'user',
         targetId: post.authorUid,
@@ -450,7 +452,12 @@ export default function PostDetail() {
       ) : muted ? (
         <Text style={styles.roHint}>You are muted in this forum and cannot comment.</Text>
       ) : timedOut ? (
-        <Text style={styles.roHint}>You are timed out and cannot comment.</Text>
+        <Text style={styles.roHint}>
+          {timeoutState.expiresAt
+            ? `You are timed out until ${timeoutState.expiresAt.toLocaleString()} and cannot comment.`
+            : 'You have been banned and cannot comment.'}
+          {timeoutState.reason ? `\nReason: ${timeoutState.reason}` : ''}
+        </Text>
       ) : (
         <View style={styles.commentBox}>
           <FormInput

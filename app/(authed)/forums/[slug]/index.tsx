@@ -98,12 +98,12 @@ export default function ForumPage() {
             (p.body ?? '').toLowerCase().includes(q) ||
             p.authorUsername.toLowerCase().includes(q),
         );
-    if (sort === 'popular') {
-      return [...filtered].sort((a, b) => popularity(b) - popularity(a));
-    }
-    return [...filtered].sort(
-      (a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0),
-    );
+    return [...filtered].sort((a, b) => {
+      // Pinned posts always float above everything else.
+      if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+      if (sort === 'popular') return popularity(b) - popularity(a);
+      return (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0);
+    });
   }, [posts, isMod, isAdmin, search, sort]);
 
   if (forum === undefined) {
@@ -125,11 +125,11 @@ export default function ForumPage() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
           <Text style={styles.heading}>{forum.name}</Text>
-        </View>
-        <View style={[styles.timeBadge, closed ? styles.timeBadgeClosed : styles.timeBadgeActive]}>
-          <Text style={[styles.timeBadgeText, closed && styles.timeBadgeTextClosed]}>
-            {closed ? 'Read-only' : timeRemaining(forum.closesAt)}
-          </Text>
+          <View style={[styles.timeBadge, closed ? styles.timeBadgeClosed : styles.timeBadgeActive]}>
+            <Text style={[styles.timeBadgeText, closed && styles.timeBadgeTextClosed]}>
+              {closed ? 'Read-only' : timeRemaining(forum.closesAt)}
+            </Text>
+          </View>
         </View>
         {!!forum.description && <Text style={styles.description}>{forum.description}</Text>}
 
@@ -145,10 +145,16 @@ export default function ForumPage() {
         {timeoutState.timedOut && (
           <View style={[styles.banner, styles.bannerError]}>
             <InfoIcon size={20} color={COLORS.error} />
-            <Text style={styles.bannerText}>
-              You're timed out{timeoutState.expiresAt ? ` until ${timeoutState.expiresAt.toLocaleString()}` : ''} and
-              cannot post or comment anywhere.
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bannerText}>
+                {timeoutState.expiresAt
+                  ? `You're timed out until ${timeoutState.expiresAt.toLocaleString()} and cannot post or comment anywhere.`
+                  : `You've been banned and cannot post or comment anywhere.`}
+              </Text>
+              {timeoutState.reason && (
+                <Text style={styles.bannerReason}>Reason: {timeoutState.reason}</Text>
+              )}
+            </View>
           </View>
         )}
 
@@ -217,7 +223,7 @@ export default function ForumPage() {
 
       {canOpenModPanel && (
         <TouchableOpacity
-          style={[styles.modFab, canPost ? styles.modFabStacked : styles.modFabAlone]}
+          style={styles.modFab}
           onPress={() => router.push(`/forums/${slug}/mod` as never)}
           activeOpacity={0.85}
           accessibilityLabel="Open moderator panel"
@@ -250,16 +256,13 @@ export default function ForumPage() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { padding: 32, paddingBottom: 120 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 32, flexShrink: 1, paddingRight: 12 },
-  // Bumped up from a small chip to a clearly readable tag — the
-  // "remaining time" is a key signal in this app, easy to miss before.
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12 },
+  heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 28, flexShrink: 1 },
   timeBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginBottom: 16,
+    flexShrink: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
   timeBadgeActive: { backgroundColor: COLORS.yellow },
   timeBadgeClosed: { backgroundColor: '#3a3a3a' },
@@ -281,6 +284,7 @@ const styles = StyleSheet.create({
   bannerWarn: { borderLeftColor: '#ffaa55' },
   bannerError: { borderLeftColor: COLORS.error },
   bannerText: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, flex: 1 },
+  bannerReason: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginTop: 4, fontStyle: 'italic' },
 
   controls: { marginBottom: 16 },
   sortRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4 },
@@ -318,13 +322,10 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 
-  // Mod panel button: lives in the same floating-action zone as the post
-  // FAB so it doesn't compete with the title for visual weight. When the
-  // user can also post, we stack it directly above the post FAB; when
-  // they can't (closed forum / muted) it sits where the post FAB would.
   modFab: {
     position: 'absolute',
-    right: 32,
+    left: 32,
+    bottom: 32,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -338,8 +339,6 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  modFabStacked: { bottom: 108 },
-  modFabAlone: { bottom: 32 },
   modFabLabel: { color: '#000', fontFamily: BODY_FONT, fontWeight: '700', fontSize: 14, letterSpacing: 0.3 },
 
   modalBackdrop: {

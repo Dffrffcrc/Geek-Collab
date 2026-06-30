@@ -14,14 +14,22 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
         />
-        {/* CDN font fallback. The bundled .ttf at
-            /assets/node_modules/@expo-google-fonts/... can fail to load on
-            some static hosts (Cloudflare in particular, where SPA fallbacks
-            mis-route font requests to index.html). Loading the same families
-            from Google Fonts gives us a reliable fallback that the local()
-            @font-face aliases below resolve to. */}
+        {/* Google Fonts CDN — the reliable source for "Space Mono" /
+            "Special Elite" everywhere the bundled .ttf might 404 (e.g.
+            Cloudflare Pages, where SPA fallbacks mis-route font
+            requests to index.html). The font-family chain in lib/theme.ts
+            references these directly, so no @font-face aliasing is needed.
+            Preload tells the browser to fetch the stylesheet at high
+            priority during the initial HTML parse — without it the
+            stylesheet request blocks behind app JS and the first paint
+            ends up using the monospace fallback for hundreds of ms. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          rel="preload"
+          as="style"
+          href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Special+Elite&display=swap"
+        />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Special+Elite&display=swap"
@@ -41,25 +49,10 @@ const GLOBAL_CSS = `
      to #root keeps the flex shell correct from the very first frame. */
   html, body { background: #1a1a1a; margin: 0; height: 100%; width: 100%; }
   #root { display: flex; height: 100%; width: 100%; }
-
-  /* @font-face aliases so anywhere we set fontFamily: 'SpaceMono' /
-     'SpecialElite' (the keys registered via expo-font) the browser can
-     fall back to the Google-Fonts-loaded "Space Mono" / "Special Elite"
-     if the bundled .ttf 404s on the host. */
-  @font-face {
-    font-family: 'SpaceMono';
-    src: local('Space Mono'), local('SpaceMono-Regular');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
-  @font-face {
-    font-family: 'SpecialElite';
-    src: local('Special Elite'), local('SpecialElite-Regular');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
+  /* Set the document default to the body chain so any text rendered
+     before React mounts (or before its inline fontFamily kicks in) still
+     gets the typewriter look instead of the browser default sans-serif. */
+  html, body, #root { font-family: SpaceMono, "Space Mono", monospace; }
 
   /* WebKit (Chrome / Edge / Safari) */
   ::-webkit-scrollbar { width: 8px; height: 8px; }

@@ -7,7 +7,7 @@ import { useAuth } from '../../../lib/auth';
 import { useUserProfile } from '../../../lib/user-profile';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
 import { previewText, timeAgo } from '../../../lib/forum-utils';
-import { restorePost, restoreComment, banUser } from '../../../lib/admin-tools';
+import { restorePost, restoreComment, banUser, promptModerationReason } from '../../../lib/admin-tools';
 import { logActivity } from '../../../lib/moderation';
 import { FormInput } from '../../../components/FormInput';
 
@@ -174,9 +174,10 @@ export default function AdminDeleted() {
 
   async function ban(uid: string, username: string, forumSlug: string) {
     if (!user || !profile) return;
-    if (!confirm(`Ban @${username} from the entire app?`)) return;
+    const reason = promptModerationReason('Ban', username);
+    if (!reason) return;
     try {
-      await banUser(uid, user.uid, profile.username);
+      await banUser(uid, user.uid, profile.username, reason);
       logActivity(forumSlug, user.uid, profile.username, 'user_timed_out', {
         targetType: 'user',
         targetId: uid,

@@ -22,14 +22,24 @@ const ANIM_DURATION = 240;
 export default function AuthedLayout() {
   const { user, initializing } = useAuth();
 
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    return window.localStorage.getItem(SIDEBAR_KEY) !== 'false';
-  });
+  // Initial render must NOT depend on localStorage — the static-rendered
+  // HTML has no `window` and would always say "open", then the client
+  // would re-read localStorage and (if the user closed the sidebar last
+  // session) snap from open→closed during hydration. That snap is the
+  // visible "layout glitches on refresh". Start with the SSR-stable value
+  // and let the post-mount effect sync from storage.
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(SIDEBAR_KEY);
+    if (stored === 'false') setSidebarOpen(false);
+    setHydrated(true);
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !hydrated) return;
     window.localStorage.setItem(SIDEBAR_KEY, String(sidebarOpen));
-  }, [sidebarOpen]);
+  }, [sidebarOpen, hydrated]);
 
   // Single animated value drives the entire transition. 0 = closed (rail
   // only), 1 = open (full sidebar visible).

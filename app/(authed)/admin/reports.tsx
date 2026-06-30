@@ -20,7 +20,7 @@ import { useUserProfile } from '../../../lib/user-profile';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
 import { timeAgo } from '../../../lib/forum-utils';
 import { REPORT_REASONS, logActivity, type Report } from '../../../lib/moderation';
-import { banUser, softDeletePost, softDeleteComment } from '../../../lib/admin-tools';
+import { banUser, promptModerationReason, softDeletePost, softDeleteComment } from '../../../lib/admin-tools';
 import { setPostQuarantine } from '../../../lib/moderation';
 import { FormInput } from '../../../components/FormInput';
 
@@ -203,9 +203,10 @@ export default function AdminReports() {
 
   async function ban(targetUid: string, targetUsername: string, forumSlug: string) {
     if (!user || !profile) return;
-    if (!confirm(`Ban @${targetUsername} from the entire app?`)) return;
+    const reason = promptModerationReason('Ban', targetUsername);
+    if (!reason) return;
     try {
-      await banUser(targetUid, user.uid, profile.username);
+      await banUser(targetUid, user.uid, profile.username, reason);
       logActivity(forumSlug, user.uid, profile.username, 'user_timed_out', {
         targetType: 'user',
         targetId: targetUid,

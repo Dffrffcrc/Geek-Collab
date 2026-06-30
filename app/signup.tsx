@@ -4,7 +4,7 @@ import { Link, useRouter } from 'expo-router';
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
-  updateProfile,
+  updateProfile
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -85,8 +85,6 @@ export default function Signup() {
       console.error('[signup] failed:', err);
       const e = err as { code?: string; message?: string };
       const friendly = mapAuthError(e.code);
-      // Show the raw code in the UI when we don't have a friendly message —
-      // makes the cause obvious instead of a generic fallback.
       setError(friendly ?? `Could not create account (${e.code ?? e.message ?? 'unknown error'}).`);
     } finally {
       setLoading(false);

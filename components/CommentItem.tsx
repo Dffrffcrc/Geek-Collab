@@ -17,7 +17,7 @@ import { COLORS, BODY_FONT } from '../lib/theme';
 import { timeAgo } from '../lib/forum-utils';
 import { logActivity, muteUser, timeoutUser, trackParticipant, useIsMod } from '../lib/moderation';
 import { isAdminUsername, useIsServerAdmin } from '../lib/admins';
-import { describeActionError, violatesContentFilter } from '../lib/admin-tools';
+import { describeActionError, promptModerationReason, violatesContentFilter } from '../lib/admin-tools';
 import { Avatar } from './Avatar';
 import { MarkdownBody } from './MarkdownBody';
 import { MoreIcon } from './Icons';
@@ -209,9 +209,10 @@ export function CommentItem({
 
   async function timeoutAuthor() {
     if (!user || !profile) return;
-    if (!confirm(`Timeout @${comment.authorUsername} globally? This blocks them across every forum.`)) return;
+    const reason = promptModerationReason('Timeout', comment.authorUsername);
+    if (!reason) return;
     try {
-      await timeoutUser(comment.authorUid, user.uid, profile.username);
+      await timeoutUser(comment.authorUid, user.uid, profile.username, reason);
       logActivity(forumSlug, user.uid, profile.username, 'user_timed_out', {
         targetType: 'user',
         targetId: comment.authorUid,

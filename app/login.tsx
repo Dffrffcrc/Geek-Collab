@@ -73,6 +73,11 @@ export default function Login() {
       />
       {error && <Text style={styles.error}>{error}</Text>}
       <PrimaryButton label="Log in" onPress={onSubmit} loading={loading} />
+      <View style={styles.forgotRow}>
+        <Link href="/forgot-password" style={styles.footerLink}>
+          Forgot password?
+        </Link>
+      </View>
       <View style={styles.footer}>
         <Text style={styles.footerText}>Don't have an account? </Text>
         <Link href="/signup" style={styles.footerLink}>
@@ -105,6 +110,7 @@ function mapAuthError(code?: string) {
 const styles = StyleSheet.create({
   heading: { color: COLORS.textPrimary, fontSize: 22, marginBottom: 18, fontFamily: HEADING_FONT },
   error: { color: COLORS.error, fontSize: 13, marginBottom: 8, fontFamily: BODY_FONT },
+  forgotRow: { alignItems: 'flex-end', marginTop: 12 },
   footer: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 28 },
   footerText: { color: COLORS.textMuted, fontSize: 12, fontFamily: BODY_FONT },
   footerLink: { color: COLORS.yellow, fontSize: 12, fontFamily: BODY_FONT },

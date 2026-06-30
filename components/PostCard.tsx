@@ -18,7 +18,7 @@ import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { previewText, timeAgo } from '../lib/forum-utils';
 import { logActivity, muteUser, setPostQuarantine, timeoutUser, useIsMod } from '../lib/moderation';
 import { isAdminUsername, useIsServerAdmin } from '../lib/admins';
-import { describeActionError } from '../lib/admin-tools';
+import { describeActionError, pinPost, promptModerationReason, unpinPost } from '../lib/admin-tools';
 import { Avatar } from './Avatar';
 import { HeartIcon, CommentIcon, MoreIcon } from './Icons';
 import { OverflowMenu, type MenuAction } from './OverflowMenu';
@@ -42,6 +42,7 @@ export type PostSummary = {
   mediaUrls?: string[];
   isQuarantined?: boolean;
   isDeleted?: boolean;
+  isPinned?: boolean;
 };
 
 export function PostCard({
@@ -134,6 +135,25 @@ export function PostCard({
     alert(describeActionError(scope, err));
   }
 
+  async function togglePin() {
+    if (!user || !profile) return;
+    try {
+      const next = !post.isPinned;
+      if (next) {
+        await pinPost(forumSlug, post.slug);
+      } else {
+        await unpinPost(forumSlug, post.slug);
+      }
+      logActivity(forumSlug, user.uid, profile.username, next ? 'post_pinned' : 'post_unpinned', {
+        targetType: 'post',
+        targetId: post.slug,
+        details: post.title,
+      });
+    } catch (err) {
+      reportFailure('pin post', err);
+    }
+  }
+
   async function toggleQuarantine() {
     try {
       const next = !post.isQuarantined;
@@ -166,9 +186,10 @@ export function PostCard({
 
   async function timeoutAuthor() {
     if (!user || !profile) return;
-    if (!confirm(`Timeout @${post.authorUsername} globally? This blocks them across every forum.`)) return;
+    const reason = promptModerationReason('Timeout', post.authorUsername);
+    if (!reason) return;
     try {
-      await timeoutUser(post.authorUid, user.uid, profile.username);
+      await timeoutUser(post.authorUid, user.uid, profile.username, reason);
       logActivity(forumSlug, user.uid, profile.username, 'user_timed_out', {
         targetType: 'user',
         targetId: post.authorUid,
@@ -183,6 +204,9 @@ export function PostCard({
   if (isAuthor && !post.isDeleted) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
   if ((isAuthor || canModerate) && !post.isDeleted) {
     actions.push({ label: 'Delete', destructive: true, onPress: deletePost });
+  }
+  if (isAdmin) {
+    actions.push({ label: post.isPinned ? 'Unpin post' : 'Pin post', onPress: togglePin });
   }
   if (canModerate) {
     actions.push({
@@ -232,6 +256,9 @@ export function PostCard({
           </View>
 
           <View style={styles.headerRight}>
+            {post.isPinned && (
+              <Text style={styles.pinnedTag}>PINNED</Text>
+            )}
             {post.isQuarantined && (
               <Text style={styles.quarantineTag}>QUARANTINED</Text>
             )}
@@ -320,6 +347,20 @@ const styles = StyleSheet.create({
   displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
   handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
+  pinnedTag: {
+    backgroundColor: '#2a2500',
+    color: COLORS.yellow,
+    fontSize: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: COLORS.yellow,
+    fontFamily: BODY_FONT,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    overflow: 'hidden',
+  },
   quarantineTag: {
     backgroundColor: COLORS.warnBg,
     color: COLORS.warn,

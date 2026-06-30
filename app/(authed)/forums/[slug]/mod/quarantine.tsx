@@ -24,6 +24,7 @@ import {
 } from '../../../../../lib/moderation';
 import { FormInput } from '../../../../../components/FormInput';
 import { isAdminUsername } from '../../../../../lib/admins';
+import { promptModerationReason } from '../../../../../lib/admin-tools';
 
 type QPost = {
   id: string;
@@ -119,9 +120,10 @@ export default function QuarantineTab() {
 
   async function timeoutAuthor(targetUid: string, username: string) {
     if (!user || !profile) return;
-    if (!confirm(`Timeout @${username} globally?`)) return;
+    const reason = promptModerationReason('Timeout', username);
+    if (!reason) return;
     try {
-      await timeoutUser(targetUid, user.uid, profile.username);
+      await timeoutUser(targetUid, user.uid, profile.username, reason);
       logActivity(slug!, user.uid, profile.username, 'user_timed_out', {
         targetType: 'user',
         targetId: targetUid,

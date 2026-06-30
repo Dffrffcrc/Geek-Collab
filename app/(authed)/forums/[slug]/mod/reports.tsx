@@ -27,6 +27,7 @@ import {
 } from '../../../../../lib/moderation';
 import { FormInput } from '../../../../../components/FormInput';
 import { isAdminUsername, useIsServerAdmin } from '../../../../../lib/admins';
+import { promptModerationReason } from '../../../../../lib/admin-tools';
 
 export default function ReportsTab() {
   const router = useRouter();
@@ -246,10 +247,11 @@ export default function ReportsTab() {
 
   async function timeoutAuthor(targetUid: string, targetUsername: string) {
     if (!user || !profile) return;
-    if (!confirm(`Timeout @${targetUsername} globally? This blocks them across every forum.`)) return;
+    const reason = promptModerationReason('Timeout', targetUsername);
+    if (!reason) return;
     setActionError(null);
     try {
-      await timeoutUser(targetUid, user.uid, profile.username);
+      await timeoutUser(targetUid, user.uid, profile.username, reason);
       logActivity(slug!, user.uid, profile.username, 'user_timed_out', {
         targetType: 'user',
         targetId: targetUid,

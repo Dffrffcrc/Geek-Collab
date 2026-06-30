@@ -53,6 +53,8 @@ export type ActivityType =
   | 'post_created'
   | 'post_edited'
   | 'post_deleted'
+  | 'post_pinned'
+  | 'post_unpinned'
   | 'post_quarantined'
   | 'post_unquarantined'
   | 'comment_created'
@@ -97,6 +99,10 @@ export function describeActivity(a: Pick<Activity, 'type' | 'targetId' | 'detail
       return postLabel ? `edited ${postLabel}` : 'edited a post';
     case 'post_deleted':
       return postLabel ? `deleted post ${postLabel}` : 'deleted a post';
+    case 'post_pinned':
+      return postLabel ? `pinned ${postLabel}` : 'pinned a post';
+    case 'post_unpinned':
+      return postLabel ? `unpinned ${postLabel}` : 'unpinned a post';
     case 'post_quarantined':
       return postLabel ? `quarantined ${postLabel}` : 'quarantined a post';
     case 'post_unquarantined':
@@ -207,13 +213,15 @@ export async function timeoutUser(
   targetUid: string,
   modUid: string,
   modUsername: string,
-  options: { expiresAt?: Date | null; reason?: string } = {},
+  reason: string,
+  options: { expiresAt?: Date | null } = {},
 ): Promise<void> {
   await setDoc(doc(db, 'timeouts', targetUid), {
+    type: 'timeout',
     timedOutBy: modUid,
     timedOutByUsername: modUsername,
     expiresAt: options.expiresAt ?? null,
-    reason: options.reason ?? null,
+    reason,
     createdAt: serverTimestamp(),
   });
 }

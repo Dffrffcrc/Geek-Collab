@@ -7,7 +7,7 @@ import { useUserProfile } from '../../../lib/user-profile';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
 import { previewText, timeAgo } from '../../../lib/forum-utils';
 import { logActivity, setPostQuarantine } from '../../../lib/moderation';
-import { banUser, softDeletePost } from '../../../lib/admin-tools';
+import { banUser, promptModerationReason, softDeletePost } from '../../../lib/admin-tools';
 import { db } from '../../../lib/firebase';
 import { FormInput } from '../../../components/FormInput';
 
@@ -103,9 +103,10 @@ export default function AdminQuarantine() {
 
   async function ban(uid: string, username: string, forumSlug: string) {
     if (!user || !profile) return;
-    if (!confirm(`Ban @${username} from the entire app?`)) return;
+    const reason = promptModerationReason('Ban', username);
+    if (!reason) return;
     try {
-      await banUser(uid, user.uid, profile.username);
+      await banUser(uid, user.uid, profile.username, reason);
       logActivity(forumSlug, user.uid, profile.username, 'user_timed_out', {
         targetType: 'user',
         targetId: uid,

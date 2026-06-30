@@ -13,7 +13,7 @@ import { db } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
 import { useUserProfile } from '../../../lib/user-profile';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
-import { banUser, liftBan } from '../../../lib/admin-tools';
+import { banUser, liftBan, promptModerationReason } from '../../../lib/admin-tools';
 import { isAdminUsername } from '../../../lib/admins';
 import { Avatar } from '../../../components/Avatar';
 import { FormInput } from '../../../components/FormInput';
@@ -109,12 +109,19 @@ export default function AdminUsers() {
   async function toggleBan(u: UserRow) {
     if (!me || !profile) return;
     const isBanned = bannedUids.has(u.uid);
-    if (!confirm(`${isBanned ? 'Lift ban for' : 'Ban'} @${u.username}?`)) return;
-    try {
-      if (isBanned) await liftBan(u.uid);
-      else {
-        await banUser(u.uid, me.uid, profile.username);
+    if (isBanned) {
+      if (!confirm(`Lift ban for @${u.username}?`)) return;
+      try {
+        await liftBan(u.uid);
+      } catch (err) {
+        console.error('[admin:users:ban] failed:', err);
       }
+      return;
+    }
+    const reason = promptModerationReason('Ban', u.username);
+    if (!reason) return;
+    try {
+      await banUser(u.uid, me.uid, profile.username, reason);
     } catch (err) {
       console.error('[admin:users:ban] failed:', err);
     }

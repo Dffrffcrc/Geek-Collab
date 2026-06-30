@@ -3,23 +3,20 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
 import { SpecialElite_400Regular } from '@expo-google-fonts/special-elite';
-import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider } from '../lib/auth';
 import { COLORS } from '../lib/theme';
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  // Kick off bundled-font loading but DO NOT block the app on it. The
+  // Google Fonts CDN <link> in app/+html.tsx is the primary source on web
+  // and the font-family chain in lib/theme.ts (`SpaceMono, "Space Mono",
+  // monospace`) lets the browser pick whichever is ready first. Blocking
+  // the whole shell on `fontsLoaded` used to trap users on the spinner
+  // when the bundled .ttf 404'd on production.
+  useFonts({
     SpaceMono: SpaceMono_400Regular,
     SpecialElite: SpecialElite_400Regular,
   });
-
-  if (!fontsLoaded) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.bgDark }}>
-        <ActivityIndicator color={COLORS.yellow} />
-      </View>
-    );
-  }
 
   return (
     <AuthProvider>
