@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   deleteDoc,
@@ -59,7 +59,9 @@ export function PostCard({
   const profile = useUserProfile();
   const isMod = useIsMod(forumSlug);
   const isAdmin = useIsServerAdmin();
+  const { width } = useWindowDimensions();
   const isAuthor = !!user && user.uid === post.authorUid;
+  const isMobile = width < 640;
   // Admins can moderate any author including other admins. Mods can only
   // moderate non-admins; the author-is-admin check stays for the mod branch.
   const canModerate = isAdmin || (isMod && !isAdminUsername(post.authorUsername));
@@ -221,11 +223,11 @@ export function PostCard({
   return (
     <>
       <TouchableOpacity
-        style={[styles.card, post.isQuarantined && styles.quarantined]}
+        style={[styles.card, isMobile && styles.cardMobile, post.isQuarantined && styles.quarantined]}
         activeOpacity={0.85}
         onPress={() => router.push(`/forums/${forumSlug}/${post.slug}`)}
       >
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
           <View style={styles.headerLeft}>
             <Avatar size={32} label={post.authorDisplayName || post.authorUsername} />
             <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
@@ -274,8 +276,8 @@ export function PostCard({
           </View>
         </View>
 
-        <Text style={styles.title}>{post.title}</Text>
-        {!!post.body && <Text style={styles.body}>{previewText(post.body)}</Text>}
+        <Text style={[styles.title, isMobile && styles.titleMobile]}>{post.title}</Text>
+        {!!post.body && <Text style={[styles.body, isMobile && styles.bodyMobile]}>{previewText(post.body)}</Text>}
 
         {firstImage && (
           <View style={styles.thumbWrap}>
@@ -288,7 +290,7 @@ export function PostCard({
           </View>
         )}
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, isMobile && styles.footerMobile]}>
           <TouchableOpacity
             style={[styles.iconRow, liked && styles.iconRowActive]}
             onPress={toggleLike}
@@ -339,8 +341,10 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 16,
   },
+  cardMobile: { padding: 14, borderRadius: 12, marginBottom: 12 },
   quarantined: { borderWidth: 1, borderColor: COLORS.warnBorder },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  headerRowMobile: { alignItems: 'flex-start' },
   headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   usernameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
@@ -377,7 +381,9 @@ const styles = StyleSheet.create({
   },
   moreBtn: { padding: 4 },
   title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 22, marginBottom: 8 },
+  titleMobile: { fontSize: 18, marginBottom: 6 },
   body: { color: '#cccccc', fontFamily: BODY_FONT, fontSize: 14, lineHeight: 20 },
+  bodyMobile: { fontSize: 13, lineHeight: 18 },
   thumbWrap: { marginTop: 12, position: 'relative', borderRadius: 10, overflow: 'hidden' },
   thumb: { width: '100%', height: 200, backgroundColor: '#1f1f1f' },
   thumbCount: {
@@ -391,6 +397,7 @@ const styles = StyleSheet.create({
   },
   thumbCountText: { color: '#fff', fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
   footer: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  footerMobile: { flexWrap: 'wrap', gap: 8, marginTop: 12 },
   iconRow: {
     flexDirection: 'row',
     alignItems: 'center',

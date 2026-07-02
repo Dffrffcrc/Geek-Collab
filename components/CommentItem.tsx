@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   addDoc,
@@ -72,8 +72,10 @@ export function CommentItem({
   const profile = useUserProfile();
   const isMod = useIsMod(forumSlug);
   const isAdmin = useIsServerAdmin();
+  const { width } = useWindowDimensions();
   const isAuthor = !!user && user.uid === comment.authorUid;
   const isPostAuthor = comment.authorUid === postAuthorUid;
+  const isMobile = width < 640;
   // Admins can moderate every author including other admins. Mods retain
   // the original "no acting on admins" guard.
   const canModerate = isAdmin || (isMod && !isAdminUsername(comment.authorUsername));
@@ -238,9 +240,9 @@ export function CommentItem({
 
   return (
     <>
-      <View style={styles.row}>
+      <View style={[styles.row, isMobile && styles.rowMobile]}>
         <Avatar size={28} label={displayLabel} />
-        <View style={styles.bubble}>
+        <View style={[styles.bubble, isMobile && styles.bubbleMobile]}>
           <View style={styles.meta}>
             <Text
               style={styles.author}
@@ -332,7 +334,13 @@ export function CommentItem({
       </View>
 
       {repliesOpen && children.length > 0 && (
-        <View style={[styles.repliesWrap, atIndentCap && styles.repliesWrapCapped]}>
+        <View
+          style={[
+            styles.repliesWrap,
+            isMobile && styles.repliesWrapMobile,
+            atIndentCap && styles.repliesWrapCapped,
+          ]}
+        >
           {children.map((child) => (
             <CommentItem
               key={child.id}
@@ -375,6 +383,7 @@ export function CommentItem({
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
+  rowMobile: { gap: 8 },
   // Wraps every direct-reply set in a single bordered column. The
   // border-left is what gives threaded replies a visible "thread" line —
   // and because the wrapper holds *all* siblings at this depth, the line
@@ -386,11 +395,13 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.separator,
     marginBottom: 4,
   },
+  repliesWrapMobile: { marginLeft: 10, paddingLeft: 10 },
   // Beyond INDENT_CAP the tree keeps growing logically but we stop
   // adding visible indent — drop the border so it doesn't keep stacking
   // a thicker and thicker rule on the left.
   repliesWrapCapped: { marginLeft: 0, paddingLeft: 0, borderLeftWidth: 0 },
   bubble: { flex: 1, backgroundColor: '#2a2a2a', padding: 12, borderRadius: 10 },
+  bubbleMobile: { padding: 10 },
   meta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 },
   author: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '700' },
   handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginLeft: 6 },

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { collection, onSnapshot, orderBy, query, type Timestamp } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
@@ -21,6 +21,8 @@ export default function ActiveForums() {
   const router = useRouter();
   const { user } = useAuth();
   const admin = useIsServerAdmin();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const [forums, setForums] = useState<Forum[] | null>(null);
 
   useEffect(() => {
@@ -33,9 +35,9 @@ export default function ActiveForums() {
   const active = forums?.filter((f) => !isClosed(f.closesAt)) ?? [];
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.header}>
-        <Text style={styles.heading}>Active Forums</Text>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
+      <View style={[styles.header, compact && styles.headerCompact]}>
+        <Text style={[styles.heading, compact && styles.headingCompact]}>Active Forums</Text>
         {admin && (
           <TouchableOpacity style={styles.createButton} onPress={() => router.push('/forums/new')}>
             <Text style={styles.createLabel}>+ New forum</Text>
@@ -58,8 +60,11 @@ export default function ActiveForums() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  headerCompact: { alignItems: 'flex-start', gap: 12, marginBottom: 18 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 32 },
+  headingCompact: { fontSize: 26 },
   createButton: {
     backgroundColor: COLORS.yellow,
     paddingHorizontal: 16,

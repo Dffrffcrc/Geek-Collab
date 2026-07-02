@@ -7,6 +7,7 @@ import {
   Animated,
   Easing,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { useAuth } from '../../lib/auth';
 import { COLORS } from '../../lib/theme';
@@ -15,34 +16,33 @@ import { Sidebar } from '../../components/Sidebar';
 import { MenuIcon } from '../../components/Icons';
 
 const SIDEBAR_WIDTH = 240;
-const RAIL_WIDTH = 50;        // width of the left rail when sidebar is closed
+const MOBILE_SIDEBAR_WIDTH = 280;
+const RAIL_WIDTH = 50;
 const SIDEBAR_KEY = 'geekcollab.sidebarOpen';
 const ANIM_DURATION = 240;
 
 export default function AuthedLayout() {
   const { user, initializing } = useAuth();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 920;
 
-  // Initial render must NOT depend on localStorage — the static-rendered
-  // HTML has no `window` and would always say "open", then the client
-  // would re-read localStorage and (if the user closed the sidebar last
-  // session) snap from open→closed during hydration. That snap is the
-  // visible "layout glitches on refresh". Start with the SSR-stable value
-  // and let the post-mount effect sync from storage.
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = window.localStorage.getItem(SIDEBAR_KEY);
-    if (stored === 'false') setSidebarOpen(false);
+    if (isMobile) {
+      setSidebarOpen(false);
+    } else {
+      setSidebarOpen(stored !== 'false');
+    }
     setHydrated(true);
-  }, []);
+  }, [isMobile]);
   useEffect(() => {
-    if (typeof window === 'undefined' || !hydrated) return;
+    if (typeof window === 'undefined' || !hydrated || isMobile) return;
     window.localStorage.setItem(SIDEBAR_KEY, String(sidebarOpen));
-  }, [sidebarOpen, hydrated]);
+  }, [sidebarOpen, hydrated, isMobile]);
 
-  // Single animated value drives the entire transition. 0 = closed (rail
-  // only), 1 = open (full sidebar visible).
   const openness = useRef(new Animated.Value(sidebarOpen ? 1 : 0)).current;
   useEffect(() => {
     Animated.timing(openness, {
@@ -53,20 +53,14 @@ export default function AuthedLayout() {
     }).start();
   }, [sidebarOpen, openness]);
 
-  // The "left zone" stays visible at all times. When closed, it's just a
-  // narrow rail with the vertical separator + toggle button on it; when
-  // open, it expands to host the full sidebar.
   const leftZoneWidth = openness.interpolate({
     inputRange: [0, 1],
-    outputRange: [RAIL_WIDTH, SIDEBAR_WIDTH],
+    outputRange: isMobile ? [0, MOBILE_SIDEBAR_WIDTH] : [RAIL_WIDTH, SIDEBAR_WIDTH],
   });
-  // Sidebar contents fade in only after the zone has expanded a bit, so we
-  // don't see a clipped, half-rendered sidebar mid-animation.
   const sidebarOpacity = openness.interpolate({
     inputRange: [0, 0.6, 1],
     outputRange: [0, 0, 1],
   });
-  // Toggle is centered on the right edge of the left zone (the vertical line).
   const toggleLeft = openness.interpolate({
     inputRange: [0, 1],
     outputRange: [RAIL_WIDTH - 22, SIDEBAR_WIDTH - 22],
@@ -86,20 +80,42 @@ export default function AuthedLayout() {
     <View style={styles.shell}>
       <Topbar />
       <View style={styles.body}>
-        {/* Left zone: animates between rail (50) and full sidebar (240). The
-            vertical separator line is the right border of this zone. */}
-        <Animated.View style={[styles.leftZone, { width: leftZoneWidth }]}>
-          <Animated.View style={[styles.sidebarHost, { opacity: sidebarOpacity }]}>
-            <Sidebar />
+        {!isMobile && (
+          <Animated.View style={[styles.leftZone, { width: leftZoneWidth }]}>
+            <Animated.View style={[styles.sidebarHost, { opacity: sidebarOpacity }]}>
+              <Sidebar />
+            </Animated.View>
           </Animated.View>
-        </Animated.View>
+        )}
 
-        <View style={styles.content}>
+        <View style={[styles.content, isMobile && styles.contentMobile]}>
           <Slot />
         </View>
 
-        {/* Toggle button rides the right edge of the left zone. */}
-        <Animated.View style={[styles.togglePos, { left: toggleLeft }]} pointerEvents="box-none">
+        {isMobile && sidebarOpen && (
+          <TouchableOpacity
+            style={styles.mobileBackdrop}
+            activeOpacity={1}
+            onPress={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {isMobile && (
+          <Animated.View
+            style={[
+              styles.mobileSidebar,
+              { width: leftZoneWidth, opacity: sidebarOpacity },
+            ]}
+            pointerEvents={sidebarOpen ? 'auto' : 'none'}
+          >
+            <Sidebar />
+          </Animated.View>
+        )}
+
+        <Animated.View
+          style={[styles.togglePos, isMobile ? styles.togglePosMobile : { left: toggleLeft }]}
+          pointerEvents="box-none"
+        >
           <TouchableOpacity
             style={styles.toggle}
             onPress={() => setSidebarOpen((o) => !o)}
@@ -132,10 +148,31 @@ const styles = StyleSheet.create({
     top: 0,
   },
   content: { flex: 1, backgroundColor: COLORS.bgDark, paddingLeft: 24 },
+  contentMobile: { paddingLeft: 0 },
+  mobileBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    zIndex: 8,
+  },
+  mobileSidebar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    zIndex: 9,
+    overflow: 'hidden',
+    borderRightWidth: 1,
+    borderRightColor: COLORS.separator,
+    backgroundColor: COLORS.bgDark,
+  },
   togglePos: {
     position: 'absolute',
     top: 16,
     zIndex: 10,
+  },
+  togglePosMobile: {
+    left: 12,
+    top: 12,
   },
   toggle: {
     width: 44,

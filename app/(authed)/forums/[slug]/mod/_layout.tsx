@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, useWindowDimensions } from 'react-native';
 import { Slot, Redirect, useLocalSearchParams, useRouter, usePathname } from 'expo-router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../../../lib/firebase';
@@ -23,6 +23,8 @@ export default function ModLayout() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user, initializing } = useAuth();
   const isAdmin = useIsServerAdmin();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const [forum, setForum] = useState<Forum | null | undefined>(undefined);
 
   useEffect(() => {
@@ -66,10 +68,14 @@ export default function ModLayout() {
         <TouchableOpacity onPress={() => router.push(`/forums/${slug}`)}>
           <Text style={styles.crumb}>← {forum.name}</Text>
         </TouchableOpacity>
-        <Text style={styles.heading}>Moderator panel</Text>
+        <Text style={[styles.heading, compact && styles.headingCompact]}>Moderator panel</Text>
       </View>
 
-      <View style={styles.tabs}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[styles.tabs, compact && styles.tabsCompact]}
+      >
         {TABS.map((t) => {
           const href = `${base}${t.path}`;
           const active = pathname === href;
@@ -83,7 +89,7 @@ export default function ModLayout() {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
       <View style={styles.body}>
         <Slot />
@@ -97,9 +103,9 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 32, paddingTop: 24, paddingBottom: 8 },
   crumb: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 6 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 30 },
+  headingCompact: { fontSize: 24 },
   tabs: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: 32,
     paddingTop: 16,
@@ -107,6 +113,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.separator,
   },
+  tabsCompact: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
   tab: {
     paddingVertical: 8,
     paddingHorizontal: 16,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   addDoc,
@@ -66,12 +66,14 @@ export default function PostDetail() {
   const router = useRouter();
   const { slug, post: postSlug } = useLocalSearchParams<{ slug: string; post: string }>();
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
   const profile = useUserProfile();
   const isMod = useIsMod(slug);
   const isAdmin = useIsServerAdmin();
   const muted = useIsMutedInForum(slug);
   const timeoutState = useTimeoutStatus();
   const { timedOut } = timeoutState;
+  const compact = width < 768;
 
   const [forum, setForum] = useState<Forum | null | undefined>(undefined);
   const [post, setPost] = useState<Post | null | undefined>(undefined);
@@ -320,13 +322,13 @@ export default function PostDetail() {
   if (!isAuthor) actions.push({ label: 'Report', onPress: () => setReportOpen(true) });
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
       <TouchableOpacity onPress={() => router.push(`/forums/${slug}`)}>
         <Text style={styles.crumb}>← {forum.name}</Text>
       </TouchableOpacity>
 
-      <View style={styles.postCard}>
-        <View style={styles.postHeaderRow}>
+      <View style={[styles.postCard, compact && styles.postCardCompact]}>
+        <View style={[styles.postHeaderRow, compact && styles.postHeaderRowCompact]}>
           <View style={styles.postHeader}>
             <Avatar size={36} label={post.authorDisplayName || post.authorUsername} />
             <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
@@ -366,7 +368,7 @@ export default function PostDetail() {
           </View>
         </View>
 
-        <Text style={styles.title}>{post.title}</Text>
+        <Text style={[styles.title, compact && styles.titleCompact]}>{post.title}</Text>
         {!!post.body && (
           <View style={styles.bodyBox}>
             <MarkdownBody>{post.body}</MarkdownBody>
@@ -459,7 +461,7 @@ export default function PostDetail() {
           {timeoutState.reason ? `\nReason: ${timeoutState.reason}` : ''}
         </Text>
       ) : (
-        <View style={styles.commentBox}>
+        <View style={[styles.commentBox, compact && styles.commentBoxCompact]}>
           <FormInput
             placeholder="Write a comment…"
             value={commentText}
@@ -500,9 +502,12 @@ export default function PostDetail() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64, maxWidth: 800 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   crumb: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
   postCard: { backgroundColor: '#2a2a2a', borderRadius: 14, padding: 22, marginBottom: 24 },
+  postCardCompact: { padding: 16, borderRadius: 12, marginBottom: 18 },
   postHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  postHeaderRowCompact: { alignItems: 'flex-start' },
   postHeader: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   authorRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   author: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 15, fontWeight: '700' },
@@ -536,6 +541,7 @@ const styles = StyleSheet.create({
   },
   moreBtn: { padding: 4 },
   title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 26, marginBottom: 12 },
+  titleCompact: { fontSize: 22, marginBottom: 10 },
   bodyBox: { marginBottom: 4 },
   actions: { flexDirection: 'row', gap: 12, marginTop: 18 },
   likeButton: {
@@ -563,6 +569,7 @@ const styles = StyleSheet.create({
   commentsHeading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, marginBottom: 14 },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
   commentBox: { marginTop: 8 },
+  commentBoxCompact: { marginTop: 4 },
   markdownHint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginTop: 4, marginBottom: 4 },
   commentSubmit: {
     alignSelf: 'flex-end',

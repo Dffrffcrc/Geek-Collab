@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -41,10 +42,12 @@ export default function ForumPage() {
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
   const isMod = useIsMod(slug);
   const isAdmin = useIsServerAdmin();
   const muted = useIsMutedInForum(slug);
   const timeoutState = useTimeoutStatus();
+  const compact = width < 768;
   // Admins can open the mod panel of any forum even if they aren't listed
   // in moderatorUids — that's the whole point of being a server admin.
   const canOpenModPanel = isMod || isAdmin;
@@ -122,9 +125,9 @@ export default function ForumPage() {
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.header}>
-          <Text style={styles.heading}>{forum.name}</Text>
+      <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
+        <View style={[styles.header, compact && styles.headerCompact]}>
+          <Text style={[styles.heading, compact && styles.headingCompact]}>{forum.name}</Text>
           <View style={[styles.timeBadge, closed ? styles.timeBadgeClosed : styles.timeBadgeActive]}>
             <Text style={[styles.timeBadgeText, closed && styles.timeBadgeTextClosed]}>
               {closed ? 'Read-only' : timeRemaining(forum.closesAt)}
@@ -171,7 +174,7 @@ export default function ForumPage() {
             value={search}
             onChangeText={setSearch}
           />
-          <View style={styles.sortRow}>
+          <View style={[styles.sortRow, compact && styles.sortRowCompact]}>
             <Text style={styles.sortLabel}>Sort:</Text>
             <TouchableOpacity
               onPress={() => setSort('newest')}
@@ -212,7 +215,7 @@ export default function ForumPage() {
 
       {canPost && (
         <TouchableOpacity
-          style={styles.fab}
+          style={[styles.fab, compact && styles.fabCompact]}
           onPress={() => setComposerOpen(true)}
           activeOpacity={0.85}
           accessibilityLabel="Create post"
@@ -223,7 +226,7 @@ export default function ForumPage() {
 
       {canOpenModPanel && (
         <TouchableOpacity
-          style={styles.modFab}
+          style={[styles.modFab, compact && styles.modFabCompact]}
           onPress={() => router.push(`/forums/${slug}/mod` as never)}
           activeOpacity={0.85}
           accessibilityLabel="Open moderator panel"
@@ -256,8 +259,11 @@ export default function ForumPage() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { padding: 32, paddingBottom: 120 },
+  scrollCompact: { padding: 16, paddingBottom: 96 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12 },
+  headerCompact: { alignItems: 'flex-start' },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 28, flexShrink: 1 },
+  headingCompact: { fontSize: 24 },
   timeBadge: {
     flexShrink: 0,
     paddingHorizontal: 10,
@@ -288,6 +294,7 @@ const styles = StyleSheet.create({
 
   controls: { marginBottom: 16 },
   sortRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4 },
+  sortRowCompact: { flexWrap: 'wrap', marginTop: 2 },
   sortLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
   sortChip: {
     paddingVertical: 5,
@@ -321,6 +328,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
+  fabCompact: { right: 16, bottom: 20, width: 54, height: 54, borderRadius: 27 },
 
   modFab: {
     position: 'absolute',
@@ -339,6 +347,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
+  modFabCompact: { left: 16, bottom: 20, paddingHorizontal: 12, paddingVertical: 10 },
   modFabLabel: { color: '#000', fontFamily: BODY_FONT, fontWeight: '700', fontSize: 14, letterSpacing: 0.3 },
 
   modalBackdrop: {

@@ -12,8 +12,6 @@ import { Avatar } from './Avatar';
 import { RoleTag } from './RoleTag';
 import { HomeIcon, ClockIcon } from './Icons';
 
-const SIDEBAR_INNER_WIDTH = 240;
-
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -68,7 +66,7 @@ export function Sidebar() {
             return (
               <TouchableOpacity
                 key={f.slug}
-                onPress={() => router.push(href)}
+                onPress={() => router.push(href as never)}
                 style={[styles.recentItem, active && styles.recentItemActive]}
                 activeOpacity={0.85}
               >
@@ -173,7 +171,7 @@ const ICON_SIZE = 22;
 
 const styles = StyleSheet.create({
   container: {
-    width: SIDEBAR_INNER_WIDTH,
+    width: '100%',
     height: '100%',
     backgroundColor: COLORS.bgDark,
     paddingVertical: 20,

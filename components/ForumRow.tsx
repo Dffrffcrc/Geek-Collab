@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import type { Timestamp } from 'firebase/firestore';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { timeRemaining } from '../lib/forum-utils';
@@ -19,14 +19,17 @@ export function ForumRow({
   closed?: boolean;
   onPress: () => void;
 }) {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 640;
+
   return (
     <TouchableOpacity
       style={[styles.card, closed && styles.cardClosed]}
       onPress={onPress}
       activeOpacity={0.85}
     >
-      <View style={styles.header}>
-        <Text style={styles.name}>{forum.name}</Text>
+      <View style={[styles.header, isMobile && styles.headerMobile]}>
+        <Text style={[styles.name, isMobile && styles.nameMobile]}>{forum.name}</Text>
         <Text style={[styles.badge, closed ? styles.badgeClosed : styles.badgeActive]}>
           {closed ? 'R/O' : timeRemaining(forum.closesAt)}
         </Text>
@@ -40,7 +43,9 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#2a2a2a', borderRadius: 14, padding: 18, marginBottom: 12 },
   cardClosed: { opacity: 0.7 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerMobile: { alignItems: 'flex-start', gap: 8 },
   name: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 20 },
+  nameMobile: { flex: 1, fontSize: 18, paddingRight: 10 },
   description: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 6 },
   badge: {
     fontFamily: BODY_FONT,

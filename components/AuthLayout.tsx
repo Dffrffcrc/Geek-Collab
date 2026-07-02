@@ -2,9 +2,16 @@ import { View, Image, StyleSheet, useWindowDimensions, ScrollView } from 'react-
 import type { ReactNode } from 'react';
 import { COLORS } from '../lib/theme';
 
-export function AuthLayout({ children }: { children: ReactNode }) {
+export function AuthLayout({
+  children,
+  mobileCentered = false,
+}: {
+  children: ReactNode;
+  mobileCentered?: boolean;
+}) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const isMobile = width < 520;
 
   return (
     <View style={styles.container}>
@@ -19,13 +26,27 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       )}
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={styles.rightPanel}
+        contentContainerStyle={[
+          styles.rightPanel,
+          isMobile && styles.rightPanelMobile,
+          isMobile && mobileCentered && styles.rightPanelMobileCentered,
+        ]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.formContainer}>
+        <View
+          style={[
+            styles.formContainer,
+            isMobile && styles.formContainerMobile,
+            isMobile && mobileCentered && styles.formContainerMobileCentered,
+          ]}
+        >
           <Image
             source={require('../assets/forum-logo.png')}
-            style={styles.logo}
+            style={[
+              styles.logo,
+              isMobile && styles.logoMobile,
+              isMobile && mobileCentered && styles.logoMobileCentered,
+            ]}
             resizeMode="contain"
           />
           {children}
@@ -59,6 +80,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 48,
     paddingVertical: 48,
   },
+  rightPanelMobile: {
+    justifyContent: 'flex-start',
+    paddingHorizontal: 20,
+    paddingVertical: 28,
+  },
+  rightPanelMobileCentered: {
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
   formContainer: { width: '100%', maxWidth: 520 },
+  formContainerMobile: { maxWidth: 420 },
+  formContainerMobileCentered: { maxWidth: 360 },
   logo: { width: 88, height: 88, alignSelf: 'center', marginBottom: 12 },
+  logoMobile: { width: 72, height: 72, marginBottom: 18 },
+  logoMobileCentered: { width: 132, height: 132, marginBottom: 36 },
 });

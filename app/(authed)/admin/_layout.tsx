@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, useWindowDimensions } from 'react-native';
 import { Slot, Redirect, useRouter, usePathname } from 'expo-router';
 import { useAuth } from '../../../lib/auth';
 import { useIsServerAdmin } from '../../../lib/admins';
@@ -19,6 +19,8 @@ export default function AdminLayout() {
   const pathname = usePathname();
   const { user, initializing } = useAuth();
   const isAdmin = useIsServerAdmin();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
 
   if (initializing) {
     return <ActivityIndicator color={COLORS.yellow} style={{ marginTop: 32 }} />;
@@ -38,11 +40,15 @@ export default function AdminLayout() {
   return (
     <View style={styles.shell}>
       <View style={styles.header}>
-        <Text style={styles.heading}>Admin panel</Text>
+        <Text style={[styles.heading, compact && styles.headingCompact]}>Admin panel</Text>
         <Text style={styles.sub}>App-wide moderation, user management, and safety tools.</Text>
       </View>
 
-      <View style={styles.tabs}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[styles.tabs, compact && styles.tabsCompact]}
+      >
         {TABS.map((t) => {
           const href = `/admin${t.path}`;
           const active = pathname === href;
@@ -56,7 +62,7 @@ export default function AdminLayout() {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
       <View style={styles.body}>
         <Slot />
@@ -69,10 +75,10 @@ const styles = StyleSheet.create({
   shell: { flex: 1 },
   header: { paddingHorizontal: 32, paddingTop: 24, paddingBottom: 4 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 30 },
+  headingCompact: { fontSize: 24 },
   sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 6 },
   tabs: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: 32,
     paddingTop: 16,
@@ -80,6 +86,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.separator,
   },
+  tabsCompact: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
   tab: {
     paddingVertical: 8,
     paddingHorizontal: 16,

@@ -92,7 +92,7 @@ export default function Signup() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout mobileCentered>
       <Text style={styles.heading}>Sign up for forum.geekshacking:</Text>
       <FormInput
         placeholder="Email Address"

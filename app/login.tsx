@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Text, StyleSheet, View } from 'react-native';
+import { Text, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -11,6 +11,8 @@ import { PrimaryButton } from '../components/PrimaryButton';
 
 export default function Login() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 520;
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -56,8 +58,8 @@ export default function Login() {
   }
 
   return (
-    <AuthLayout>
-      <Text style={styles.heading}>Log in to forum.geekshacking:</Text>
+    <AuthLayout mobileCentered>
+      <Text style={[styles.heading, isMobile && styles.headingMobile]}>Log in to forum.geekshacking:</Text>
       <FormInput
         placeholder="Username or email address"
         value={identifier}
@@ -73,13 +75,13 @@ export default function Login() {
       />
       {error && <Text style={styles.error}>{error}</Text>}
       <PrimaryButton label="Log in" onPress={onSubmit} loading={loading} />
-      <View style={styles.forgotRow}>
+      <View style={[styles.forgotRow, isMobile && styles.forgotRowMobile]}>
         <Link href="/forgot-password" style={styles.footerLink}>
           Forgot password?
         </Link>
       </View>
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Don't have an account? </Text>
+      <View style={[styles.footer, isMobile && styles.footerMobile]}>
+        <Text style={[styles.footerText, isMobile && styles.footerTextMobile]}>Don't have an account? </Text>
         <Link href="/signup" style={styles.footerLink}>
           Sign up here
         </Link>
@@ -109,9 +111,13 @@ function mapAuthError(code?: string) {
 
 const styles = StyleSheet.create({
   heading: { color: COLORS.textPrimary, fontSize: 22, marginBottom: 18, fontFamily: HEADING_FONT },
+  headingMobile: { fontSize: 18, marginBottom: 22, textAlign: 'left', lineHeight: 28 },
   error: { color: COLORS.error, fontSize: 13, marginBottom: 8, fontFamily: BODY_FONT },
   forgotRow: { alignItems: 'flex-end', marginTop: 12 },
+  forgotRowMobile: { marginTop: 8 },
   footer: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 28 },
+  footerMobile: { justifyContent: 'center', marginTop: 24, flexWrap: 'wrap' },
   footerText: { color: COLORS.textMuted, fontSize: 12, fontFamily: BODY_FONT },
+  footerTextMobile: { textAlign: 'center' },
   footerLink: { color: COLORS.yellow, fontSize: 12, fontFamily: BODY_FONT },
 });
