@@ -69,27 +69,30 @@ export default function ModLayout() {
           <Text style={styles.crumb}>← {forum.name}</Text>
         </TouchableOpacity>
         <Text style={[styles.heading, compact && styles.headingCompact]}>Moderator panel</Text>
+        <Text style={styles.sub}>Forum safety tools, reports, and participant controls.</Text>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.tabs, compact && styles.tabsCompact]}
-      >
-        {TABS.map((t) => {
-          const href = `${base}${t.path}`;
-          const active = pathname === href;
-          return (
-            <TouchableOpacity
-              key={t.path}
-              style={[styles.tab, active && styles.tabActive]}
-              onPress={() => router.push(href as never)}
-            >
-              <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{t.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      <View style={styles.tabsWrap}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[styles.tabs, compact && styles.tabsCompact]}
+        >
+          {TABS.map((t) => {
+            const href = `${base}${t.path}`;
+            const active = pathname === href;
+            return (
+              <TouchableOpacity
+                key={t.path}
+                style={[styles.tab, active && styles.tabActive]}
+                onPress={() => router.push(href as never)}
+              >
+                <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{t.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       <View style={styles.body}>
         <Slot />
@@ -100,30 +103,47 @@ export default function ModLayout() {
 
 const styles = StyleSheet.create({
   shell: { flex: 1 },
-  header: { paddingHorizontal: 32, paddingTop: 24, paddingBottom: 8 },
+  header: { paddingHorizontal: 32, paddingTop: 18, paddingBottom: 0 },
   crumb: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 6 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 30 },
   headingCompact: { fontSize: 24 },
+  sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 3 },
+  tabsWrap: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.separator,
+    backgroundColor: COLORS.bgDark,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   tabs: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 32,
-    paddingTop: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.separator,
+    paddingTop: 6,
+    paddingBottom: 6,
+    alignItems: 'center',
   },
-  tabsCompact: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
+  tabsCompact: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 4 },
   tab: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: '#2a2a2a',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#242424',
     borderWidth: 1,
     borderColor: '#3a3a3a',
+    minHeight: 30,
+    justifyContent: 'center',
   },
-  tabActive: { backgroundColor: COLORS.yellow, borderColor: COLORS.yellow },
-  tabLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '600' },
+  tabActive: {
+    backgroundColor: COLORS.yellow,
+    borderColor: COLORS.yellow,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tabLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12, fontWeight: '600', lineHeight: 14 },
   tabLabelActive: { color: '#000' },
   body: { flex: 1 },
   deny: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },

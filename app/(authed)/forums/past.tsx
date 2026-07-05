@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { Text, StyleSheet, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { collection, onSnapshot, orderBy, query, type Timestamp } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
@@ -17,6 +17,8 @@ type Forum = {
 
 export default function PastForums() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const [forums, setForums] = useState<Forum[] | null>(null);
 
   useEffect(() => {
@@ -29,8 +31,8 @@ export default function PastForums() {
   const past = forums?.filter((f) => isClosed(f.closesAt)) ?? [];
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <Text style={styles.heading}>Past Forums</Text>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
+      <Text style={[styles.heading, compact && styles.headingCompact]}>Past Forums</Text>
       <Text style={styles.subheading}>Read-only · these forums have closed.</Text>
 
       {forums === null ? (
@@ -48,7 +50,9 @@ export default function PastForums() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 32, marginBottom: 6 },
+  headingCompact: { fontSize: 26 },
   subheading: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 24 },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 16 },
 });

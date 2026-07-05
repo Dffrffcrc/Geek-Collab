@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { collection, onSnapshot, orderBy, query, type Timestamp } from 'firebase/firestore';
@@ -39,6 +40,8 @@ function toLocalInputValue(d: Date): string {
 
 export default function AdminForums() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const { user } = useAuth();
   const profile = useUserProfile();
 
@@ -127,7 +130,7 @@ export default function AdminForums() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
       <Text style={styles.heading}>Forum management</Text>
       <Text style={styles.sub}>Open / view / delete forums and manage moderator assignments.</Text>
 
@@ -321,9 +324,10 @@ function ActBtn({
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 24, marginBottom: 4 },
   sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
-  filterRow: { flexDirection: 'row', gap: 8, marginVertical: 8 },
+  filterRow: { flexDirection: 'row', gap: 8, marginVertical: 8, flexWrap: 'wrap' },
   chip: {
     paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16,
     backgroundColor: '#1f1f1f', borderWidth: 1, borderColor: COLORS.border,
@@ -333,7 +337,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#000', fontWeight: '700' },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 16 },
   card: { backgroundColor: '#2a2a2a', borderRadius: 12, padding: 16, marginBottom: 10 },
-  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  cardHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 8 },
   cardName: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 18, flexShrink: 1, paddingRight: 8 },
   cardSlug: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginBottom: 6 },
   cardDesc: { color: '#cccccc', fontFamily: BODY_FONT, fontSize: 13, marginBottom: 6, lineHeight: 18 },
@@ -361,7 +365,7 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   modalTitle: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, flex: 1, paddingRight: 12 },
   modalLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 6 },
-  modalActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 12 },
+  modalActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 12, flexWrap: 'wrap' },
   cancelBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 18, borderWidth: 1, borderColor: COLORS.border },
   cancelLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14 },
   submitBtn: {

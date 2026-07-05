@@ -4,9 +4,15 @@ import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { useUserProfile } from '../lib/user-profile';
 import { useIsServerAdmin } from '../lib/admins';
 import { Avatar } from './Avatar';
-import { ShieldIcon } from './Icons';
+import { MenuIcon, ShieldIcon } from './Icons';
 
-export function Topbar() {
+export function Topbar({
+  showMenuButton = false,
+  onMenuPress,
+}: {
+  showMenuButton?: boolean;
+  onMenuPress?: () => void;
+}) {
   const router = useRouter();
   const profile = useUserProfile();
   const isServerAdmin = useIsServerAdmin();
@@ -16,20 +22,34 @@ export function Topbar() {
 
   return (
     <View style={[styles.container, isMobile && styles.containerMobile]}>
-      <TouchableOpacity
-        style={styles.brand}
-        onPress={() => router.push('/forums')}
-        activeOpacity={0.8}
-      >
-        <Image
-          source={require('../assets/forum-logo.png')}
-          style={[styles.logo, isMobile && styles.logoMobile]}
-          resizeMode="contain"
-        />
-        <Text style={[styles.title, isMobile && styles.titleMobile]} numberOfLines={1}>
-          {isNarrow ? 'Forum' : 'Forum.GeeksHacking'}
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.left}>
+        {showMenuButton && (
+          <TouchableOpacity
+            style={styles.menuBtn}
+            onPress={onMenuPress}
+            activeOpacity={0.85}
+            accessibilityLabel="Open navigation menu"
+          >
+            <MenuIcon size={18} color={COLORS.yellow} />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.brand}
+          onPress={() => router.push('/forums')}
+          activeOpacity={0.8}
+        >
+          <Image
+            source={require('../assets/forum-logo.png')}
+            style={[styles.logo, isMobile && styles.logoMobile]}
+            resizeMode="contain"
+          />
+          {!isMobile && (
+            <Text style={styles.title} numberOfLines={1}>
+              Forum.GeeksHacking
+            </Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.right}>
         {isServerAdmin && (
@@ -62,11 +82,23 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.separator,
   },
   containerMobile: { height: 60, paddingHorizontal: 14 },
+  left: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
+  menuBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: COLORS.yellow,
+    backgroundColor: COLORS.bgDark,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+    flexShrink: 0,
+  },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
   logo: { width: 44, height: 44, flexShrink: 0 },
   logoMobile: { width: 34, height: 34 },
   title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 22, flexShrink: 1 },
-  titleMobile: { fontSize: 18 },
   right: { flexDirection: 'row', alignItems: 'center', gap: 14, flexShrink: 0 },
   adminBtn: {
     flexDirection: 'row',

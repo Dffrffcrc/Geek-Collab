@@ -16,7 +16,6 @@ export function DateTimeInput({
 }) {
   if (Platform.OS === 'web') {
     return (
-      // @ts-expect-error JSX <input> is fine in react-native-web
       <input
         type="datetime-local"
         value={value}

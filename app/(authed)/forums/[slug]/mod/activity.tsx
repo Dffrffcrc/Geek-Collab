@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import {
   collection,
@@ -25,6 +25,8 @@ const FILTERS: Array<{ label: string; types: ActivityType[] | null }> = [
 
 export default function ActivityTab() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const [items, setItems] = useState<Activity[] | null>(null);
   const [search, setSearch] = useState('');
   const [filterIdx, setFilterIdx] = useState(0);
@@ -71,7 +73,7 @@ export default function ActivityTab() {
   }, [items, search, filterIdx]);
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
       <Text style={styles.heading}>Activity log</Text>
       <Text style={styles.sub}>Most recent 200 events. Search by actor, type, target, details.</Text>
 
@@ -123,6 +125,7 @@ export default function ActivityTab() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 24, marginBottom: 4 },
   sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
   chipRow: { gap: 8, paddingVertical: 8, marginBottom: 8 },

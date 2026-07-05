@@ -12,8 +12,7 @@ import {
 import { useAuth } from '../../lib/auth';
 import { COLORS } from '../../lib/theme';
 import { Topbar } from '../../components/Topbar';
-import { Sidebar } from '../../components/Sidebar';
-import { MenuIcon } from '../../components/Icons';
+import { Sidebar, SidebarContent } from '../../components/Sidebar';
 
 const SIDEBAR_WIDTH = 240;
 const MOBILE_SIDEBAR_WIDTH = 280;
@@ -27,7 +26,9 @@ export default function AuthedLayout() {
   const isMobile = width < 920;
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  const [mobileDrawerVisible, setMobileDrawerVisible] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const pendingNavigation = useRef<null | (() => void)>(null);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = window.localStorage.getItem(SIDEBAR_KEY);
@@ -45,12 +46,25 @@ export default function AuthedLayout() {
 
   const openness = useRef(new Animated.Value(sidebarOpen ? 1 : 0)).current;
   useEffect(() => {
+    if (sidebarOpen) setMobileDrawerVisible(true);
     Animated.timing(openness, {
       toValue: sidebarOpen ? 1 : 0,
       duration: ANIM_DURATION,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
-    }).start();
+    }).start(({ finished }) => {
+      if (!finished) return;
+      if (!sidebarOpen && pendingNavigation.current) {
+        const action = pendingNavigation.current;
+        pendingNavigation.current = null;
+        setMobileDrawerVisible(false);
+        action();
+        return;
+      }
+      if (!sidebarOpen) {
+        setMobileDrawerVisible(false);
+      }
+    });
   }, [sidebarOpen, openness]);
 
   const leftZoneWidth = openness.interpolate({
@@ -58,14 +72,9 @@ export default function AuthedLayout() {
     outputRange: isMobile ? [0, MOBILE_SIDEBAR_WIDTH] : [RAIL_WIDTH, SIDEBAR_WIDTH],
   });
   const sidebarOpacity = openness.interpolate({
-    inputRange: [0, 0.6, 1],
-    outputRange: [0, 0, 1],
-  });
-  const toggleLeft = openness.interpolate({
     inputRange: [0, 1],
-    outputRange: [RAIL_WIDTH - 22, SIDEBAR_WIDTH - 22],
+    outputRange: [0, 1],
   });
-
   if (initializing) {
     return (
       <View style={styles.loading}>
@@ -78,7 +87,13 @@ export default function AuthedLayout() {
 
   return (
     <View style={styles.shell}>
-      <Topbar />
+      <Topbar
+        showMenuButton={isMobile}
+        onMenuPress={() => {
+          if (!sidebarOpen) setMobileDrawerVisible(true);
+          setSidebarOpen((open) => !open);
+        }}
+      />
       <View style={styles.body}>
         {!isMobile && (
           <Animated.View style={[styles.leftZone, { width: leftZoneWidth }]}>
@@ -91,48 +106,39 @@ export default function AuthedLayout() {
         <View style={[styles.content, isMobile && styles.contentMobile]}>
           <Slot />
         </View>
-
-        {isMobile && sidebarOpen && (
-          <TouchableOpacity
-            style={styles.mobileBackdrop}
-            activeOpacity={1}
-            onPress={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {isMobile && (
-          <Animated.View
-            style={[
-              styles.mobileSidebar,
-              { width: leftZoneWidth, opacity: sidebarOpacity },
-            ]}
-            pointerEvents={sidebarOpen ? 'auto' : 'none'}
-          >
-            <Sidebar />
-          </Animated.View>
-        )}
-
-        <Animated.View
-          style={[styles.togglePos, isMobile ? styles.togglePosMobile : { left: toggleLeft }]}
-          pointerEvents="box-none"
-        >
-          <TouchableOpacity
-            style={styles.toggle}
-            onPress={() => setSidebarOpen((o) => !o)}
-            activeOpacity={0.8}
-            accessibilityLabel={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-          >
-            <MenuIcon size={18} color={COLORS.yellow} />
-          </TouchableOpacity>
-        </Animated.View>
       </View>
+
+      {isMobile && mobileDrawerVisible && (
+        <TouchableOpacity
+          style={styles.mobileBackdrop}
+          activeOpacity={1}
+          onPress={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {isMobile && mobileDrawerVisible && (
+        <Animated.View
+          style={[
+            styles.mobileSidebar,
+            { width: leftZoneWidth, opacity: sidebarOpacity },
+          ]}
+          pointerEvents={sidebarOpen ? 'auto' : 'none'}
+        >
+          <SidebarContent
+            onNavigate={(action) => {
+              pendingNavigation.current = action;
+              setSidebarOpen(false);
+            }}
+          />
+        </Animated.View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.bgDark },
-  shell: { flex: 1, backgroundColor: COLORS.bgDark },
+  shell: { flex: 1, backgroundColor: COLORS.bgDark, position: 'relative' },
   body: { flex: 1, flexDirection: 'row' },
   leftZone: {
     overflow: 'hidden',
@@ -152,36 +158,17 @@ const styles = StyleSheet.create({
   mobileBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.45)',
-    zIndex: 8,
+    zIndex: 20,
   },
   mobileSidebar: {
     position: 'absolute',
     top: 0,
     left: 0,
     bottom: 0,
-    zIndex: 9,
+    zIndex: 21,
     overflow: 'hidden',
     borderRightWidth: 1,
     borderRightColor: COLORS.separator,
     backgroundColor: COLORS.bgDark,
-  },
-  togglePos: {
-    position: 'absolute',
-    top: 16,
-    zIndex: 10,
-  },
-  togglePosMobile: {
-    left: 12,
-    top: 12,
-  },
-  toggle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: COLORS.yellow,
-    backgroundColor: COLORS.bgDark,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

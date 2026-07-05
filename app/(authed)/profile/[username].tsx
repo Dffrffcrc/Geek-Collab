@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   doc,
   getDoc,
-  collectionGroup,
+  collection,
   query,
   where,
   orderBy,
@@ -22,6 +22,8 @@ type AuthoredPost = { forumSlug: string; postSlug: string; title: string; create
 
 export default function PublicProfile() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const { username } = useLocalSearchParams<{ username: string }>();
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [posts, setPosts] = useState<AuthoredPost[] | null>(null);
@@ -45,22 +47,28 @@ export default function PublicProfile() {
       setProfile({ uid, username: data.username, displayName: data.displayName });
 
       try {
-        const q = query(
-          collectionGroup(db, 'posts'),
-          where('authorUid', '==', uid),
-          orderBy('createdAt', 'desc'),
-        );
-        const snap = await getDocs(q);
-        setPosts(
-          snap.docs.map((d) => {
-            const segs = d.ref.path.split('/');
-            return {
-              forumSlug: segs[1],
-              postSlug: segs[3],
+        const forumsSnap = await getDocs(collection(db, 'forums'));
+        const postLists = await Promise.all(
+          forumsSnap.docs.map(async (forumDoc) => {
+            const postsSnap = await getDocs(
+              query(
+                collection(db, 'forums', forumDoc.id, 'posts'),
+                where('authorUid', '==', uid),
+                orderBy('createdAt', 'desc'),
+              ),
+            );
+            return postsSnap.docs.map((d) => ({
+              forumSlug: forumDoc.id,
+              postSlug: d.id,
               title: d.data().title,
               createdAt: d.data().createdAt,
-            };
+            }));
           }),
+        );
+        setPosts(
+          postLists
+            .flat()
+            .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)),
         );
       } catch (err) {
         console.warn('[profile:public:posts] failed:', err);
@@ -81,12 +89,12 @@ export default function PublicProfile() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.header}>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
+      <View style={[styles.header, compact && styles.headerCompact]}>
         <Avatar size={88} label={profile.displayName} />
-        <View style={{ marginLeft: 18, flex: 1 }}>
+        <View style={{ marginLeft: compact ? 0 : 18, marginTop: compact ? 14 : 0, flex: 1 }}>
           <View style={styles.nameRow}>
-            <Text style={styles.name}>{profile.displayName}</Text>
+            <Text style={[styles.name, compact && styles.nameCompact]}>{profile.displayName}</Text>
             <UserRoleTags username={profile.username} />
           </View>
           <Text style={styles.username}>@{profile.username}</Text>
@@ -116,9 +124,12 @@ export default function PublicProfile() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64, maxWidth: 720 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
+  headerCompact: { flexDirection: 'column', alignItems: 'flex-start', marginBottom: 20 },
   nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   name: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 26 },
+  nameCompact: { fontSize: 22 },
   username: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, marginTop: 4 },
   sectionHeader: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, marginBottom: 14 },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13 },

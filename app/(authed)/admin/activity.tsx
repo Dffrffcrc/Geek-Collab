@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import {
   collectionGroup,
   onSnapshot,
@@ -29,6 +29,8 @@ const FILTERS: Array<{ label: string; types: ActivityType[] | null }> = [
 ];
 
 export default function AdminActivity() {
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const [items, setItems] = useState<ActivityWithForum[] | null>(null);
   const [search, setSearch] = useState('');
   const [filterIdx, setFilterIdx] = useState(0);
@@ -78,8 +80,8 @@ export default function AdminActivity() {
   }, [items, search, filterIdx]);
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <Text style={styles.heading}>Moderator + user activity log</Text>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
+      <Text style={[styles.heading, compact && styles.headingCompact]}>Moderator + user activity log</Text>
       <Text style={styles.sub}>Most recent 300 events across every forum.</Text>
 
       <FormInput
@@ -129,7 +131,9 @@ export default function AdminActivity() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 24, marginBottom: 4 },
+  headingCompact: { fontSize: 20 },
   sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
   chipRow: { gap: 8, paddingVertical: 8, marginBottom: 8 },
   chip: {

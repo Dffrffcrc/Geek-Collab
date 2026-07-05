@@ -6,6 +6,7 @@ import {
   deleteDoc,
   updateDoc,
   collection,
+  getDocs,
   addDoc,
   onSnapshot,
   serverTimestamp,
@@ -236,8 +237,6 @@ export async function liftTimeout(targetUid: string): Promise<void> {
 // Failures inside subcollections are logged and skipped — the forum doc
 // delete at the end is what removes the forum from the listing.
 export async function deleteForumCascading(forumSlug: string): Promise<void> {
-  const { collection, getDocs, deleteDoc, doc } = await import('firebase/firestore');
-
   async function deleteAllInCollection(path: string[]): Promise<void> {
     try {
       const snap = await getDocs(collection(db, path[0], ...path.slice(1)));

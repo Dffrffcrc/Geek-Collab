@@ -56,7 +56,7 @@ export default function ForgotPassword() {
 
   if (sent) {
     return (
-      <AuthLayout>
+      <AuthLayout mobileCentered>
         <Text style={styles.heading}>Check your inbox</Text>
         <Text style={styles.body}>
           If an account exists for that username or email, we've sent it a password reset link.
@@ -70,7 +70,7 @@ export default function ForgotPassword() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout mobileCentered>
       <Text style={styles.heading}>Reset your password</Text>
       <Text style={styles.body}>
         Enter your username or the email address on your account. We'll send you a link to choose

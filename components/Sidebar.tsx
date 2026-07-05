@@ -13,18 +13,34 @@ import { RoleTag } from './RoleTag';
 import { HomeIcon, ClockIcon } from './Icons';
 
 export function Sidebar() {
+  return <SidebarContent />;
+}
+
+export function SidebarContent({
+  onNavigate,
+}: {
+  onNavigate?: (action: () => void) => void;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const profile = useUserProfile();
   const { user } = useAuth();
 
   const recent = useExistingRecentForums(user?.uid, profile?.recentForums);
+  const go = (href: string, replace = false) => {
+    const action = () => {
+      if (replace) router.replace(href as never);
+      else router.push(href as never);
+    };
+    if (onNavigate) onNavigate(action);
+    else action();
+  };
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.inner}>
         {/* --- Profile block ----------------------------------------- */}
-        <TouchableOpacity style={styles.profileBlock} onPress={() => router.push('/profile')}>
+        <TouchableOpacity style={styles.profileBlock} onPress={() => go('/profile')}>
           <Avatar size={56} label={profile?.displayName ?? profile?.username} />
           <View style={styles.nameRow}>
             <Text style={styles.name} numberOfLines={1}>
@@ -43,13 +59,13 @@ export function Sidebar() {
             label="Active Forums"
             active={pathname === '/forums'}
             icon={(active) => <HomeIcon size={18} color={active ? '#000' : COLORS.yellow} />}
-            onPress={() => router.push('/forums')}
+            onPress={() => go('/forums')}
           />
           <NavButton
             label="Past Forums"
             active={pathname === '/forums/past'}
             icon={(active) => <ClockIcon size={18} color={active ? '#000' : COLORS.yellow} />}
-            onPress={() => router.push('/forums/past')}
+            onPress={() => go('/forums/past')}
           />
         </View>
 
@@ -66,7 +82,7 @@ export function Sidebar() {
             return (
               <TouchableOpacity
                 key={f.slug}
-                onPress={() => router.push(href as never)}
+                onPress={() => go(href)}
                 style={[styles.recentItem, active && styles.recentItemActive]}
                 activeOpacity={0.85}
               >
@@ -83,15 +99,11 @@ export function Sidebar() {
         )}
       </ScrollView>
 
-      {/* --- Footer (settings + logout) ------------------------------ */}
+      {/* --- Footer (logout) ---------------------------------------- */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerRow} onPress={() => router.push('/settings')}>
-          <Text style={styles.footerIcon}>⚙</Text>
-          <Text style={styles.footerLabel}>Settings</Text>
-        </TouchableOpacity>
         <TouchableOpacity
           style={styles.footerRow}
-          onPress={() => signOut(auth).then(() => router.replace('/login'))}
+          onPress={() => signOut(auth).then(() => go('/login', true))}
         >
           <Text style={[styles.footerIcon, { color: COLORS.error }]}>⎋</Text>
           <Text style={[styles.footerLabel, { color: COLORS.error }]}>Logout</Text>

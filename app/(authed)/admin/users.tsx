@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { collection, onSnapshot, type Timestamp } from 'firebase/firestore';
@@ -36,6 +37,8 @@ type Filter = 'all' | 'banned' | 'mods';
 
 export default function AdminUsers() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const { user: me } = useAuth();
   const profile = useUserProfile();
 
@@ -132,8 +135,8 @@ export default function AdminUsers() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <Text style={styles.heading}>Users</Text>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
+      <Text style={[styles.heading, compact && styles.headingCompact]}>Users</Text>
       <Text style={styles.sub}>Manage every user's status, ban, and moderator assignments.</Text>
 
       <FormInput
@@ -142,7 +145,7 @@ export default function AdminUsers() {
         onChangeText={setSearch}
       />
 
-      <View style={styles.filterRow}>
+      <View style={[styles.filterRow, compact && styles.filterRowCompact]}>
         {(['all', 'banned', 'mods'] as Filter[]).map((f) => (
           <TouchableOpacity
             key={f}
@@ -168,7 +171,7 @@ export default function AdminUsers() {
           return (
             <TouchableOpacity
               key={u.uid}
-              style={styles.card}
+              style={[styles.card, compact && styles.cardCompact]}
               activeOpacity={0.85}
               onPress={() => router.push(`/profile/${u.username}`)}
             >
@@ -189,7 +192,7 @@ export default function AdminUsers() {
                   {u.email ? ` · ${u.email}` : ''}
                 </Text>
               </View>
-              <View style={styles.actions}>
+              <View style={[styles.actions, compact && styles.actionsCompact]}>
                 {!isAdmin && (
                   <ActBtn
                     label={isBanned ? 'Lift ban' : 'Ban'}
@@ -226,9 +229,12 @@ function ActBtn({
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 24, marginBottom: 4 },
+  headingCompact: { fontSize: 20 },
   sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
-  filterRow: { flexDirection: 'row', gap: 8, marginVertical: 8 },
+  filterRow: { flexDirection: 'row', gap: 8, marginVertical: 8, flexWrap: 'wrap' },
+  filterRowCompact: { marginTop: 2 },
   chip: {
     paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16,
     backgroundColor: '#1f1f1f', borderWidth: 1, borderColor: COLORS.border,
@@ -242,6 +248,7 @@ const styles = StyleSheet.create({
     borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14,
     marginBottom: 8, gap: 14,
   },
+  cardCompact: { flexDirection: 'column', alignItems: 'flex-start' },
   identity: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 0 },
   displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
@@ -263,6 +270,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(239,235,69,0.5)',
   },
   actions: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  actionsCompact: { alignSelf: 'stretch', flexWrap: 'wrap' },
   actBtn: {
     paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12,
     backgroundColor: '#1f1f1f', borderWidth: 1, borderColor: '#3a3a3a',

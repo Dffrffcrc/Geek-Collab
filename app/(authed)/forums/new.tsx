@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
@@ -19,6 +19,8 @@ function toLocalInputValue(d: Date): string {
 
 export default function NewForum() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const { user } = useAuth();
   const admin = useIsServerAdmin();
 
@@ -59,7 +61,7 @@ export default function NewForum() {
       const ref = doc(db, 'forums', slug);
       const existing = await getDoc(ref);
       if (existing.exists()) {
-        setError('A forum with that slug already exists. Pick a different name.');
+        setError('A forum with that name already exists. Pick a different name.');
         setBusy(false);
         return;
       }
@@ -86,12 +88,11 @@ export default function NewForum() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <Text style={styles.heading}>Create a forum</Text>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
+      <Text style={[styles.heading, compact && styles.headingCompact]}>Create a forum</Text>
 
       <Text style={styles.label}>Name</Text>
       <FormInput placeholder="e.g. Workshop 3: Intro to Linux" value={name} onChangeText={setName} />
-      {!!name.trim() && <Text style={styles.slugHint}>URL: /forums/{slugify(name) || '...'}</Text>}
 
       <Text style={styles.label}>Description (optional)</Text>
       <FormInput
@@ -127,10 +128,11 @@ export default function NewForum() {
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64, maxWidth: 640 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 28, marginBottom: 20 },
+  headingCompact: { fontSize: 24, marginBottom: 16 },
   label: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 6, marginTop: 12 },
   subLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginBottom: 10, lineHeight: 16 },
-  slugHint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginTop: -8, marginBottom: 8 },
   error: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 13, marginTop: 12 },
   deny: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
   denyText: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 16, marginBottom: 12 },

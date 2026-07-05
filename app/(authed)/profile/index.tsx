@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, useWindowDimensions } from 'react-native';
 import {
-  collectionGroup,
+  collection,
   doc,
   getDocs,
   query,
@@ -32,6 +32,8 @@ const MAX_DISPLAY_NAME = 40;
 
 export default function MyProfile() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const { user } = useAuth();
   const profile = useUserProfile();
   const [posts, setPosts] = useState<AuthoredPost[] | null>(null);
@@ -79,37 +81,43 @@ export default function MyProfile() {
     if (!user) return;
     (async () => {
       try {
-        const q = query(
-          collectionGroup(db, 'posts'),
-          where('authorUid', '==', user.uid),
-          orderBy('createdAt', 'desc'),
+        const forumsSnap = await getDocs(collection(db, 'forums'));
+        const postLists = await Promise.all(
+          forumsSnap.docs.map(async (forumDoc) => {
+            const postsSnap = await getDocs(
+              query(
+                collection(db, 'forums', forumDoc.id, 'posts'),
+                where('authorUid', '==', user.uid),
+                orderBy('createdAt', 'desc'),
+              ),
+            );
+            return postsSnap.docs.map((d) => {
+              const data = d.data();
+              return {
+                forumSlug: forumDoc.id,
+                postSlug: d.id,
+                title: data.title,
+                createdAt: data.createdAt,
+              } as AuthoredPost;
+            });
+          }),
         );
-        const snap = await getDocs(q);
-        const items: AuthoredPost[] = snap.docs.map((d) => {
-          const data = d.data();
-          // path: forums/{forumSlug}/posts/{postSlug}
-          const segments = d.ref.path.split('/');
-          return {
-            forumSlug: segments[1],
-            postSlug: segments[3],
-            title: data.title,
-            createdAt: data.createdAt,
-          };
-        });
+        const items = postLists
+          .flat()
+          .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
         setPosts(items);
       } catch (err) {
-        // Collection group queries need an index — log so we can build one.
-        console.warn('[profile:posts] failed (likely needs Firestore index):', err);
+        console.warn('[profile:posts] failed:', err);
         setPosts([]);
       }
     })();
   }, [user]);
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.header}>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
+      <View style={[styles.header, compact && styles.headerCompact]}>
         <Avatar size={88} label={profile?.displayName ?? profile?.username} />
-        <View style={{ marginLeft: 18, flex: 1 }}>
+        <View style={{ marginLeft: compact ? 0 : 18, marginTop: compact ? 14 : 0, flex: 1 }}>
           {editing ? (
             <View style={styles.editRow}>
               <FormInput
@@ -144,7 +152,7 @@ export default function MyProfile() {
           ) : (
             <>
               <View style={styles.nameRow}>
-                <Text style={styles.name}>{profile?.displayName ?? '...'}</Text>
+                <Text style={[styles.name, compact && styles.nameCompact]}>{profile?.displayName ?? '...'}</Text>
                 <UserRoleTags username={profile?.username} />
                 <TouchableOpacity onPress={beginEdit} style={styles.editLinkWrap}>
                   <Text style={styles.editLink}>Edit</Text>
@@ -174,20 +182,18 @@ export default function MyProfile() {
           </View>
         ))
       )}
-
-      <Text style={styles.todo}>
-        Avatar uploads coming soon. Changing your display name only affects new posts and comments —
-        existing ones keep the name they were posted under.
-      </Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64, maxWidth: 720 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
+  headerCompact: { flexDirection: 'column', alignItems: 'flex-start', marginBottom: 20 },
   nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   name: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 26 },
+  nameCompact: { fontSize: 22 },
   username: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, marginTop: 4 },
   email: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginTop: 4 },
   sectionHeader: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, marginBottom: 14 },
@@ -195,12 +201,11 @@ const styles = StyleSheet.create({
   postRow: { backgroundColor: '#2a2a2a', borderRadius: 10, padding: 14, marginBottom: 10 },
   postTitle: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 16 },
   postMeta: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginTop: 4 },
-  todo: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginTop: 32, fontStyle: 'italic', lineHeight: 18 },
   editLinkWrap: { marginLeft: 8 },
   editLink: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12, textDecorationLine: 'underline' },
   editRow: { marginRight: 16 },
   errorText: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 12, marginTop: 4 },
-  editButtons: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  editButtons: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
   btn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, alignItems: 'center', minWidth: 80 },
   btnPrimary: { backgroundColor: COLORS.yellow },
   btnPrimaryLabel: { color: '#000', fontFamily: BODY_FONT, fontWeight: '700', fontSize: 13 },

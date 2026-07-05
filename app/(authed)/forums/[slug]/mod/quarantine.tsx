@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   collection,
@@ -38,6 +38,8 @@ type QPost = {
 
 export default function QuarantineTab() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
   const profile = useUserProfile();
@@ -135,7 +137,7 @@ export default function QuarantineTab() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
       <Text style={styles.heading}>Quarantine</Text>
       <Text style={styles.sub}>
         Posts here are hidden from non-moderators. Mods can still see and act on them.
@@ -203,6 +205,7 @@ function ActBtn({
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   heading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 24, marginBottom: 4 },
   sub: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginTop: 16 },

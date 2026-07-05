@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   collection,
@@ -22,6 +22,8 @@ import { deleteForumCascading, describeActivity, logActivity, type Activity } fr
 
 export default function ModDashboard() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
   const profile = useUserProfile();
@@ -210,13 +212,13 @@ export default function ModDashboard() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
       {loadErrors.length > 0 && (
         <View style={styles.errBanner}>
           <Text style={styles.errBannerHead}>Some sections failed to load</Text>
           <Text style={styles.errBannerSub}>
             {loadErrors.some((e) => e.includes('permission-denied'))
-              ? 'permission-denied means firestore.rules is out of date. Run "firebase deploy --only firestore:rules".'
+              ? 'permission-denied means Firestore does not currently recognize this account as a moderator/admin for these server-side reads. Deploy firestore.rules and verify the forum moderator list and admin allowlist are correct.'
               : loadErrors.some((e) => e.includes('failed-precondition'))
               ? 'failed-precondition means a Firestore index is missing. Run "firebase deploy --only firestore:indexes" (indexes can take a few minutes to build after deploy).'
               : 'Try redeploying both rules and indexes.'}
@@ -303,6 +305,7 @@ function Tile({ label, value, accent }: { label: string; value: number | null; a
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   tilesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 28 },
   tile: {
     minWidth: 160,

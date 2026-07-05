@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   collection,
-  collectionGroup,
   getCountFromServer,
   onSnapshot,
   orderBy,
   query,
-  where,
-  limit as fsLimit,
   type Timestamp,
 } from 'firebase/firestore';
 import { db } from '../../../lib/firebase';
@@ -30,6 +27,8 @@ const MOD_ACTION_TYPES = [
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
   const [forums, setForums] = useState<number | null>(null);
   const [openReports, setOpenReports] = useState<number | null>(null);
   const [quarantined, setQuarantined] = useState<number | null>(null);
@@ -37,6 +36,7 @@ export default function AdminDashboard() {
   const [banned, setBanned] = useState<number | null>(null);
   const [users, setUsers] = useState<number | null>(null);
   const [recentMod, setRecentMod] = useState<Activity[] | null>(null);
+  const [forumSlugs, setForumSlugs] = useState<string[]>([]);
   // Surface query errors instead of silently flattening them to 0 — that
   // way "missing collection-group index" doesn't look like "no data".
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
@@ -48,7 +48,8 @@ export default function AdminDashboard() {
     // One-shot counts for the heavier queries — these don't change every second.
     (async () => {
       try {
-        setForums((await getCountFromServer(collection(db, 'forums'))).data().count);
+        const forumCount = (await getCountFromServer(collection(db, 'forums'))).data().count;
+        setForums(forumCount);
       } catch (err) {
         console.warn('[admin:dashboard] forums count failed:', err);
         pushErr('forums', err as { code?: string; message?: string });
@@ -67,36 +68,12 @@ export default function AdminDashboard() {
 
     unsubs.push(
       onSnapshot(
-        query(collectionGroup(db, 'reports'), where('status', '==', 'open')),
-        (snap) => setOpenReports(snap.size),
+        query(collection(db, 'forums'), orderBy('createdAt', 'desc')),
+        (snap) => setForumSlugs(snap.docs.map((d) => d.id)),
         (err) => {
-          console.warn('[admin:dashboard] reports failed:', err);
-          pushErr('open reports', err);
-          setOpenReports(0);
-        },
-      ),
-    );
-
-    unsubs.push(
-      onSnapshot(
-        query(collectionGroup(db, 'posts'), where('isQuarantined', '==', true)),
-        (snap) => setQuarantined(snap.size),
-        (err) => {
-          console.warn('[admin:dashboard] quarantine failed:', err);
-          pushErr('quarantine', err);
-          setQuarantined(0);
-        },
-      ),
-    );
-
-    unsubs.push(
-      onSnapshot(
-        query(collectionGroup(db, 'posts'), where('isDeleted', '==', true)),
-        (snap) => setDeleted(snap.size),
-        (err) => {
-          console.warn('[admin:dashboard] deleted failed:', err);
-          pushErr('deleted', err);
-          setDeleted(0);
+          console.warn('[admin:dashboard] forums list failed:', err);
+          pushErr('forums list', err);
+          setForumSlugs([]);
         },
       ),
     );
@@ -112,39 +89,112 @@ export default function AdminDashboard() {
         },
       ),
     );
-
-    // Recent mod actions across all forums.
-    unsubs.push(
-      onSnapshot(
-        query(
-          collectionGroup(db, 'activity'),
-          where('type', 'in', MOD_ACTION_TYPES),
-          orderBy('createdAt', 'desc'),
-          fsLimit(15),
-        ),
-        (snap) =>
-          setRecentMod(
-            snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Activity, 'id'>) })),
-          ),
-        (err) => {
-          console.warn('[admin:dashboard] activity failed (likely needs index):', err);
-          pushErr('mod actions', err);
-          setRecentMod([]);
-        },
-      ),
-    );
-
     return () => unsubs.forEach((u) => u());
   }, []);
 
+  useEffect(() => {
+    if (forumSlugs.length === 0) {
+      setOpenReports(0);
+      setQuarantined(0);
+      setDeleted(0);
+      setRecentMod([]);
+      return;
+    }
+
+    const reportCounts = new Map<string, number>();
+    const quarantineCounts = new Map<string, number>();
+    const deletedCounts = new Map<string, number>();
+    const activityByForum = new Map<string, Activity[]>();
+    const unsubs: Array<() => void> = [];
+
+    const sumMap = (map: Map<string, number>) =>
+      Array.from(map.values()).reduce((sum, count) => sum + count, 0);
+    const refreshActivities = () => {
+      const merged = Array.from(activityByForum.values())
+        .flat()
+        .filter((a) => MOD_ACTION_TYPES.includes(a.type))
+        .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
+        .slice(0, 15);
+      setRecentMod(merged);
+    };
+
+    for (const slug of forumSlugs) {
+      unsubs.push(
+        onSnapshot(
+          collection(db, 'forums', slug, 'reports'),
+          (snap) => {
+            reportCounts.set(
+              slug,
+              snap.docs.filter((d) => (d.data().status ?? 'open') === 'open').length,
+            );
+            setOpenReports(sumMap(reportCounts));
+          },
+          (err) => {
+            console.warn('[admin:dashboard] reports failed:', slug, err);
+            pushErr('open reports', err);
+            reportCounts.set(slug, 0);
+            setOpenReports(sumMap(reportCounts));
+          },
+        ),
+      );
+
+      unsubs.push(
+        onSnapshot(
+          collection(db, 'forums', slug, 'posts'),
+          (snap) => {
+            quarantineCounts.set(
+              slug,
+              snap.docs.filter((d) => d.data().isQuarantined === true).length,
+            );
+            deletedCounts.set(
+              slug,
+              snap.docs.filter((d) => d.data().isDeleted === true).length,
+            );
+            setQuarantined(sumMap(quarantineCounts));
+            setDeleted(sumMap(deletedCounts));
+          },
+          (err) => {
+            console.warn('[admin:dashboard] posts failed:', slug, err);
+            pushErr('posts', err);
+            quarantineCounts.set(slug, 0);
+            deletedCounts.set(slug, 0);
+            setQuarantined(sumMap(quarantineCounts));
+            setDeleted(sumMap(deletedCounts));
+          },
+        ),
+      );
+
+      unsubs.push(
+        onSnapshot(
+          query(collection(db, 'forums', slug, 'activity'), orderBy('createdAt', 'desc')),
+          (snap) => {
+            activityByForum.set(
+              slug,
+              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Activity, 'id'>) })),
+            );
+            refreshActivities();
+          },
+          (err) => {
+            console.warn('[admin:dashboard] activity failed:', slug, err);
+            pushErr('mod actions', err);
+            activityByForum.set(slug, []);
+            refreshActivities();
+          },
+        ),
+      );
+    }
+
+    return () => unsubs.forEach((u) => u());
+  }, [forumSlugs]);
+
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
       {loadErrors.length > 0 && (
         <View style={styles.errBanner}>
           <Text style={styles.errBannerHead}>Some sections failed to load</Text>
           <Text style={styles.errBannerSub}>
             {loadErrors.some((e) => e.includes('permission-denied'))
-              ? 'permission-denied means firestore.rules is out of date. Run "firebase deploy --only firestore:rules".'
+              ? 'permission-denied means Firestore does not currently recognize this account as an admin for these server-side reads. Deploy firestore.rules and verify your username is in the admin allowlist in both firestore.rules and lib/admins.ts.'
               : loadErrors.some((e) => e.includes('failed-precondition'))
               ? 'failed-precondition means a Firestore index is missing. Run "firebase deploy --only firestore:indexes" (and wait a few minutes for indexes to build).'
               : 'Run both "firebase deploy --only firestore:rules" and "firebase deploy --only firestore:indexes".'}
@@ -210,6 +260,7 @@ function Tile({
 
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
+  scrollCompact: { padding: 16, paddingBottom: 36 },
   tilesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 28 },
   tile: {
     flex: 1,
