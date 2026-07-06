@@ -14,6 +14,12 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
         />
+        <meta name="theme-color" content="#fff100" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Forum.GeeksHacking" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         {/* Google Fonts CDN — the reliable source for "Space Mono" /
             "Special Elite" everywhere the bundled .ttf might 404 (e.g.
             Cloudflare Pages, where SPA fallbacks mis-route font

@@ -5,6 +5,7 @@ import { SpaceMono_400Regular } from '@expo-google-fonts/space-mono';
 import { SpecialElite_400Regular } from '@expo-google-fonts/special-elite';
 import { AuthProvider } from '../lib/auth';
 import { COLORS } from '../lib/theme';
+import PwaRegistration from '../components/PwaRegistration';
 
 export default function RootLayout() {
   // Kick off bundled-font loading but DO NOT block the app on it. The
@@ -20,6 +21,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
+      <PwaRegistration />
       <StatusBar style="light" />
       <Stack
         screenOptions={{
