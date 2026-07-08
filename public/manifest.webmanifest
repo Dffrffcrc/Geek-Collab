@@ -1,0 +1,29 @@
+{
+  "name": "Forum.GeeksHacking",
+  "short_name": "Forum.GeeksHacking",
+  "description": "A forum for GeeksHacking.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1a1a",
+  "theme_color": "#fff100",
+  "icons": [
+    {
+      "src": "/icons/forumlogo192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/forumlogo512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/forumlogo512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
