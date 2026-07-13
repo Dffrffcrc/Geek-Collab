@@ -1,43 +1,43 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, StyleSheet, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { auth } from '../lib/firebase';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { AuthLayout } from '../components/AuthLayout';
 import { FormInput } from '../components/FormInput';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { useAuth } from '../lib/auth';
+import { requiresEmailVerification } from '../lib/auth-utils';
+import { AuthScreenLoading } from '../components/AuthScreenLoading';
 
 export default function ForgotPassword() {
   const router = useRouter();
-  const [identifier, setIdentifier] = useState('');
+  const { user, initializing } = useAuth();
+  const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (initializing || !user) return;
+    router.replace(requiresEmailVerification(user) ? '/verify-email' : '/forums');
+  }, [initializing, router, user]);
+
   async function onSubmit() {
     setError(null);
-    if (!identifier.trim()) {
-      setError('Enter your username or email address.');
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      setError('Enter your email address.');
+      return;
+    }
+    if (!normalizedEmail.includes('@')) {
+      setError('Use the email address on your account.');
       return;
     }
     setLoading(true);
     try {
-      let email = identifier.trim();
-      // Mirror login.tsx: accept either a username or an email. Username lookup
-      // goes through the public /usernames index since /users is auth-gated.
-      if (!email.includes('@')) {
-        const lookup = await getDoc(doc(db, 'usernames', email.toLowerCase()));
-        if (!lookup.exists() || !lookup.data().email) {
-          // Don't disclose whether the account exists — show the same success
-          // screen either way so the form can't be used to enumerate usernames.
-          setSent(true);
-          return;
-        }
-        email = lookup.data().email;
-      }
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, normalizedEmail);
       setSent(true);
     } catch (err: unknown) {
       const e = err as { code?: string; message?: string };
@@ -54,12 +54,16 @@ export default function ForgotPassword() {
     }
   }
 
+  if (initializing) {
+    return <AuthScreenLoading />;
+  }
+
   if (sent) {
     return (
       <AuthLayout mobileCentered>
         <Text style={styles.heading}>Check your inbox</Text>
         <Text style={styles.body}>
-          If an account exists for that username or email, we've sent it a password reset link.
+          If an account exists for that email address, we've sent it a password reset link.
           The link expires after a short time — request another one if it does.
         </Text>
         <View style={{ marginTop: 18 }}>
@@ -73,15 +77,16 @@ export default function ForgotPassword() {
     <AuthLayout mobileCentered>
       <Text style={styles.heading}>Reset your password</Text>
       <Text style={styles.body}>
-        Enter your username or the email address on your account. We'll send you a link to choose
-        a new password.
+        Enter the email address on your account. We'll send you a link to choose a new password.
       </Text>
       <View style={{ height: 18 }} />
       <FormInput
-        placeholder="Username or email address"
-        value={identifier}
-        onChangeText={setIdentifier}
-        autoComplete="username"
+        placeholder="Email address"
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoComplete="email"
       />
       {error && <Text style={styles.error}>{error}</Text>}
       <PrimaryButton label="Send reset link" onPress={onSubmit} loading={loading} />
@@ -101,8 +106,6 @@ function mapAuthError(code?: string) {
       return 'Too many attempts. Try again later.';
     case 'auth/network-request-failed':
       return "Couldn't reach the server. Please check your internet connection.";
-    case 'permission-denied':
-      return 'Firestore rules denied this read. Re-deploy firestore.rules.';
     default:
       return null;
   }

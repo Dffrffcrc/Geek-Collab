@@ -1,6 +1,7 @@
 import { Redirect } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import { useAuth } from '../lib/auth';
+import { requiresEmailVerification } from '../lib/auth-utils';
 
 export default function Index() {
   const { user, initializing } = useAuth();
@@ -13,6 +14,6 @@ export default function Index() {
     );
   }
   if (!user) return <Redirect href="/login" />;
-  if (!user.emailVerified) return <Redirect href="/verify-email" />;
+  if (requiresEmailVerification(user)) return <Redirect href="/verify-email" />;
   return <Redirect href="/forums" />;
 }

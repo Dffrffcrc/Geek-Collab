@@ -13,6 +13,7 @@ import { useAuth } from '../../lib/auth';
 import { COLORS } from '../../lib/theme';
 import { Topbar } from '../../components/Topbar';
 import { Sidebar, SidebarContent } from '../../components/Sidebar';
+import { requiresEmailVerification } from '../../lib/auth-utils';
 
 const SIDEBAR_WIDTH = 240;
 const MOBILE_SIDEBAR_WIDTH = 280;
@@ -83,7 +84,7 @@ export default function AuthedLayout() {
     );
   }
   if (!user) return <Redirect href="/login" />;
-  if (!user.emailVerified) return <Redirect href="/verify-email" />;
+  if (requiresEmailVerification(user)) return <Redirect href="/verify-email" />;
 
   return (
     <View style={styles.shell}>

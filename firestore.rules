@@ -58,11 +58,16 @@ service cloud.firestore {
     // ---- users -----------------------------------------------------------
     match /users/{uid} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && (!('phoneNumber' in request.resource.data) || request.resource.data.phoneNumber == null)
+        && (!('photoURL' in request.resource.data) || request.resource.data.photoURL == null);
       // username, usernameLower, and email are immutable after creation —
       // changing them would bypass the admin allowlist check in isAdmin().
       allow update: if isSignedIn()
         && request.auth.uid == uid
+        && (!('phoneNumber' in request.resource.data) || request.resource.data.phoneNumber == null)
+        && (!('photoURL' in request.resource.data) || request.resource.data.photoURL == null)
         && !request.resource.data.diff(resource.data).affectedKeys()
              .hasAny(['username', 'usernameLower', 'email']);
       allow delete: if false;

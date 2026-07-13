@@ -7,6 +7,8 @@ import { useAuth } from '../lib/auth';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { AuthLayout } from '../components/AuthLayout';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { requiresEmailVerification } from '../lib/auth-utils';
+import { AuthScreenLoading } from '../components/AuthScreenLoading';
 
 export default function VerifyEmail() {
   const router = useRouter();
@@ -21,7 +23,7 @@ export default function VerifyEmail() {
       router.replace('/login');
       return;
     }
-    if (user.emailVerified) {
+    if (!requiresEmailVerification(user)) {
       router.replace('/forums');
       return;
     }
@@ -30,7 +32,7 @@ export default function VerifyEmail() {
       try {
         if (!auth.currentUser) return;
         await reload(auth.currentUser);
-        if (auth.currentUser.emailVerified) router.replace('/forums');
+        if (auth.currentUser && !requiresEmailVerification(auth.currentUser)) router.replace('/forums');
       } catch {
         // ignore transient errors
       }
@@ -44,7 +46,7 @@ export default function VerifyEmail() {
     setInfo(null);
     try {
       await reload(auth.currentUser);
-      if (auth.currentUser.emailVerified) router.replace('/forums');
+      if (auth.currentUser && !requiresEmailVerification(auth.currentUser)) router.replace('/forums');
       else setInfo('Still not verified. Check your inbox (and spam folder).');
     } finally {
       setChecking(false);
@@ -68,6 +70,10 @@ export default function VerifyEmail() {
   async function useDifferentAccount() {
     await signOut(auth);
     router.replace('/login');
+  }
+
+  if (initializing) {
+    return <AuthScreenLoading />;
   }
 
   return (

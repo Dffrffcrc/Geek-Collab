@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, StyleSheet, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import {
@@ -13,6 +13,9 @@ import { AuthLayout } from '../components/AuthLayout';
 import { FormInput } from '../components/FormInput';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { PasswordStrength, passwordScore } from '../components/PasswordStrength';
+import { useAuth } from '../lib/auth';
+import { requiresEmailVerification } from '../lib/auth-utils';
+import { AuthScreenLoading } from '../components/AuthScreenLoading';
 
 const MIN_PASSWORD_LENGTH = 8;
 const REQUIRED_STRENGTH = 4;
@@ -20,6 +23,7 @@ const MAX_DISPLAY_NAME_LENGTH = 35;
 
 export default function Signup() {
   const router = useRouter();
+  const { user, initializing } = useAuth();
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -27,6 +31,11 @@ export default function Signup() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (initializing || !user) return;
+    router.replace(requiresEmailVerification(user) ? '/verify-email' : '/forums');
+  }, [initializing, router, user]);
 
   async function onSubmit() {
     setError(null);
@@ -76,6 +85,8 @@ export default function Signup() {
         username: u,
         usernameLower: uname,
         displayName: d,
+        phoneNumber: null,
+        photoURL: null,
         createdAt: serverTimestamp(),
       });
       await setDoc(doc(db, 'usernames', uname), { uid: cred.user.uid });
@@ -89,6 +100,10 @@ export default function Signup() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (initializing) {
+    return <AuthScreenLoading />;
   }
 
   return (

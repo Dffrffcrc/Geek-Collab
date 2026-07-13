@@ -1,51 +1,66 @@
-import { useState } from 'react';
-import { Text, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Text, StyleSheet, View, useWindowDimensions, Platform } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { auth } from '../lib/firebase';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { AuthLayout } from '../components/AuthLayout';
 import { FormInput } from '../components/FormInput';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { useAuth } from '../lib/auth';
+import { isPortalAuthConfigured, startPortalSignIn } from '../lib/portal-auth';
+import { requiresEmailVerification } from '../lib/auth-utils';
+import { AuthScreenLoading } from '../components/AuthScreenLoading';
 
 export default function Login() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 520;
-  const [identifier, setIdentifier] = useState('');
+  const { user, initializing, authError } = useAuth();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
+
+  useEffect(() => {
+    if (initializing || !user) return;
+    router.replace(requiresEmailVerification(user) ? '/verify-email' : '/forums');
+  }, [initializing, router, user]);
+
+  useEffect(() => {
+    if (authError) setError(authError);
+  }, [authError]);
+
+  async function onPortalLogin() {
+    setError(null);
+    setPortalLoading(true);
+    try {
+      await startPortalSignIn();
+    } catch (err: unknown) {
+      console.error('[login] portal sign-in failed:', err);
+      const message = err instanceof Error ? err.message : 'Portal sign-in failed.';
+      setError(message);
+    } finally {
+      setPortalLoading(false);
+    }
+  }
 
   async function onSubmit() {
     setError(null);
-    if (!identifier || !password) {
-      setError('Enter your username/email and password.');
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !password) {
+      setError('Enter your email address and password.');
       return;
     }
-    setLoading(true);
+    if (!normalizedEmail.includes('@')) {
+      setError('Use your email address to sign in.');
+      return;
+    }
+    setPasswordLoading(true);
     try {
-      let email = identifier.trim();
-      // Username login: look up the email in the public usernames index.
-      // (Reading the users collection requires auth, so we can't use it here.)
-      if (!email.includes('@')) {
-        const lookup = await getDoc(doc(db, 'usernames', email.toLowerCase()));
-        if (!lookup.exists()) {
-          setError('No account found with that username.');
-          setLoading(false);
-          return;
-        }
-        const data = lookup.data();
-        if (!data.email) {
-          setError('This account is missing email metadata. Try logging in with your email address.');
-          setLoading(false);
-          return;
-        }
-        email = data.email;
-      }
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      if (!cred.user.emailVerified) router.replace('/verify-email');
+      const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      if (requiresEmailVerification(cred.user)) router.replace('/verify-email');
       else router.replace('/forums');
     } catch (err: unknown) {
       console.error('[login] failed:', err);
@@ -53,18 +68,24 @@ export default function Login() {
       const friendly = mapAuthError(e.code);
       setError(friendly ?? `Could not log in (${e.code ?? e.message ?? 'unknown error'}).`);
     } finally {
-      setLoading(false);
+      setPasswordLoading(false);
     }
+  }
+
+  if (initializing) {
+    return <AuthScreenLoading />;
   }
 
   return (
     <AuthLayout mobileCentered>
       <Text style={[styles.heading, isMobile && styles.headingMobile]}>Log in to forum.geekshacking:</Text>
       <FormInput
-        placeholder="Username or email address"
-        value={identifier}
-        onChangeText={setIdentifier}
-        autoComplete="username"
+        placeholder="Email address"
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoComplete="email"
       />
       <FormInput
         placeholder="Password"
@@ -74,7 +95,21 @@ export default function Login() {
         autoComplete="current-password"
       />
       {error && <Text style={styles.error}>{error}</Text>}
-      <PrimaryButton label="Log in" onPress={onSubmit} loading={loading} />
+      <PrimaryButton
+        label="Continue with GeeksHacking Portal"
+        onPress={onPortalLogin}
+        loading={portalLoading}
+        disabled={!isPortalAuthConfigured()}
+      />
+      <Text style={styles.portalHint}>
+        Sign in with GitHub through the GeeksHacking portal.
+      </Text>
+      <View style={styles.dividerRow}>
+        <View style={styles.divider} />
+        <Text style={styles.dividerText}>or use email</Text>
+        <View style={styles.divider} />
+      </View>
+      <PrimaryButton label="Log in" onPress={onSubmit} loading={passwordLoading} />
       <View style={[styles.forgotRow, isMobile && styles.forgotRowMobile]}>
         <Link href="/forgot-password" style={styles.footerLink}>
           Forgot password?
@@ -86,6 +121,9 @@ export default function Login() {
           Sign up here
         </Link>
       </View>
+      {Platform.OS !== 'web' && (
+        <Text style={styles.note}>Portal sign-in is currently available on web only.</Text>
+      )}
     </AuthLayout>
   );
 }
@@ -102,8 +140,6 @@ function mapAuthError(code?: string) {
       return 'Too many attempts. Try again later.';
     case 'auth/network-request-failed':
       return "Couldn't reach the server. Please check your internet connection.";
-    case 'permission-denied':
-      return 'Firestore rules denied this read. Re-deploy firestore.rules.';
     default:
       return null;
   }
@@ -113,6 +149,10 @@ const styles = StyleSheet.create({
   heading: { color: COLORS.textPrimary, fontSize: 22, marginBottom: 18, fontFamily: HEADING_FONT },
   headingMobile: { fontSize: 18, marginBottom: 22, textAlign: 'left', lineHeight: 28 },
   error: { color: COLORS.error, fontSize: 13, marginBottom: 8, fontFamily: BODY_FONT },
+  portalHint: { color: COLORS.textMuted, fontSize: 12, marginTop: 8, textAlign: 'center', fontFamily: BODY_FONT },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 18, marginBottom: 4 },
+  divider: { flex: 1, height: 1, backgroundColor: COLORS.separator },
+  dividerText: { color: COLORS.textMuted, fontSize: 11, fontFamily: BODY_FONT },
   forgotRow: { alignItems: 'flex-end', marginTop: 12 },
   forgotRowMobile: { marginTop: 8 },
   footer: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 28 },
@@ -120,4 +160,5 @@ const styles = StyleSheet.create({
   footerText: { color: COLORS.textMuted, fontSize: 12, fontFamily: BODY_FONT },
   footerTextMobile: { textAlign: 'center' },
   footerLink: { color: COLORS.yellow, fontSize: 12, fontFamily: BODY_FONT },
+  note: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: 16, fontFamily: BODY_FONT },
 });

@@ -10,6 +10,8 @@ export type UserProfile = {
   username: string;
   displayName: string;
   email: string;
+  phoneNumber: string | null;
+  photoURL: string | null;
   recentForums?: RecentForum[];
   createdAt?: Timestamp;
 };
