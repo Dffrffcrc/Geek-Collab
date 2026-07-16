@@ -91,15 +91,20 @@ export default function MyProfile() {
                 orderBy('createdAt', 'desc'),
               ),
             );
-            return postsSnap.docs.map((d) => {
-              const data = d.data();
-              return {
-                forumSlug: forumDoc.id,
-                postSlug: d.id,
-                title: data.title,
-                createdAt: data.createdAt,
-              } as AuthoredPost;
-            });
+            return postsSnap.docs
+              // Hide soft-deleted posts. Not filtered in the query itself
+              // because Firestore inequalities+ordering interact awkwardly;
+              // client-side is cleaner and the cost is negligible.
+              .filter((d) => d.data().isDeleted !== true)
+              .map((d) => {
+                const data = d.data();
+                return {
+                  forumSlug: forumDoc.id,
+                  postSlug: d.id,
+                  title: data.title,
+                  createdAt: data.createdAt,
+                } as AuthoredPost;
+              });
           }),
         );
         const items = postLists

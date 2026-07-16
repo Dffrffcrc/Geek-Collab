@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -36,16 +36,14 @@ import { UserRoleTags } from '../../../../components/RoleTag';
 import { describeActionError, promptModerationReason, violatesContentFilter } from '../../../../lib/admin-tools';
 import { Avatar } from '../../../../components/Avatar';
 import { MarkdownBody } from '../../../../components/MarkdownBody';
-import { FormInput } from '../../../../components/FormInput';
 import { CommentItem, type Comment } from '../../../../components/CommentItem';
 import { HeartIcon, CommentIcon, MoreIcon } from '../../../../components/Icons';
 import { OverflowMenu, type MenuAction } from '../../../../components/OverflowMenu';
 import { ReportModal } from '../../../../components/ReportModal';
 import { EditModal } from '../../../../components/EditModal';
 import { PostAttachments } from '../../../../components/PostAttachments';
-import { AttachmentPicker, type AttachmentPickerHandle } from '../../../../components/AttachmentPicker';
-import { DropZone } from '../../../../components/DropZone';
-import { deleteAttachment, type Attachment } from '../../../../lib/uploads';
+import { InlineComposer } from '../../../../components/InlineComposer';
+import { type Attachment } from '../../../../lib/uploads';
 
 type Post = {
   title: string;
@@ -88,7 +86,6 @@ export default function PostDetail() {
   const [commentAttachments, setCommentAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const commentPickerRef = useRef<AttachmentPickerHandle>(null);
   // Comment sort — persisted per-user in localStorage so the choice sticks
   // across posts and reloads. `oldest` (chronological) is the historical
   // default so unchanged users see the same ordering they always had.
@@ -442,26 +439,16 @@ export default function PostDetail() {
         </Text>
       ) : (
         <View style={[styles.commentBox, compact && styles.commentBoxCompact]}>
-          <DropZone onFiles={(files) => commentPickerRef.current?.addFiles(files)}>
-            <FormInput
-              placeholder="Write a comment… (paste or drop images here too)"
-              value={commentText}
-              onChangeText={setCommentText}
-              multiline
-              style={{ height: 70, paddingTop: 12 }}
-            />
-            <Text style={styles.markdownHint}>Markdown supported.</Text>
-            <AttachmentPicker
-              ref={commentPickerRef}
-              attachments={commentAttachments}
-              onChange={setCommentAttachments}
-              disabled={busy}
-            />
-          </DropZone>
+          <InlineComposer
+            value={commentText}
+            onChangeText={setCommentText}
+            attachments={commentAttachments}
+            onAttachmentsChange={setCommentAttachments}
+            onSubmit={postComment}
+            busy={busy}
+            placeholder="Write a comment…"
+          />
           {error && <Text style={styles.error}>{error}</Text>}
-          <TouchableOpacity style={styles.commentSubmit} onPress={postComment} disabled={busy}>
-            {busy ? <ActivityIndicator color="#000" /> : <Text style={styles.commentSubmitLabel}>Comment</Text>}
-          </TouchableOpacity>
         </View>
       )}
 
@@ -669,16 +656,7 @@ const styles = StyleSheet.create({
   },
   sortChipLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
   sortChipLabelActive: { color: '#000' },
-  markdownHint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginTop: 4, marginBottom: 4 },
-  commentSubmit: {
-    alignSelf: 'flex-end',
-    backgroundColor: COLORS.yellow,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    borderRadius: 16,
-  },
-  commentSubmitLabel: { color: '#000', fontFamily: BODY_FONT, fontWeight: '700', fontSize: 13 },
-  error: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 12, marginBottom: 6 },
+  error: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 12, marginTop: 8 },
   roHint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, textAlign: 'center', marginTop: 12 },
   notFound: { padding: 32 },
   notFoundText: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 16, marginBottom: 12 },

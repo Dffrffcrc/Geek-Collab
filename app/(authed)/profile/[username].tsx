@@ -57,12 +57,15 @@ export default function PublicProfile() {
                 orderBy('createdAt', 'desc'),
               ),
             );
-            return postsSnap.docs.map((d) => ({
-              forumSlug: forumDoc.id,
-              postSlug: d.id,
-              title: d.data().title,
-              createdAt: d.data().createdAt,
-            }));
+            // Hide soft-deleted posts from other people's profiles too.
+            return postsSnap.docs
+              .filter((d) => d.data().isDeleted !== true)
+              .map((d) => ({
+                forumSlug: forumDoc.id,
+                postSlug: d.id,
+                title: d.data().title,
+                createdAt: d.data().createdAt,
+              }));
           }),
         );
         setPosts(

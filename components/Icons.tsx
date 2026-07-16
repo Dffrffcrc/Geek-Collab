@@ -170,3 +170,14 @@ export function TrashIcon({ size = 18, color = '#fff' }: IconProps) {
     </SvgWrap>
   );
 }
+
+// Paper-plane style send icon — used as the submit affordance inside the
+// comment / reply composer, replacing the standalone "Comment" button.
+export function SendIcon({ size = 18, color = '#fff' }: IconProps) {
+  return (
+    <SvgWrap size={size}>
+      <path stroke={color} d="M22 2L11 13" />
+      <path stroke={color} d="M22 2L15 22l-4-9-9-4z" />
+    </SvgWrap>
+  );
+}

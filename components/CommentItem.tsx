@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   addDoc,
@@ -24,11 +24,9 @@ import { MoreIcon } from './Icons';
 import { OverflowMenu, type MenuAction } from './OverflowMenu';
 import { ReportModal } from './ReportModal';
 import { EditModal } from './EditModal';
-import { FormInput } from './FormInput';
 import { UserRoleTags } from './RoleTag';
 import { PostAttachments } from './PostAttachments';
-import { AttachmentPicker, type AttachmentPickerHandle } from './AttachmentPicker';
-import { DropZone } from './DropZone';
+import { InlineComposer } from './InlineComposer';
 import { deleteAttachment, type Attachment } from '../lib/uploads';
 import type { Timestamp } from 'firebase/firestore';
 
@@ -94,7 +92,6 @@ export function CommentItem({
   const [replyAttachments, setReplyAttachments] = useState<Attachment[]>([]);
   const [replyBusy, setReplyBusy] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
-  const replyPickerRef = useRef<AttachmentPickerHandle>(null);
 
   // Direct children of this comment (one level down). Sorted oldest-first so
   // a stable conversation order stays as new replies arrive.
@@ -304,44 +301,29 @@ export function CommentItem({
 
           {replyOpen && (
             <View style={styles.replyBox}>
-              <DropZone onFiles={(files) => replyPickerRef.current?.addFiles(files)}>
-                <FormInput
-                  value={replyText}
-                  onChangeText={setReplyText}
-                  placeholder="Reply… (paste or drop images too)"
-                  multiline
-                  style={{ height: 60, paddingTop: 10, fontSize: 13 }}
-                />
-                <Text style={styles.markdownHint}>Markdown supported.</Text>
-                <AttachmentPicker
-                  ref={replyPickerRef}
-                  attachments={replyAttachments}
-                  onChange={setReplyAttachments}
-                  disabled={replyBusy}
-                />
-              </DropZone>
+              <InlineComposer
+                value={replyText}
+                onChangeText={setReplyText}
+                attachments={replyAttachments}
+                onAttachmentsChange={setReplyAttachments}
+                onSubmit={submitReply}
+                busy={replyBusy}
+                size="small"
+                placeholder={`Reply to @${comment.authorUsername}…`}
+              />
               {replyError && <Text style={styles.replyError}>{replyError}</Text>}
-              <View style={styles.replyActions}>
-                <TouchableOpacity
-                  onPress={() => {
-                    // Clean up any files the user uploaded but is abandoning.
-                    for (const a of replyAttachments) deleteAttachment(a);
-                    setReplyOpen(false);
-                    setReplyText('');
-                    setReplyAttachments([]);
-                  }}
-                  style={styles.replyCancel}
-                >
-                  <Text style={styles.replyCancelLabel}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={submitReply} style={styles.replySubmit} disabled={replyBusy}>
-                  {replyBusy ? (
-                    <ActivityIndicator color="#000" />
-                  ) : (
-                    <Text style={styles.replySubmitLabel}>Reply</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  // Clean up any files the user uploaded but is abandoning.
+                  for (const a of replyAttachments) deleteAttachment(a);
+                  setReplyOpen(false);
+                  setReplyText('');
+                  setReplyAttachments([]);
+                }}
+                style={styles.replyCancel}
+              >
+                <Text style={styles.replyCancelLabel}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -440,26 +422,11 @@ const styles = StyleSheet.create({
   replyTriggerLabel: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
   repliesToggle: { alignSelf: 'flex-start', marginTop: 6, paddingVertical: 2, paddingHorizontal: 4 },
   repliesToggleLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
-  markdownHint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 10, marginTop: 4, marginBottom: 2 },
 
   replyBox: { marginTop: 8 },
-  replyError: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 11, marginBottom: 4 },
-  replyActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 4 },
-  replyCancel: {
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  replyCancelLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12 },
-  replySubmit: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: COLORS.yellow,
-    minWidth: 70,
-    alignItems: 'center',
-  },
-  replySubmitLabel: { color: '#000', fontFamily: BODY_FONT, fontSize: 12, fontWeight: '700' },
+  replyError: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 11, marginTop: 6 },
+  // Small text-only cancel under the composer — the send arrow is the
+  // primary submit path so we don't need a second button competing with it.
+  replyCancel: { alignSelf: 'flex-start', marginTop: 6, paddingVertical: 2, paddingHorizontal: 4 },
+  replyCancelLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
 });

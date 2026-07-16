@@ -51,8 +51,13 @@ export const AttachmentPicker = forwardRef<
     attachments: Attachment[];
     onChange: (next: Attachment[]) => void;
     disabled?: boolean;
+    // When true, hide the "Add file" button + hint text and render only the
+    // pending/committed uploads list. Used by inline composers that provide
+    // their own trigger (an image icon inside the input) and drive uploads
+    // via the imperative addFiles handle.
+    hideTrigger?: boolean;
   }
->(function AttachmentPicker({ attachments, onChange, disabled }, ref) {
+>(function AttachmentPicker({ attachments, onChange, disabled, hideTrigger }, ref) {
   const { user } = useAuth();
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [pickerError, setPickerError] = useState<string | null>(null);
@@ -165,15 +170,19 @@ export const AttachmentPicker = forwardRef<
 
   return (
     <View style={styles.wrap}>
-      <TouchableOpacity
-        style={[styles.pickBtn, disabled && styles.pickBtnDisabled]}
-        onPress={onPick}
-        disabled={disabled}
-      >
-        <ImageIcon size={16} color={COLORS.textPrimary} />
-        <Text style={styles.pickLabel}>Add file</Text>
-      </TouchableOpacity>
-      <Text style={styles.hint}>Images, PDF, or PPTX. Up to {formatSize(MAX_UPLOAD_BYTES)}.</Text>
+      {!hideTrigger && (
+        <>
+          <TouchableOpacity
+            style={[styles.pickBtn, disabled && styles.pickBtnDisabled]}
+            onPress={onPick}
+            disabled={disabled}
+          >
+            <ImageIcon size={16} color={COLORS.textPrimary} />
+            <Text style={styles.pickLabel}>Add file</Text>
+          </TouchableOpacity>
+          <Text style={styles.hint}>Images, PDF, or PPTX. Up to {formatSize(MAX_UPLOAD_BYTES)}.</Text>
+        </>
+      )}
 
       {pickerError && <Text style={styles.error}>{pickerError}</Text>}
 

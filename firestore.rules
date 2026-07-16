@@ -69,8 +69,14 @@ service cloud.firestore {
     }
 
     // ---- usernames index (username->uid lookup) -------
+    // Read is public because signup.tsx checks whether a username is taken
+    // BEFORE creating the auth account (there's no signed-in user yet at
+    // that point). Usernames are non-sensitive public identifiers (they
+    // appear in @mentions and profile URLs), so relaxing this to `if true`
+    // costs nothing security-wise and fixes the "permission-denied on
+    // signup" error.
     match /usernames/{name} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
       allow update: if false;

@@ -6,12 +6,12 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Linking,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
   type LayoutChangeEvent,
 } from 'react-native';
 import { COLORS, BODY_FONT } from '../lib/theme';
+import { ImageLightbox } from './ImageLightbox';
 
 // Reddit-style image carousel. One image visible at a time, snap to page,
 // prev/next arrows for desktop, dots under the frame.
@@ -42,6 +42,7 @@ export function ImageCarousel({
   const scrollRef = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
   const [width, setWidth] = useState(0);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   if (urls.length === 0) return null;
 
@@ -52,9 +53,12 @@ export function ImageCarousel({
     if (w > 0 && Math.abs(w - width) > 0.5) setWidth(w);
   }
 
+  // Default tap behaviour: open the in-app lightbox. Callers (e.g. PostCard
+  // in card mode) can override with `onImagePress` to navigate to the post
+  // detail instead — the lightbox never opens in that path.
   function open(url: string, i: number) {
     if (onImagePress) onImagePress(url, i);
-    else Linking.openURL(url).catch(() => undefined);
+    else setLightboxIndex(i);
   }
 
   function goTo(next: number) {
@@ -170,6 +174,13 @@ export function ImageCarousel({
           ))}
         </View>
       )}
+
+      <ImageLightbox
+        urls={urls}
+        startIndex={lightboxIndex ?? 0}
+        visible={lightboxIndex !== null}
+        onClose={() => setLightboxIndex(null)}
+      />
     </View>
   );
 }
