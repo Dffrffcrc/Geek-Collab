@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
@@ -26,6 +26,10 @@ import { ReportModal } from './ReportModal';
 import { EditModal } from './EditModal';
 import { FormInput } from './FormInput';
 import { UserRoleTags } from './RoleTag';
+import { PostAttachments } from './PostAttachments';
+import { AttachmentPicker, type AttachmentPickerHandle } from './AttachmentPicker';
+import { DropZone } from './DropZone';
+import { deleteAttachment, type Attachment } from '../lib/uploads';
 import type { Timestamp } from 'firebase/firestore';
 
 export type Comment = {
@@ -38,6 +42,7 @@ export type Comment = {
   editedAt?: Timestamp | null;
   parentCommentId?: string | null;
   rootCommentId?: string | null;
+  attachments?: Attachment[];
   isDeleted?: boolean;
   deletedAt?: Timestamp | null;
   deletedByUsername?: string;
@@ -86,8 +91,10 @@ export function CommentItem({
 
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [replyAttachments, setReplyAttachments] = useState<Attachment[]>([]);
   const [replyBusy, setReplyBusy] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const replyPickerRef = useRef<AttachmentPickerHandle>(null);
 
   // Direct children of this comment (one level down). Sorted oldest-first so
   // a stable conversation order stays as new replies arrive.
@@ -110,7 +117,7 @@ export function CommentItem({
   async function submitReply() {
     setReplyError(null);
     const t = replyText.trim();
-    if (!t) return;
+    if (!t && replyAttachments.length === 0) return;
     if (!user || !profile) return setReplyError('You must be signed in.');
     const blocked = violatesContentFilter(t);
     if (blocked) {
@@ -128,6 +135,7 @@ export function CommentItem({
         parentCommentId: comment.id,
         rootCommentId: root,
         isDeleted: false,
+        attachments: replyAttachments,
       });
       // Counter bumps. Best-effort: counter drift is acceptable, content is what matters.
       try {
@@ -147,6 +155,7 @@ export function CommentItem({
       });
       setReplyOpen(false);
       setReplyText('');
+      setReplyAttachments([]);
     } catch (err: unknown) {
       console.error('[reply:create] failed:', err);
       const e = err as { code?: string; message?: string };
@@ -280,6 +289,13 @@ export function CommentItem({
             <MarkdownBody size="small">{comment.body}</MarkdownBody>
           </View>
 
+          <PostAttachments
+            attachments={comment.attachments}
+            body={comment.body}
+            mode="post"
+            size="small"
+          />
+
           {canReply && !replyOpen && (
             <TouchableOpacity onPress={openReply} style={styles.replyTrigger}>
               <Text style={styles.replyTriggerLabel}>Reply</Text>
@@ -288,20 +304,31 @@ export function CommentItem({
 
           {replyOpen && (
             <View style={styles.replyBox}>
-              <FormInput
-                value={replyText}
-                onChangeText={setReplyText}
-                placeholder="Reply…"
-                multiline
-                style={{ height: 60, paddingTop: 10, fontSize: 13 }}
-              />
-              <Text style={styles.markdownHint}>Markdown supported.</Text>
+              <DropZone onFiles={(files) => replyPickerRef.current?.addFiles(files)}>
+                <FormInput
+                  value={replyText}
+                  onChangeText={setReplyText}
+                  placeholder="Reply… (paste or drop images too)"
+                  multiline
+                  style={{ height: 60, paddingTop: 10, fontSize: 13 }}
+                />
+                <Text style={styles.markdownHint}>Markdown supported.</Text>
+                <AttachmentPicker
+                  ref={replyPickerRef}
+                  attachments={replyAttachments}
+                  onChange={setReplyAttachments}
+                  disabled={replyBusy}
+                />
+              </DropZone>
               {replyError && <Text style={styles.replyError}>{replyError}</Text>}
               <View style={styles.replyActions}>
                 <TouchableOpacity
                   onPress={() => {
+                    // Clean up any files the user uploaded but is abandoning.
+                    for (const a of replyAttachments) deleteAttachment(a);
                     setReplyOpen(false);
                     setReplyText('');
+                    setReplyAttachments([]);
                   }}
                   style={styles.replyCancel}
                 >

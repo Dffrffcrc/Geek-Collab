@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -42,6 +42,10 @@ import { HeartIcon, CommentIcon, MoreIcon } from '../../../../components/Icons';
 import { OverflowMenu, type MenuAction } from '../../../../components/OverflowMenu';
 import { ReportModal } from '../../../../components/ReportModal';
 import { EditModal } from '../../../../components/EditModal';
+import { PostAttachments } from '../../../../components/PostAttachments';
+import { AttachmentPicker, type AttachmentPickerHandle } from '../../../../components/AttachmentPicker';
+import { DropZone } from '../../../../components/DropZone';
+import { deleteAttachment, type Attachment } from '../../../../lib/uploads';
 
 type Post = {
   title: string;
@@ -55,6 +59,7 @@ type Post = {
   likeCount: number;
   commentCount: number;
   mediaUrls?: string[];
+  attachments?: Attachment[];
   isQuarantined?: boolean;
   isDeleted?: boolean;
   deletedByUsername?: string;
@@ -80,8 +85,22 @@ export default function PostDetail() {
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [liked, setLiked] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [commentAttachments, setCommentAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const commentPickerRef = useRef<AttachmentPickerHandle>(null);
+  // Comment sort — persisted per-user in localStorage so the choice sticks
+  // across posts and reloads. `oldest` (chronological) is the historical
+  // default so unchanged users see the same ordering they always had.
+  const [commentSort, setCommentSort] = useState<'oldest' | 'newest' | 'popular'>(() => {
+    if (typeof window === 'undefined') return 'oldest';
+    const stored = window.localStorage.getItem('geekcollab.commentSort');
+    return stored === 'newest' || stored === 'popular' ? stored : 'oldest';
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('geekcollab.commentSort', commentSort);
+  }, [commentSort]);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -144,7 +163,7 @@ export default function PostDetail() {
   async function postComment() {
     setError(null);
     const t = commentText.trim();
-    if (!t) return;
+    if (!t && commentAttachments.length === 0) return;
     if (!user || !profile || !slug || !postSlug) return;
     if (timedOut) return setError('You are timed out and cannot comment.');
     if (muted) return setError('You are muted in this forum.');
@@ -165,6 +184,7 @@ export default function PostDetail() {
         parentCommentId: null,
         rootCommentId: null,
         isDeleted: false,
+        attachments: commentAttachments,
       });
       await runTransaction(db, async (tx) => {
         const updates: Record<string, unknown> = { commentCount: increment(1) };
@@ -180,6 +200,7 @@ export default function PostDetail() {
         targetId: commentRef.id,
       });
       setCommentText('');
+      setCommentAttachments([]);
     } catch (err: unknown) {
       console.error('[comment:create] failed:', err);
       const e = err as { code?: string; message?: string };
@@ -388,6 +409,9 @@ export default function PostDetail() {
           </View>
         )}
 
+        <PostAttachments attachments={post.attachments} body={post.body} mode="post" />
+
+
         <View style={styles.actions}>
           <TouchableOpacity
             style={[styles.likeButton, liked && styles.likeButtonActive]}
@@ -404,8 +428,67 @@ export default function PostDetail() {
       </View>
 
       <Text style={styles.commentsHeading}>Comments</Text>
+
+      {closed ? (
+        <Text style={styles.roHint}>Comments are closed.</Text>
+      ) : muted ? (
+        <Text style={styles.roHint}>You are muted in this forum and cannot comment.</Text>
+      ) : timedOut ? (
+        <Text style={styles.roHint}>
+          {timeoutState.expiresAt
+            ? `You are timed out until ${timeoutState.expiresAt.toLocaleString()} and cannot comment.`
+            : 'You have been banned and cannot comment.'}
+          {timeoutState.reason ? `\nReason: ${timeoutState.reason}` : ''}
+        </Text>
+      ) : (
+        <View style={[styles.commentBox, compact && styles.commentBoxCompact]}>
+          <DropZone onFiles={(files) => commentPickerRef.current?.addFiles(files)}>
+            <FormInput
+              placeholder="Write a comment… (paste or drop images here too)"
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              style={{ height: 70, paddingTop: 12 }}
+            />
+            <Text style={styles.markdownHint}>Markdown supported.</Text>
+            <AttachmentPicker
+              ref={commentPickerRef}
+              attachments={commentAttachments}
+              onChange={setCommentAttachments}
+              disabled={busy}
+            />
+          </DropZone>
+          {error && <Text style={styles.error}>{error}</Text>}
+          <TouchableOpacity style={styles.commentSubmit} onPress={postComment} disabled={busy}>
+            {busy ? <ActivityIndicator color="#000" /> : <Text style={styles.commentSubmitLabel}>Comment</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {(comments?.length ?? 0) > 0 && (
+        <View style={styles.sortRow}>
+          <Text style={styles.sortLabel}>Sort:</Text>
+          {(['oldest', 'newest', 'popular'] as const).map((mode) => (
+            <TouchableOpacity
+              key={mode}
+              onPress={() => setCommentSort(mode)}
+              style={[styles.sortChip, commentSort === mode && styles.sortChipActive]}
+            >
+              <Text
+                style={[
+                  styles.sortChipLabel,
+                  commentSort === mode && styles.sortChipLabelActive,
+                ]}
+              >
+                {mode === 'oldest' ? 'Oldest' : mode === 'newest' ? 'Newest' : 'Popular'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {comments === null ? (
-        <ActivityIndicator color={COLORS.yellow} />
+        <ActivityIndicator color={COLORS.yellow} style={styles.commentsLoading} />
       ) : comments.length === 0 ? (
         <Text style={styles.empty}>No comments yet.</Text>
       ) : (
@@ -426,13 +509,28 @@ export default function PostDetail() {
             list.push(c);
             map.set(k, list);
           }
+          // Nested replies always render chronologically inside their thread
+          // (a reply that turned up later shouldn't jump above the message it
+          // replies to). Only the top-level list respects the sort choice.
           for (const [, list] of map) {
             list.sort(
               (a, b) =>
                 (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0),
             );
           }
-          const topLevel = map.get(null) ?? [];
+          const topLevel = [...(map.get(null) ?? [])];
+          if (commentSort === 'newest') {
+            topLevel.reverse();
+          } else if (commentSort === 'popular') {
+            // "Popular" = most direct-or-deep replies. Sum descendants for
+            // each top-level comment by walking the map. Non-author replies
+            // aren't specially weighted — replies are replies.
+            const countDescendants = (id: string): number => {
+              const kids = map.get(id) ?? [];
+              return kids.length + kids.reduce((s, k) => s + countDescendants(k.id), 0);
+            };
+            topLevel.sort((a, b) => countDescendants(b.id) - countDescendants(a.id));
+          }
           return topLevel.map((c) => (
             <CommentItem
               key={c.id}
@@ -447,34 +545,6 @@ export default function PostDetail() {
             />
           ));
         })()
-      )}
-
-      {closed ? (
-        <Text style={styles.roHint}>Comments are closed.</Text>
-      ) : muted ? (
-        <Text style={styles.roHint}>You are muted in this forum and cannot comment.</Text>
-      ) : timedOut ? (
-        <Text style={styles.roHint}>
-          {timeoutState.expiresAt
-            ? `You are timed out until ${timeoutState.expiresAt.toLocaleString()} and cannot comment.`
-            : 'You have been banned and cannot comment.'}
-          {timeoutState.reason ? `\nReason: ${timeoutState.reason}` : ''}
-        </Text>
-      ) : (
-        <View style={[styles.commentBox, compact && styles.commentBoxCompact]}>
-          <FormInput
-            placeholder="Write a comment…"
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
-            style={{ height: 70, paddingTop: 12 }}
-          />
-          <Text style={styles.markdownHint}>Markdown supported.</Text>
-          {error && <Text style={styles.error}>{error}</Text>}
-          <TouchableOpacity style={styles.commentSubmit} onPress={postComment} disabled={busy}>
-            {busy ? <ActivityIndicator color="#000" /> : <Text style={styles.commentSubmitLabel}>Comment</Text>}
-          </TouchableOpacity>
-        </View>
       )}
 
       <OverflowMenu visible={menuOpen} onClose={() => setMenuOpen(false)} actions={actions} />
@@ -567,9 +637,38 @@ const styles = StyleSheet.create({
   mediaList: { gap: 12, marginTop: 16 },
   mediaImg: { width: '100%', height: 360, borderRadius: 10, backgroundColor: '#1a1a1a' },
   commentsHeading: { color: COLORS.yellow, fontFamily: HEADING_FONT, fontSize: 18, marginBottom: 14 },
-  empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16 },
-  commentBox: { marginTop: 8 },
-  commentBoxCompact: { marginTop: 4 },
+  empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, marginBottom: 16, marginTop: 16 },
+  commentBox: { marginTop: 8, marginBottom: 24 },
+  commentBoxCompact: { marginTop: 4, marginBottom: 20 },
+  commentsLoading: { marginTop: 24 },
+  sortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
+  sortLabel: {
+    color: COLORS.textMuted,
+    fontFamily: BODY_FONT,
+    fontSize: 11,
+    marginRight: 4,
+    letterSpacing: 0.5,
+  },
+  sortChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.separator,
+    backgroundColor: 'transparent',
+  },
+  sortChipActive: {
+    backgroundColor: COLORS.yellow,
+    borderColor: COLORS.yellow,
+  },
+  sortChipLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
+  sortChipLabelActive: { color: '#000' },
   markdownHint: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginTop: 4, marginBottom: 4 },
   commentSubmit: {
     alignSelf: 'flex-end',

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,9 @@ import { logActivity, trackParticipant } from '../lib/moderation';
 import { violatesContentFilter } from '../lib/admin-tools';
 import { FormInput } from './FormInput';
 import { XIcon } from './Icons';
+import { AttachmentPicker, type AttachmentPickerHandle } from './AttachmentPicker';
+import { DropZone } from './DropZone';
+import { deleteAttachment, type Attachment } from '../lib/uploads';
 
 export function PostComposer({
   forumSlug,
@@ -31,8 +34,10 @@ export function PostComposer({
   const profile = useUserProfile();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pickerRef = useRef<AttachmentPickerHandle>(null);
 
   async function onSubmit() {
     setError(null);
@@ -70,6 +75,7 @@ export function PostComposer({
           reportCount: 0,
           isQuarantined: false,
           isDeleted: false,
+          attachments,
         });
         tx.update(forumRef, { postCount: increment(1) });
       });
@@ -83,6 +89,7 @@ export function PostComposer({
 
       setTitle('');
       setBody('');
+      setAttachments([]);
       onPosted?.();
     } catch (err: unknown) {
       console.error('[post:create] failed:', err);
@@ -98,23 +105,40 @@ export function PostComposer({
       <View style={styles.headerRow}>
         <Text style={styles.heading}>New post</Text>
         {onCancel && (
-          <TouchableOpacity onPress={onCancel} style={styles.closeBtn}>
+          <TouchableOpacity
+            onPress={() => {
+              // Clean up any files the user uploaded but is abandoning.
+              // Best-effort; a failed delete just leaves an orphan in Storage.
+              for (const a of attachments) deleteAttachment(a);
+              onCancel();
+            }}
+            style={styles.closeBtn}
+          >
             <XIcon size={18} color={COLORS.textPrimary} />
           </TouchableOpacity>
         )}
       </View>
 
-      <FormInput placeholder="Title" value={title} onChangeText={setTitle} />
-      <FormInput
-        placeholder="Write something…"
-        value={body}
-        onChangeText={setBody}
-        multiline
-        style={{ height: 140, paddingTop: 14 }}
-      />
-      <Text style={styles.hint}>
-        Markdown supported: **bold**, *italic*, [links](url), `code`, &gt; quote, # headings.
-      </Text>
+      <DropZone onFiles={(files) => pickerRef.current?.addFiles(files)}>
+        <FormInput placeholder="Title" value={title} onChangeText={setTitle} />
+        <FormInput
+          placeholder="Write something… (paste or drop images here too)"
+          value={body}
+          onChangeText={setBody}
+          multiline
+          style={{ height: 140, paddingTop: 14 }}
+        />
+        <Text style={styles.hint}>
+          Markdown supported: **bold**, *italic*, [links](url), `code`, &gt; quote, # headings.
+        </Text>
+
+        <AttachmentPicker
+          ref={pickerRef}
+          attachments={attachments}
+          onChange={setAttachments}
+          disabled={busy}
+        />
+      </DropZone>
 
       {error && <Text style={styles.error}>{error}</Text>}
 

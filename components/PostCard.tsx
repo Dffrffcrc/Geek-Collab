@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   deleteDoc,
@@ -25,6 +25,8 @@ import { OverflowMenu, type MenuAction } from './OverflowMenu';
 import { ReportModal } from './ReportModal';
 import { EditModal } from './EditModal';
 import { UserRoleTags } from './RoleTag';
+import { PostAttachments } from './PostAttachments';
+import type { Attachment } from '../lib/uploads';
 import type { Timestamp } from 'firebase/firestore';
 
 export type PostSummary = {
@@ -40,6 +42,7 @@ export type PostSummary = {
   likeCount: number;
   commentCount: number;
   mediaUrls?: string[];
+  attachments?: Attachment[];
   isQuarantined?: boolean;
   isDeleted?: boolean;
   isPinned?: boolean;
@@ -65,7 +68,20 @@ export function PostCard({
   // Admins can moderate any author including other admins. Mods can only
   // moderate non-admins; the author-is-admin check stays for the mod branch.
   const canModerate = isAdmin || (isMod && !isAdminUsername(post.authorUsername));
-  const firstImage = post.mediaUrls?.[0];
+  // Prefer the new `attachments` field; fall back to the legacy `mediaUrls`
+  // (posts created before the storage integration) via a synthesised
+  // Attachment list so PostAttachments can render them the same way.
+  const effectiveAttachments =
+    post.attachments && post.attachments.length > 0
+      ? post.attachments
+      : (post.mediaUrls ?? []).map((url, i) => ({
+          url,
+          path: `legacy-${post.slug}-${i}`,
+          name: `Image ${i + 1}`,
+          size: 0,
+          contentType: 'image/*',
+          kind: 'image' as const,
+        }));
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -279,16 +295,12 @@ export function PostCard({
         <Text style={[styles.title, isMobile && styles.titleMobile]}>{post.title}</Text>
         {!!post.body && <Text style={[styles.body, isMobile && styles.bodyMobile]}>{previewText(post.body)}</Text>}
 
-        {firstImage && (
-          <View style={styles.thumbWrap}>
-            <Image source={{ uri: firstImage }} style={styles.thumb} resizeMode="cover" />
-            {(post.mediaUrls?.length ?? 0) > 1 && (
-              <View style={styles.thumbCount}>
-                <Text style={styles.thumbCountText}>+{(post.mediaUrls?.length ?? 0) - 1}</Text>
-              </View>
-            )}
-          </View>
-        )}
+        <PostAttachments
+          attachments={effectiveAttachments}
+          body={post.body}
+          mode="card"
+          onNavigate={() => router.push(`/forums/${forumSlug}/${post.slug}`)}
+        />
 
         <View style={[styles.footer, isMobile && styles.footerMobile]}>
           <TouchableOpacity
@@ -335,21 +347,27 @@ export function PostCard({
 }
 
 const styles = StyleSheet.create({
+  // Card tightened toward a Reddit-style density — subtle border in place
+  // of dark-grey block, less padding, smaller radius. Text hierarchy is
+  // still the same (title dominant, meta small); just less real estate
+  // spent on chrome.
   card: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 16,
+    backgroundColor: '#232323',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333333',
+    padding: 14,
+    marginBottom: 10,
   },
-  cardMobile: { padding: 14, borderRadius: 12, marginBottom: 12 },
+  cardMobile: { padding: 12, borderRadius: 8, marginBottom: 8 },
   quarantined: { borderWidth: 1, borderColor: COLORS.warnBorder },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   headerRowMobile: { alignItems: 'flex-start' },
   headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   usernameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
-  displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
-  handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
+  displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '700' },
+  handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
   pinnedTag: {
     backgroundColor: '#2a2500',
@@ -380,36 +398,28 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   moreBtn: { padding: 4 },
-  title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 22, marginBottom: 8 },
-  titleMobile: { fontSize: 18, marginBottom: 6 },
-  body: { color: '#cccccc', fontFamily: BODY_FONT, fontSize: 14, lineHeight: 20 },
+  // Reddit-esque title: prominent but a hair smaller than before, tighter
+  // to the metadata above.
+  title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 19, marginBottom: 6 },
+  titleMobile: { fontSize: 17, marginBottom: 4 },
+  body: { color: '#bbbbbb', fontFamily: BODY_FONT, fontSize: 13, lineHeight: 19 },
   bodyMobile: { fontSize: 13, lineHeight: 18 },
-  thumbWrap: { marginTop: 12, position: 'relative', borderRadius: 10, overflow: 'hidden' },
-  thumb: { width: '100%', height: 200, backgroundColor: '#1f1f1f' },
-  thumbCount: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  thumbCountText: { color: '#fff', fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
-  footer: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  footerMobile: { flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  footer: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  footerMobile: { flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  // Reddit-style action pills: quieter background, tighter padding, so the
+  // meta doesn't compete with the post content.
   iconRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#1f1f1f',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 16,
+    gap: 6,
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  iconRowActive: { borderColor: COLORS.yellow },
-  count: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
+  iconRowActive: { borderColor: COLORS.yellow, backgroundColor: 'rgba(239, 235, 69, 0.08)' },
+  count: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
   countActive: { color: COLORS.yellow, fontWeight: '700' },
 });

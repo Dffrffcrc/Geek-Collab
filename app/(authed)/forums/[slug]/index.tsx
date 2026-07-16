@@ -293,20 +293,22 @@ const styles = StyleSheet.create({
   bannerReason: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginTop: 4, fontStyle: 'italic' },
 
   controls: { marginBottom: 16 },
-  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4 },
-  sortRowCompact: { flexWrap: 'wrap', marginTop: 2 },
-  sortLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
+  // Matches the Reddit-style compact pills used on the post-detail comment
+  // sort so users see the same shape/weight for the same class of action.
+  sortRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  sortRowCompact: { flexWrap: 'wrap', marginTop: 4 },
+  sortLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginRight: 4, letterSpacing: 0.5 },
   sortChip: {
+    paddingHorizontal: 10,
     paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: '#1f1f1f',
+    borderColor: COLORS.separator,
+    backgroundColor: 'transparent',
   },
   sortChipActive: { backgroundColor: COLORS.yellow, borderColor: COLORS.yellow },
-  sortChipLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 12 },
-  sortChipLabelActive: { color: '#000', fontWeight: '700' },
+  sortChipLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
+  sortChipLabelActive: { color: '#000' },
 
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13, textAlign: 'center', marginTop: 24 },
   notFound: { padding: 32 },
