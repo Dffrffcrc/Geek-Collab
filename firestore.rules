@@ -1,0 +1,224 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ---------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+
+    function forumIsActive(slug) {
+      return get(/databases/$(database)/documents/forums/$(slug)).data.closesAt > request.time;
+    }
+
+    function isModOf(slug) {
+      return isSignedIn() &&
+             request.auth.uid in
+               get(/databases/$(database)/documents/forums/$(slug)).data.get('moderatorUids', []);
+    }
+
+    function userMutedIn(slug) {
+      return exists(/databases/$(database)/documents/forums/$(slug)/mutes/$(request.auth.uid));
+    }
+
+    function userTimedOut() {
+      return exists(/databases/$(database)/documents/timeouts/$(request.auth.uid)) && (
+        get(/databases/$(database)/documents/timeouts/$(request.auth.uid)).data.expiresAt == null ||
+        get(/databases/$(database)/documents/timeouts/$(request.auth.uid)).data.expiresAt > request.time
+      );
+    }
+
+    // Admin allowlist — must mirror ADMIN_USERNAMES in `lib/admins.ts`.
+    // Edit BOTH files when adding/removing an admin, then redeploy rules.
+    function adminUsernames() {
+      return [
+        'thesomethingco.',
+        '_burntsandwich',
+        'siyuan',
+        'zwe',
+        'Epic_Blox5',
+        'paul',
+        'julwrites',
+      ];
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
+               in adminUsernames();
+    }
+
+    // True iff the user at /users/{uid} has an admin username. Used to block
+    // mods from acting on admin accounts (mute/timeout/etc.).
+    function targetIsAdmin(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)) &&
+             get(/databases/$(database)/documents/users/$(uid)).data.username
+               in adminUsernames();
+    }
+
+    // ---- users -----------------------------------------------------------
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      // username, usernameLower, and email are immutable after creation —
+      // changing them would bypass the admin allowlist check in isAdmin().
+      allow update: if isSignedIn()
+        && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['username', 'usernameLower', 'email']);
+      allow delete: if false;
+    }
+
+    // ---- usernames index (username->uid lookup) -------
+    // Read is public because signup.tsx checks whether a username is taken
+    // BEFORE creating the auth account (there's no signed-in user yet at
+    // that point). Usernames are non-sensitive public identifiers (they
+    // appear in @mentions and profile URLs), so relaxing this to `if true`
+    // costs nothing security-wise and fixes the "permission-denied on
+    // signup" error.
+    match /usernames/{name} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow update: if false;
+    }
+
+    // ---- global timeouts (admin-only write) ---
+    // Only admins can issue or lift global timeouts/bans. Mods use the
+    // per-forum /mutes subcollection instead.
+    match /timeouts/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ---- forums ---------------------------------------------------------
+    match /forums/{slug} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && !userTimedOut();
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.createdBy ||
+        isModOf(slug) ||
+        isAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['postCount', 'activeUserCount'])
+      );
+      // Only admins (with an /admins/{uid} doc) can delete a forum, even
+      // a closed (read-only) one. The client cleans up subcollections
+      // first; subcollection delete rules below also allow admins.
+      allow delete: if isAdmin();
+
+      // Per-forum mute list. Mods can only mute non-admins; admins can mute
+      // anyone (including other admins).
+      match /mutes/{uid} {
+        allow read: if isSignedIn();
+        allow create: if isAdmin() || (isModOf(slug) && !targetIsAdmin(uid));
+        allow delete: if isModOf(slug) || isAdmin();
+        allow update: if false;
+      }
+
+      // Participants — anyone writes their own; mods/admins read & delete.
+      match /participants/{uid} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn() && uid == request.auth.uid;
+        allow delete: if isModOf(slug) || isAdmin();
+      }
+
+      // Activity log — anyone signed in can append; mods/admins read & delete.
+      // `isAdmin()` is intentionally evaluated first: admin doesn't depend on
+      // `slug`, so it short-circuits without an extra `get()` on the parent
+      // forum doc. That keeps the collection-group query in /admin working
+      // even if `isModOf(slug)` would otherwise throw on an orphan activity
+      // doc whose parent forum has been removed.
+      match /activity/{eventId} {
+        allow read: if isAdmin() || isModOf(slug);
+        allow create: if isSignedIn();
+        allow update: if false;
+        allow delete: if isAdmin() || isModOf(slug);
+      }
+
+      // Reports — admins/mods read all; reporters can read their own.
+      // Listing rules check reads document-by-document; admin/mod predicates
+      // are evaluated first so collection-group queries work without ever
+      // touching `resource.data`.
+      match /reports/{reportId} {
+        allow read: if isAdmin() || isModOf(slug)
+                    || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
+        allow create: if isSignedIn()
+                      && !userTimedOut()
+                      && request.resource.data.reporterUid == request.auth.uid;
+        allow update, delete: if isModOf(slug) || isAdmin();
+      }
+
+      // Posts
+      match /posts/{postId} {
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+                      && !userTimedOut()
+                      && !userMutedIn(slug)
+                      && request.resource.data.authorUid == request.auth.uid
+                      && forumIsActive(slug);
+
+        // Author can edit own; mods can edit any (including isQuarantined).
+        // Anyone signed-in can update only the denormalized counters.
+        // isPinned is admin-only — enforced by the outer AND before any branch.
+        allow update: if isSignedIn() &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPinned']) || isAdmin()) && (
+          (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
+          // Mods can update anyone's post except admins'.
+          (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
+          isAdmin() ||
+          // Counter-only writes (any signed-in user — used for likes/comments).
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['likeCount', 'commentCount', 'nonAuthorCommentCount', 'reportCount']) ||
+          // Author can soft-delete their own post even if currently muted/
+          // timed out — you can always remove your own content.
+          (resource.data.authorUid == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['isDeleted', 'deletedAt', 'deletedBy', 'deletedByUsername']))
+        );
+
+        allow delete: if isSignedIn() && (
+          resource.data.authorUid == request.auth.uid ||
+          (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
+          isAdmin()
+        );
+
+        // Comments
+        match /comments/{commentId} {
+          allow read: if isSignedIn();
+          allow create: if isSignedIn()
+                        && !userTimedOut()
+                        && !userMutedIn(slug)
+                        && request.resource.data.authorUid == request.auth.uid
+                        && forumIsActive(slug);
+          allow update: if isSignedIn() && (
+            (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
+            // Mods can edit any comment except admins'.
+            (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
+            isAdmin() ||
+            // Author can soft-delete their own comment regardless of mute/timeout.
+            (resource.data.authorUid == request.auth.uid &&
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['isDeleted', 'deletedAt', 'deletedBy', 'deletedByUsername']))
+          );
+          allow delete: if isSignedIn() && (
+            resource.data.authorUid == request.auth.uid ||
+            (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
+            isAdmin()
+          );
+        }
+
+        // Likes (presence-based) — allowed on closed forums too, so users
+        // can still endorse posts after the event ends.
+        match /likes/{likerUid} {
+          allow read: if isSignedIn();
+          allow create, delete: if isSignedIn()
+                                && request.auth.uid == likerUid
+                                && !userTimedOut();
+          allow update: if false;
+        }
+      }
+    }
+  }
+}
