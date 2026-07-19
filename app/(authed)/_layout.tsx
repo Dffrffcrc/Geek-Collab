@@ -21,7 +21,7 @@ const SIDEBAR_KEY = 'geekcollab.sidebarOpen';
 const ANIM_DURATION = 240;
 
 export default function AuthedLayout() {
-  const { user, initializing } = useAuth();
+  const { user, initializing, needsProfile } = useAuth();
   const { width } = useWindowDimensions();
   const isMobile = width < 920;
 
@@ -83,7 +83,7 @@ export default function AuthedLayout() {
     );
   }
   if (!user) return <Redirect href="/login" />;
-  if (!user.emailVerified) return <Redirect href="/verify-email" />;
+  if (needsProfile) return <Redirect href="/complete-profile" />;
 
   return (
     <View style={styles.shell}>

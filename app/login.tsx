@@ -1,123 +1,82 @@
-import { useState } from 'react';
-import { Text, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Link, useRouter } from 'expo-router';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { useEffect, useState } from 'react';
+import { Text, StyleSheet, useWindowDimensions, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { AuthLayout } from '../components/AuthLayout';
-import { FormInput } from '../components/FormInput';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { AuthScreenLoading } from '../components/AuthScreenLoading';
+import { useAuth } from '../lib/auth';
+import { startPortalSignIn } from '../lib/portal-auth';
 
 export default function Login() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 520;
-  const [identifier, setIdentifier] = useState('');
-  const [password, setPassword] = useState('');
+  const { user, initializing, needsProfile, authError } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
 
-  async function onSubmit() {
+  // If we already have a session (portal redirect just completed, or the
+  // user hits /login while signed in), forward them past the auth wall.
+  useEffect(() => {
+    if (initializing || !user) return;
+    router.replace(needsProfile ? '/complete-profile' : '/forums');
+  }, [initializing, needsProfile, router, user]);
+
+  // Surface any error the AuthProvider caught while completing a portal
+  // redirect (e.g. cancelled sign-in, bad state token).
+  useEffect(() => {
+    if (authError) setError(authError);
+  }, [authError]);
+
+  async function onPortalLogin() {
     setError(null);
-    if (!identifier || !password) {
-      setError('Enter your username/email and password.');
-      return;
-    }
-    setLoading(true);
+    setPortalLoading(true);
     try {
-      let email = identifier.trim();
-      // Username login: look up the email in the public usernames index.
-      // (Reading the users collection requires auth, so we can't use it here.)
-      if (!email.includes('@')) {
-        const lookup = await getDoc(doc(db, 'usernames', email.toLowerCase()));
-        if (!lookup.exists()) {
-          setError('No account found with that username.');
-          setLoading(false);
-          return;
-        }
-        const data = lookup.data();
-        if (!data.email) {
-          setError('This account is missing email metadata. Try logging in with your email address.');
-          setLoading(false);
-          return;
-        }
-        email = data.email;
-      }
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      if (!cred.user.emailVerified) router.replace('/verify-email');
-      else router.replace('/forums');
+      await startPortalSignIn();
     } catch (err: unknown) {
-      console.error('[login] failed:', err);
-      const e = err as { code?: string; message?: string };
-      const friendly = mapAuthError(e.code);
-      setError(friendly ?? `Could not log in (${e.code ?? e.message ?? 'unknown error'}).`);
+      const code = (err as { code?: string })?.code;
+      // Popup dismissed by the user isn't really an error — just quiet it.
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return;
+      }
+      console.error('[login] portal sign-in failed:', err);
+      const message = err instanceof Error ? err.message : 'Portal sign-in failed.';
+      setError(message);
     } finally {
-      setLoading(false);
+      setPortalLoading(false);
     }
+  }
+
+  if (initializing) {
+    return <AuthScreenLoading />;
   }
 
   return (
     <AuthLayout mobileCentered>
-      <Text style={[styles.heading, isMobile && styles.headingMobile]}>Log in to forum.geekshacking:</Text>
-      <FormInput
-        placeholder="Username or email address"
-        value={identifier}
-        onChangeText={setIdentifier}
-        autoComplete="username"
-      />
-      <FormInput
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        autoComplete="current-password"
-      />
+      <Text style={[styles.heading, isMobile && styles.headingMobile]}>
+        Log in to forum.geekshacking:
+      </Text>
+      <Text style={styles.body}>
+        Sign in with your GeeksHacking account through the portal.
+      </Text>
       {error && <Text style={styles.error}>{error}</Text>}
-      <PrimaryButton label="Log in" onPress={onSubmit} loading={loading} />
-      <View style={[styles.forgotRow, isMobile && styles.forgotRowMobile]}>
-        <Link href="/forgot-password" style={styles.footerLink}>
-          Forgot password?
-        </Link>
-      </View>
-      <View style={[styles.footer, isMobile && styles.footerMobile]}>
-        <Text style={[styles.footerText, isMobile && styles.footerTextMobile]}>Don't have an account? </Text>
-        <Link href="/signup" style={styles.footerLink}>
-          Sign up here
-        </Link>
-      </View>
+      <PrimaryButton
+        label="Continue with GeeksHacking Portal"
+        onPress={onPortalLogin}
+        loading={portalLoading}
+      />
+      {Platform.OS !== 'web' && (
+        <Text style={styles.note}>Portal sign-in is available on web only.</Text>
+      )}
     </AuthLayout>
   );
 }
 
-function mapAuthError(code?: string) {
-  switch (code) {
-    case 'auth/invalid-credential':
-    case 'auth/wrong-password':
-    case 'auth/user-not-found':
-      return 'Wrong username/email or password.';
-    case 'auth/invalid-email':
-      return 'Enter a valid email address.';
-    case 'auth/too-many-requests':
-      return 'Too many attempts. Try again later.';
-    case 'auth/network-request-failed':
-      return "Couldn't reach the server. Please check your internet connection.";
-    case 'permission-denied':
-      return 'Firestore rules denied this read. Re-deploy firestore.rules.';
-    default:
-      return null;
-  }
-}
-
 const styles = StyleSheet.create({
-  heading: { color: COLORS.textPrimary, fontSize: 22, marginBottom: 18, fontFamily: HEADING_FONT },
-  headingMobile: { fontSize: 18, marginBottom: 22, textAlign: 'left', lineHeight: 28 },
+  heading: { color: COLORS.textPrimary, fontSize: 22, marginBottom: 12, fontFamily: HEADING_FONT },
+  headingMobile: { fontSize: 18, marginBottom: 16, textAlign: 'left', lineHeight: 28 },
+  body: { color: COLORS.textMuted, fontSize: 13, lineHeight: 20, marginBottom: 18, fontFamily: BODY_FONT },
   error: { color: COLORS.error, fontSize: 13, marginBottom: 8, fontFamily: BODY_FONT },
-  forgotRow: { alignItems: 'flex-end', marginTop: 12 },
-  forgotRowMobile: { marginTop: 8 },
-  footer: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 28 },
-  footerMobile: { justifyContent: 'center', marginTop: 24, flexWrap: 'wrap' },
-  footerText: { color: COLORS.textMuted, fontSize: 12, fontFamily: BODY_FONT },
-  footerTextMobile: { textAlign: 'center' },
-  footerLink: { color: COLORS.yellow, fontSize: 12, fontFamily: BODY_FONT },
+  note: { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: 16, fontFamily: BODY_FONT },
 });
