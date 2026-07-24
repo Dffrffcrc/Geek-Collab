@@ -1,0 +1,21 @@
+{
+  "name": "forum.geekshacking",
+  "short_name": "Forum",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
+  "icons": [
+    {
+      "src": "/forumlogo192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/forumlogo512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

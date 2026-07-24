@@ -14,6 +14,13 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
         />
+        <meta name="theme-color" content="#1a1a1a" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="forum.geekshacking" />
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.webmanifest" />
         {/* Google Fonts CDN — the reliable source for "Space Mono" /
             "Special Elite" everywhere the bundled .ttf might 404 (e.g.
             Cloudflare Pages, where SPA fallbacks mis-route font
@@ -35,6 +42,17 @@ export default function Root({ children }: PropsWithChildren) {
           href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Special+Elite&display=swap"
         />
         <ScrollViewStyleReset />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function () {});
+  });
+}
+`,
+          }}
+        />
         <style dangerouslySetInnerHTML={{ __html: GLOBAL_CSS }} />
       </head>
       <body>{children}</body>
