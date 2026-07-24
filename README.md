@@ -1,4 +1,4 @@
-# forum.geekshacking
+# Forum.Geekshacking
 
 ## Background
 
@@ -11,6 +11,8 @@ The website supports Progressive Web App functionality, allowing users to instal
 ## Technology used
 
 - TypeScript
+- TypeScript XML
+- JavaScript
 - React Native Web
 - Expo and Expo Router
 - Firebase Authentication, Firestore, and Storage
