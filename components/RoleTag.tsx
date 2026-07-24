@@ -1,68 +1,65 @@
 import { Text, StyleSheet, View } from 'react-native';
 import { COLORS, BODY_FONT } from '../lib/theme';
-import { isAdminUsername } from '../lib/admins';
+import { useAdmins } from '../lib/admins';
 
-export type Role = 'AUTHOR' | 'ADMIN' | 'MOD';
+export type Role = 'ADMIN' | 'MOD';
 
-// Single pill — solid yellow for AUTHOR/ADMIN, soft yellow border for MOD.
+// Renders a lowercase "(admin)" or "(mod)" tag in yellow. Meant to sit
+// inline right after a display name (see UserRoleTags below for the usual
+// wrapper that decides which role tag — if any — applies to a given user).
 export function RoleTag({ role }: { role: Role }) {
-  if (role === 'MOD') {
-    return <Text style={[styles.tag, styles.modTag]}>MOD</Text>;
-  }
-  return <Text style={[styles.tag, styles.solidTag]}>{role}</Text>;
+  return <Text style={styles.tag}>{role === 'ADMIN' ? ' (admin)' : ' (mod)'}</Text>;
 }
 
-// Convenience: render AUTHOR / ADMIN / MOD pills for a target user according
-// to the rules of the app.
+// Renders the Instagram-style "· author" text on comments authored by the
+// post author. Role tags themselves are rendered inline inside the
+// @username Text at each call site via <RoleTag>, so they inherit that
+// row's font size — pass those props to <RoleTag>, not here.
 //
-//   • AUTHOR — pass `isAuthor` (only meaningful inside a post's comment thread)
-//   • ADMIN  — username is in the global admin allowlist (visible app-wide)
-//   • MOD    — uid is in the current forum's moderatorUids (and they are NOT
-//              an admin — admins are mods of every forum implicitly, so we
-//              never show MOD alongside ADMIN)
-export function UserRoleTags({
-  username,
-  uid,
-  moderatorUids = [],
-  isAuthor = false,
-}: {
-  username?: string | null;
-  uid?: string;
-  moderatorUids?: string[];
-  isAuthor?: boolean;
-}) {
-  const admin = isAdminUsername(username);
-  const mod = !!uid && moderatorUids.includes(uid);
+// Kept as a component (rather than plain text) so callers can drop it in
+// without a conditional wrapper.
+export function UserRoleTags({ isAuthor = false }: { isAuthor?: boolean }) {
+  if (!isAuthor) return null;
   return (
     <View style={styles.row}>
-      {isAuthor && <RoleTag role="AUTHOR" />}
-      {admin && <RoleTag role="ADMIN" />}
-      {!admin && mod && <RoleTag role="MOD" />}
+      <Text style={styles.authorInline}> · author</Text>
     </View>
   );
 }
 
+// Hook for callers that need to know whether a user is admin/mod so they
+// can style adjacent text (e.g. yellow display name). Returns a stable
+// object per render.
+export function useUserRole(
+  username?: string | null,
+  uid?: string,
+  moderatorUids: string[] = [],
+) {
+  const { isAdminUsername } = useAdmins();
+  const isAdmin = isAdminUsername(username);
+  const isMod = !!uid && !isAdmin && moderatorUids.includes(uid);
+  return {
+    isAdmin,
+    isMod,
+    // Convenience: the display-name colour to apply. Yellow for admin+mod,
+    // undefined otherwise so callers can fall back to their own default.
+    nameColor: isAdmin || isMod ? COLORS.yellow : undefined,
+  };
+}
+
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center' },
-  tag: {
-    marginLeft: 6,
-    fontSize: 9,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
+  authorInline: {
+    color: COLORS.textMuted,
     fontFamily: BODY_FONT,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    overflow: 'hidden',
+    fontSize: 11,
+    fontWeight: '600',
   },
-  solidTag: {
-    backgroundColor: COLORS.yellow,
-    color: '#000',
-  },
-  modTag: {
-    backgroundColor: 'rgba(239, 235, 69, 0.18)',
+  // Deliberately no fontSize / fontFamily — the tag is meant to be nested
+  // inside a parent Text (e.g. the @username line) so it inherits size and
+  // family from the surrounding text, staying visually inline.
+  tag: {
     color: COLORS.yellow,
-    borderWidth: 1,
-    borderColor: 'rgba(239, 235, 69, 0.5)',
+    fontWeight: '600',
   },
 });

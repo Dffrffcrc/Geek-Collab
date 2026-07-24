@@ -7,21 +7,22 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { AuthScreenLoading } from '../components/AuthScreenLoading';
 import { useAuth } from '../lib/auth';
 import { startPortalSignIn } from '../lib/portal-auth';
+import { useTimeoutStatus } from '../lib/moderation';
+import { BannedScreen } from '../components/BannedScreen';
 
 export default function Login() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 520;
   const { user, initializing, needsProfile, authError } = useAuth();
+  const { banned, expiresAt, reason } = useTimeoutStatus();
   const [error, setError] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
 
-  // If we already have a session (portal redirect just completed, or the
-  // user hits /login while signed in), forward them past the auth wall.
   useEffect(() => {
-    if (initializing || !user) return;
+    if (initializing || !user || banned) return;
     router.replace(needsProfile ? '/complete-profile' : '/forums');
-  }, [initializing, needsProfile, router, user]);
+  }, [initializing, needsProfile, router, user, banned]);
 
   // Surface any error the AuthProvider caught while completing a portal
   // redirect (e.g. cancelled sign-in, bad state token).
@@ -50,6 +51,10 @@ export default function Login() {
 
   if (initializing) {
     return <AuthScreenLoading />;
+  }
+
+  if (user && banned) {
+    return <BannedScreen reason={reason} expiresAt={expiresAt} />;
   }
 
   return (

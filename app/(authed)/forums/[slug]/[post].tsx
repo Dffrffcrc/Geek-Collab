@@ -19,6 +19,7 @@ import {
 import { db } from '../../../../lib/firebase';
 import { useAuth } from '../../../../lib/auth';
 import { useUserProfile } from '../../../../lib/user-profile';
+import { useUserPhoto } from '../../../../lib/user-photo';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../../lib/theme';
 import { isClosed, timeAgo } from '../../../../lib/forum-utils';
 import {
@@ -31,13 +32,13 @@ import {
   useIsMutedInForum,
   useTimeoutStatus,
 } from '../../../../lib/moderation';
-import { isAdminUsername, useIsServerAdmin } from '../../../../lib/admins';
-import { UserRoleTags } from '../../../../components/RoleTag';
+import { useAdmins, useIsServerAdmin } from '../../../../lib/admins';
+import { RoleTag, useUserRole } from '../../../../components/RoleTag';
 import { describeActionError, promptModerationReason, violatesContentFilter } from '../../../../lib/admin-tools';
 import { Avatar } from '../../../../components/Avatar';
 import { MarkdownBody } from '../../../../components/MarkdownBody';
 import { CommentItem, type Comment } from '../../../../components/CommentItem';
-import { HeartIcon, CommentIcon, MoreIcon } from '../../../../components/Icons';
+import { HeartIcon, CommentIcon, MoreIcon, HourglassIcon, TrashIcon } from '../../../../components/Icons';
 import { OverflowMenu, type MenuAction } from '../../../../components/OverflowMenu';
 import { ReportModal } from '../../../../components/ReportModal';
 import { EditModal } from '../../../../components/EditModal';
@@ -73,6 +74,7 @@ export default function PostDetail() {
   const profile = useUserProfile();
   const isMod = useIsMod(slug);
   const isAdmin = useIsServerAdmin();
+  const { isAdminUsername } = useAdmins();
   const muted = useIsMutedInForum(slug);
   const timeoutState = useTimeoutStatus();
   const { timedOut } = timeoutState;
@@ -80,6 +82,8 @@ export default function PostDetail() {
 
   const [forum, setForum] = useState<Forum | null | undefined>(undefined);
   const [post, setPost] = useState<Post | null | undefined>(undefined);
+  const authorPhoto = useUserPhoto(post?.authorUid);
+  const authorRole = useUserRole(post?.authorUsername, post?.authorUid, forum?.moderatorUids ?? []);
   const [comments, setComments] = useState<Comment[] | null>(null);
   const [liked, setLiked] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -348,11 +352,11 @@ export default function PostDetail() {
       <View style={[styles.postCard, compact && styles.postCardCompact]}>
         <View style={[styles.postHeaderRow, compact && styles.postHeaderRowCompact]}>
           <View style={styles.postHeader}>
-            <Avatar size={36} label={post.authorDisplayName || post.authorUsername} />
+            <Avatar size={36} label={post.authorDisplayName || post.authorUsername} photoURL={authorPhoto} />
             <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
               <View style={styles.authorRow}>
                 <Text
-                  style={styles.author}
+                  style={[styles.author, authorRole.nameColor ? { color: authorRole.nameColor } : null]}
                   onPress={() => router.push(`/profile/${post.authorUsername}`)}
                 >
                   {post.authorDisplayName || post.authorUsername}
@@ -362,12 +366,9 @@ export default function PostDetail() {
                   onPress={() => router.push(`/profile/${post.authorUsername}`)}
                 >
                   @{post.authorUsername}
+                  {authorRole.isAdmin && <RoleTag role="ADMIN" />}
+                  {authorRole.isMod && <RoleTag role="MOD" />}
                 </Text>
-                <UserRoleTags
-                  username={post.authorUsername}
-                  uid={post.authorUid}
-                  moderatorUids={forum.moderatorUids ?? []}
-                />
               </View>
               <Text style={styles.timestamp}>
                 {timeAgo(post.createdAt)}
@@ -376,8 +377,26 @@ export default function PostDetail() {
             </View>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            {post.isQuarantined && <Text style={styles.quarantineTag}>QUARANTINED</Text>}
-            {post.isDeleted && <Text style={styles.deletedTag}>DELETED</Text>}
+            {post.isQuarantined && (
+              <View
+                style={styles.stateIcon}
+                accessibilityLabel="Quarantined post"
+                // @ts-expect-error web-only DOM prop passed through by RN Web
+                title="Quarantined"
+              >
+                <HourglassIcon size={17} color={COLORS.warn} />
+              </View>
+            )}
+            {post.isDeleted && (
+              <View
+                style={styles.stateIcon}
+                accessibilityLabel="Deleted post"
+                // @ts-expect-error web-only DOM prop forwarded by RN Web
+                title="Deleted"
+              >
+                <TrashIcon size={17} color={COLORS.textMuted} />
+              </View>
+            )}
             {actions.length > 0 && (
               <TouchableOpacity onPress={() => setMenuOpen(true)} style={styles.moreBtn}>
                 <MoreIcon size={20} color={COLORS.textMuted} />
@@ -570,31 +589,12 @@ const styles = StyleSheet.create({
   author: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 15, fontWeight: '700' },
   handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
-  quarantineTag: {
-    backgroundColor: COLORS.warnBg,
-    color: COLORS.warn,
-    fontSize: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.warnBorder,
-    fontFamily: BODY_FONT,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    overflow: 'hidden',
-  },
-  deletedTag: {
-    backgroundColor: '#3a3a3a',
-    color: COLORS.textMuted,
-    fontSize: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    fontFamily: BODY_FONT,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    overflow: 'hidden',
+  // Wrapper around state icons in the post header (quarantined, etc.).
+  // Pads for hit area + hover-tooltip target.
+  stateIcon: {
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   moreBtn: { padding: 4 },
   title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 26, marginBottom: 12 },

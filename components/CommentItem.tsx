@@ -13,10 +13,11 @@ import {
 import { db } from '../lib/firebase';
 import { useAuth } from '../lib/auth';
 import { useUserProfile } from '../lib/user-profile';
+import { useUserPhoto } from '../lib/user-photo';
 import { COLORS, BODY_FONT } from '../lib/theme';
 import { timeAgo } from '../lib/forum-utils';
 import { logActivity, muteUser, timeoutUser, trackParticipant, useIsMod } from '../lib/moderation';
-import { isAdminUsername, useIsServerAdmin } from '../lib/admins';
+import { useAdmins, useIsServerAdmin } from '../lib/admins';
 import { describeActionError, promptModerationReason, violatesContentFilter } from '../lib/admin-tools';
 import { Avatar } from './Avatar';
 import { MarkdownBody } from './MarkdownBody';
@@ -24,7 +25,7 @@ import { MoreIcon } from './Icons';
 import { OverflowMenu, type MenuAction } from './OverflowMenu';
 import { ReportModal } from './ReportModal';
 import { EditModal } from './EditModal';
-import { UserRoleTags } from './RoleTag';
+import { RoleTag, UserRoleTags, useUserRole } from './RoleTag';
 import { PostAttachments } from './PostAttachments';
 import { InlineComposer } from './InlineComposer';
 import { deleteAttachment, type Attachment } from '../lib/uploads';
@@ -46,9 +47,8 @@ export type Comment = {
   deletedByUsername?: string;
 };
 
-// Cap visual indent at this depth so deep threads stay readable on narrow
-// screens. Past the cap the tree still grows logically but visually the
-// indent stops nesting deeper.
+// Past this depth the tree still grows logically but visually stops indenting
+// so deep threads stay readable on narrow screens.
 const INDENT_CAP = 5;
 
 export function CommentItem({
@@ -75,13 +75,14 @@ export function CommentItem({
   const profile = useUserProfile();
   const isMod = useIsMod(forumSlug);
   const isAdmin = useIsServerAdmin();
+  const { isAdminUsername } = useAdmins();
   const { width } = useWindowDimensions();
   const isAuthor = !!user && user.uid === comment.authorUid;
   const isPostAuthor = comment.authorUid === postAuthorUid;
   const isMobile = width < 640;
-  // Admins can moderate every author including other admins. Mods retain
-  // the original "no acting on admins" guard.
   const canModerate = isAdmin || (isMod && !isAdminUsername(comment.authorUsername));
+  const authorRole = useUserRole(comment.authorUsername, comment.authorUid, moderatorUids);
+  const authorPhoto = useUserPhoto(comment.authorUid);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -93,11 +94,9 @@ export function CommentItem({
   const [replyBusy, setReplyBusy] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
 
-  // Direct children of this comment (one level down). Sorted oldest-first so
-  // a stable conversation order stays as new replies arrive.
   const children = childrenByParent?.get(comment.id) ?? [];
-  // Default-collapsed beyond the top level so deep threads don't dominate
-  // the page on first paint. Top-level shows its replies by default.
+  // Default-collapse beyond the top level so deep threads don't dominate
+  // the page on first paint.
   const [repliesOpen, setRepliesOpen] = useState(depth === 0);
 
   const isReply = depth > 0;
@@ -105,8 +104,7 @@ export function CommentItem({
 
   function openReply() {
     setReplyError(null);
-    // Pre-fill an @mention so the recipient is obvious even as nesting gets
-    // deep and indent visually compresses.
+    // Pre-fill an @mention so the recipient stays obvious as indent compresses at depth.
     setReplyText(`@${comment.authorUsername} `);
     setReplyOpen(true);
   }
@@ -134,7 +132,6 @@ export function CommentItem({
         isDeleted: false,
         attachments: replyAttachments,
       });
-      // Counter bumps. Best-effort: counter drift is acceptable, content is what matters.
       try {
         await runTransaction(db, async (tx) => {
           const updates: Record<string, unknown> = { commentCount: increment(1) };
@@ -142,7 +139,7 @@ export function CommentItem({
           tx.update(doc(db, 'forums', forumSlug, 'posts', postSlug), updates);
         });
       } catch {
-        /* ignore counter failure */
+        // Counter drift is acceptable; content already committed.
       }
       trackParticipant(forumSlug, user.uid, profile.username, profile.displayName, 'comment');
       logActivity(forumSlug, user.uid, profile.username, 'comment_created', {
@@ -163,13 +160,11 @@ export function CommentItem({
   }
 
   async function deleteComment() {
-    // Guard against re-running on an already-deleted comment, which would
-    // otherwise double-decrement commentCount and push it negative.
+    // Guard: re-running on an already-deleted comment would double-decrement commentCount.
     if (comment.isDeleted) return;
     if (!confirm('Delete this comment?')) return;
     if (!user || !profile) return;
     try {
-      // Soft delete — admin can still view this for audit.
       await updateDoc(doc(db, 'forums', forumSlug, 'posts', postSlug, 'comments', comment.id), {
         isDeleted: true,
         deletedAt: serverTimestamp(),
@@ -183,7 +178,7 @@ export function CommentItem({
           });
         });
       } catch {
-        /* counter drift is acceptable */
+        // Counter drift is acceptable.
       }
       logActivity(forumSlug, user.uid, profile.username, 'comment_deleted', {
         targetType: 'comment',
@@ -247,11 +242,11 @@ export function CommentItem({
   return (
     <>
       <View style={[styles.row, isMobile && styles.rowMobile]}>
-        <Avatar size={28} label={displayLabel} />
+        <Avatar size={28} label={displayLabel} photoURL={authorPhoto} />
         <View style={[styles.bubble, isMobile && styles.bubbleMobile]}>
           <View style={styles.meta}>
             <Text
-              style={styles.author}
+              style={[styles.author, authorRole.nameColor ? { color: authorRole.nameColor } : null]}
               onPress={() => router.push(`/profile/${comment.authorUsername}`)}
             >
               {displayLabel}
@@ -261,13 +256,10 @@ export function CommentItem({
               onPress={() => router.push(`/profile/${comment.authorUsername}`)}
             >
               @{comment.authorUsername}
+              {authorRole.isAdmin && <RoleTag role="ADMIN" />}
+              {authorRole.isMod && <RoleTag role="MOD" />}
             </Text>
-            <UserRoleTags
-              username={comment.authorUsername}
-              uid={comment.authorUid}
-              moderatorUids={moderatorUids}
-              isAuthor={isPostAuthor}
-            />
+            <UserRoleTags isAuthor={isPostAuthor} />
             <Text style={styles.timestamp}>
               {' '}· {timeAgo(comment.createdAt)}
               {comment.editedAt ? ' · edited' : ''}
@@ -314,7 +306,6 @@ export function CommentItem({
               {replyError && <Text style={styles.replyError}>{replyError}</Text>}
               <TouchableOpacity
                 onPress={() => {
-                  // Clean up any files the user uploaded but is abandoning.
                   for (const a of replyAttachments) deleteAttachment(a);
                   setReplyOpen(false);
                   setReplyText('');
@@ -393,10 +384,6 @@ export function CommentItem({
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   rowMobile: { gap: 8 },
-  // Wraps every direct-reply set in a single bordered column. The
-  // border-left is what gives threaded replies a visible "thread" line —
-  // and because the wrapper holds *all* siblings at this depth, the line
-  // connects them properly instead of each reply having its own stub.
   repliesWrap: {
     marginLeft: 14,
     paddingLeft: 16,
@@ -405,9 +392,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   repliesWrapMobile: { marginLeft: 10, paddingLeft: 10 },
-  // Beyond INDENT_CAP the tree keeps growing logically but we stop
-  // adding visible indent — drop the border so it doesn't keep stacking
-  // a thicker and thicker rule on the left.
   repliesWrapCapped: { marginLeft: 0, paddingLeft: 0, borderLeftWidth: 0 },
   bubble: { flex: 1, backgroundColor: '#2a2a2a', padding: 12, borderRadius: 10 },
   bubbleMobile: { padding: 10 },
@@ -425,8 +409,6 @@ const styles = StyleSheet.create({
 
   replyBox: { marginTop: 8 },
   replyError: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 11, marginTop: 6 },
-  // Small text-only cancel under the composer — the send arrow is the
-  // primary submit path so we don't need a second button competing with it.
   replyCancel: { alignSelf: 'flex-start', marginTop: 6, paddingVertical: 2, paddingHorizontal: 4 },
   replyCancelLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, fontWeight: '700' },
 });

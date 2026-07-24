@@ -7,7 +7,7 @@ import { auth, db } from '../lib/firebase';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { useUserProfile, type RecentForum } from '../lib/user-profile';
 import { useAuth } from '../lib/auth';
-import { isAdminUsername } from '../lib/admins';
+import { useIsServerAdmin } from '../lib/admins';
 import { Avatar } from './Avatar';
 import { RoleTag } from './RoleTag';
 import { HomeIcon, ClockIcon } from './Icons';
@@ -25,6 +25,7 @@ export function SidebarContent({
   const pathname = usePathname();
   const profile = useUserProfile();
   const { user } = useAuth();
+  const isAdmin = useIsServerAdmin();
 
   const recent = useExistingRecentForums(user?.uid, profile?.recentForums);
   const go = (href: string, replace = false) => {
@@ -39,21 +40,24 @@ export function SidebarContent({
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.inner}>
-        {/* --- Profile block ----------------------------------------- */}
         <TouchableOpacity style={styles.profileBlock} onPress={() => go('/profile')}>
-          <Avatar size={56} label={profile?.displayName ?? profile?.username} />
+          <Avatar size={56} label={profile?.displayName ?? profile?.username} photoURL={profile?.photoURL} />
           <View style={styles.nameRow}>
-            <Text style={styles.name} numberOfLines={1}>
+            <Text
+              style={[styles.name, isAdmin && { color: COLORS.yellow }]}
+              numberOfLines={1}
+            >
               {profile?.displayName ?? '...'}
             </Text>
-            {isAdminUsername(profile?.username) && <RoleTag role="ADMIN" />}
           </View>
-          <Text style={styles.username}>@{profile?.username ?? '...'}</Text>
+          <Text style={styles.username}>
+            @{profile?.username ?? '...'}
+            {isAdmin && <RoleTag role="ADMIN" />}
+          </Text>
         </TouchableOpacity>
 
         <Divider />
 
-        {/* --- Forum nav --------------------------------------------- */}
         <View style={styles.navSection}>
           <NavButton
             label="Active Forums"
@@ -71,7 +75,6 @@ export function SidebarContent({
 
         <Divider />
 
-        {/* --- Recently Visited -------------------------------------- */}
         <Text style={styles.sectionHeader}>Recently Visited</Text>
         {recent.length === 0 ? (
           <Text style={styles.empty}>No forums visited yet.</Text>
@@ -99,7 +102,6 @@ export function SidebarContent({
         )}
       </ScrollView>
 
-      {/* --- Footer (logout) ---------------------------------------- */}
       <View style={styles.footer}>
         <TouchableOpacity
           style={styles.footerRow}
@@ -113,9 +115,7 @@ export function SidebarContent({
   );
 }
 
-// Filters the user's recentForums array against the live forum docs so we
-// hide forums that have been deleted. Also prunes the user-doc array as a
-// best-effort cleanup so the absence sticks across reloads.
+// Also prunes the user-doc array as a best-effort cleanup so deletes stick across reloads.
 function useExistingRecentForums(
   uid: string | undefined,
   recent: RecentForum[] | undefined,
@@ -136,7 +136,6 @@ function useExistingRecentForums(
     return () => unsubs.forEach((u) => u());
   }, [recent]);
 
-  // Prune the stored array opportunistically when we discover a missing forum.
   useEffect(() => {
     if (!uid || !recent || recent.length === 0) return;
     const survivors = recent.filter((f) => !missing[f.slug]);

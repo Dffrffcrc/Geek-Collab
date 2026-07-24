@@ -10,9 +10,12 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useAuth } from '../../lib/auth';
+import { useTimeoutStatus } from '../../lib/moderation';
+import { AdminsProvider } from '../../lib/admins';
 import { COLORS } from '../../lib/theme';
 import { Topbar } from '../../components/Topbar';
 import { Sidebar, SidebarContent } from '../../components/Sidebar';
+import { BannedScreen } from '../../components/BannedScreen';
 
 const SIDEBAR_WIDTH = 240;
 const MOBILE_SIDEBAR_WIDTH = 280;
@@ -22,6 +25,7 @@ const ANIM_DURATION = 240;
 
 export default function AuthedLayout() {
   const { user, initializing, needsProfile } = useAuth();
+  const { banned, expiresAt, reason } = useTimeoutStatus();
   const { width } = useWindowDimensions();
   const isMobile = width < 920;
 
@@ -84,8 +88,10 @@ export default function AuthedLayout() {
   }
   if (!user) return <Redirect href="/login" />;
   if (needsProfile) return <Redirect href="/complete-profile" />;
+  if (banned) return <BannedScreen reason={reason} expiresAt={expiresAt} />;
 
   return (
+    <AdminsProvider>
     <View style={styles.shell}>
       <Topbar
         showMenuButton={isMobile}
@@ -133,6 +139,7 @@ export default function AuthedLayout() {
         </Animated.View>
       )}
     </View>
+    </AdminsProvider>
   );
 }
 

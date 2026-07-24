@@ -15,7 +15,6 @@ import {
 import { db } from './firebase';
 import { useAuth } from './auth';
 
-// ----- Report reasons (used by the report modal + filter dropdowns) ------
 export const REPORT_REASONS = [
   'Spam',
   'Harassment / Bullying',
@@ -34,11 +33,8 @@ export type ReportStatus = 'open' | 'resolved' | 'quarantined';
 export type Report = {
   id: string;
   targetType: ReportTargetType;
-  targetId: string; // post slug for posts; comment id for comments
-  parentPostSlug?: string; // populated when target is a comment
-  // Denormalized author info so mods can mute/timeout from the report row
-  // without an extra read. Optional for backward-compat with reports created
-  // before this field existed.
+  targetId: string;
+  parentPostSlug?: string;
   targetAuthorUid?: string;
   targetAuthorUsername?: string;
   reason: ReportReason;
@@ -49,7 +45,6 @@ export type Report = {
   createdAt: Timestamp;
 };
 
-// ----- Activity log -------------------------------------------------------
 export type ActivityType =
   | 'post_created'
   | 'post_edited'
@@ -78,18 +73,11 @@ export type Activity = {
   createdAt: Timestamp;
 };
 
-// Renders an activity event as a single human-readable phrase like
-//   "deleted post \"My Title\""   /   "muted @bob"   /   "commented"
-// for the moderator + admin activity views. Avoids ever surfacing raw UIDs
-// or random Firestore doc IDs, which made the old log unreadable. Returns
-// just the predicate — the caller renders the actor (e.g. "@alice") in
-// front of it.
-//
-// Convention (set by the call sites in PostCard / [post].tsx / etc.):
-//   user_*      → details = the target's username (no @)
-//   post_*      → details = the post title when available; targetId = slug
-//   comment_*   → targetId = comment id (always opaque, never shown)
-//   report_*    → targetId = report id (always opaque, never shown)
+// Call-site convention:
+//   user_*    → details = target's username (no @)
+//   post_*    → details = post title if available; targetId = slug
+//   comment_* → targetId = comment id (opaque, never surfaced)
+//   report_*  → targetId = report id (opaque, never surfaced)
 export function describeActivity(a: Pick<Activity, 'type' | 'targetId' | 'details'>): string {
   const { type, targetId, details } = a;
   const postLabel = details ? `"${details}"` : targetId ? `"${targetId}"` : '';
@@ -125,14 +113,11 @@ export function describeActivity(a: Pick<Activity, 'type' | 'targetId' | 'detail
     case 'report_resolved':
       return 'resolved a report';
     default:
-      // Exhaustive switch — but if a new ActivityType ships before this
-      // helper is updated, fall back to the snake-case name with spaces.
       return String(type).replace(/_/g, ' ');
   }
 }
 
-// Best-effort: log an activity event to forums/{slug}/activity.
-// Failures are swallowed because activity logging shouldn't block UX.
+// Best-effort — never block UX on a logging failure.
 export async function logActivity(
   forumSlug: string,
   actorUid: string,
@@ -155,7 +140,6 @@ export async function logActivity(
   }
 }
 
-// ----- Participant tracking ---------------------------------------------
 export async function trackParticipant(
   forumSlug: string,
   uid: string,
@@ -191,7 +175,6 @@ export async function trackParticipant(
   }
 }
 
-// ----- Mod actions: mute (per-forum) -----------------------------------
 export async function muteUser(
   forumSlug: string,
   targetUid: string,
@@ -209,7 +192,6 @@ export async function unmuteUser(forumSlug: string, targetUid: string): Promise<
   await deleteDoc(doc(db, 'forums', forumSlug, 'mutes', targetUid));
 }
 
-// ----- Mod actions: global timeout -------------------------------------
 export async function timeoutUser(
   targetUid: string,
   modUid: string,
@@ -231,11 +213,8 @@ export async function liftTimeout(targetUid: string): Promise<void> {
   await deleteDoc(doc(db, 'timeouts', targetUid));
 }
 
-// ----- Admin actions: delete forum (cascading best-effort) -----------
-// Walks subcollections in this order: posts→comments, posts→likes, posts;
-// then reports, mutes, participants, activity; finally the forum doc itself.
-// Failures inside subcollections are logged and skipped — the forum doc
-// delete at the end is what removes the forum from the listing.
+// Subcollection failures are logged and skipped; the top-level doc delete
+// is what actually removes the forum from listings.
 export async function deleteForumCascading(forumSlug: string): Promise<void> {
   async function deleteAllInCollection(path: string[]): Promise<void> {
     try {
@@ -246,7 +225,6 @@ export async function deleteForumCascading(forumSlug: string): Promise<void> {
     }
   }
 
-  // Walk posts first to clean their subcollections.
   try {
     const postsSnap = await getDocs(collection(db, 'forums', forumSlug, 'posts'));
     for (const p of postsSnap.docs) {
@@ -263,11 +241,9 @@ export async function deleteForumCascading(forumSlug: string): Promise<void> {
   await deleteAllInCollection(['forums', forumSlug, 'participants']);
   await deleteAllInCollection(['forums', forumSlug, 'activity']);
 
-  // Finally the forum doc itself.
   await deleteDoc(doc(db, 'forums', forumSlug));
 }
 
-// ----- Mod actions: quarantine post ------------------------------------
 export async function setPostQuarantine(
   forumSlug: string,
   postSlug: string,
@@ -278,9 +254,6 @@ export async function setPostQuarantine(
   });
 }
 
-// ----- Hooks ------------------------------------------------------------
-
-// True if the current user is in the forum's moderatorUids array.
 export function useIsMod(forumSlug: string | undefined | null) {
   const { user } = useAuth();
   const [isMod, setIsMod] = useState(false);
@@ -303,7 +276,6 @@ export function useIsMod(forumSlug: string | undefined | null) {
   return isMod;
 }
 
-// True if the current user is muted in the given forum.
 export function useIsMutedInForum(forumSlug: string | undefined | null) {
   const { user } = useAuth();
   const [muted, setMuted] = useState(false);
@@ -321,33 +293,44 @@ export function useIsMutedInForum(forumSlug: string | undefined | null) {
   return muted;
 }
 
-// Returns { timedOut, expiresAt } if the user has an active timeout.
+// A `timeouts/{uid}` doc with `expiresAt: null` is a permanent ban; any other
+// expiresAt is a temporary timeout. `banned` is the strict permanent case;
+// `timedOut` is the umbrella covering both so existing content-write guards
+// stay simple.
 export function useTimeoutStatus() {
   const { user } = useAuth();
-  const [state, setState] = useState<{ timedOut: boolean; expiresAt: Date | null; reason?: string }>({
+  const [state, setState] = useState<{
+    timedOut: boolean;
+    banned: boolean;
+    expiresAt: Date | null;
+    reason?: string;
+  }>({
     timedOut: false,
+    banned: false,
     expiresAt: null,
   });
 
   useEffect(() => {
     if (!user) {
-      setState({ timedOut: false, expiresAt: null });
+      setState({ timedOut: false, banned: false, expiresAt: null });
       return;
     }
     return onSnapshot(doc(db, 'timeouts', user.uid), (snap) => {
       if (!snap.exists()) {
-        setState({ timedOut: false, expiresAt: null });
+        setState({ timedOut: false, banned: false, expiresAt: null });
         return;
       }
       const data = snap.data();
       const exp: Timestamp | null = data.expiresAt ?? null;
       const expMs = exp?.toMillis?.() ?? null;
       if (expMs !== null && expMs <= Date.now()) {
-        setState({ timedOut: false, expiresAt: null });
+        setState({ timedOut: false, banned: false, expiresAt: null });
         return;
       }
+      const banned = expMs === null;
       setState({
         timedOut: true,
+        banned,
         expiresAt: expMs ? new Date(expMs) : null,
         reason: data.reason ?? undefined,
       });

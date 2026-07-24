@@ -13,21 +13,6 @@ import {
 import { COLORS, BODY_FONT } from '../lib/theme';
 import { ImageLightbox } from './ImageLightbox';
 
-// Reddit-style image carousel. One image visible at a time, snap to page,
-// prev/next arrows for desktop, dots under the frame.
-//
-// Layout-stability notes (this file was rewritten to fix a bad regression):
-//  * Height is set via CSS `aspectRatio` on the frame, NOT JS measurement.
-//    The browser computes height the instant width is known, so nothing
-//    reflows when our measurement state lands a frame later.
-//  * Every wrapper has an explicit width. The previous version relied on
-//    RN's implicit cross-axis stretch; in some nested-flex configurations
-//    (PostCard → PostAttachments → View → wrap → frame) that collapsed to
-//    zero width on web, hiding the frame and letting siblings pile up.
-//  * Single-image case skips the ScrollView entirely. No measurement race,
-//    no snap-interval, no chance of a horizontal-scroll ghost overflowing
-//    the card. Most posts hit this path.
-
 const ASPECT = 16 / 9;
 
 export function ImageCarousel({

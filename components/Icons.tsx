@@ -1,9 +1,5 @@
 import { Platform, View } from 'react-native';
 
-// Inline SVGs render directly via react-native-web on the web target. On
-// native we render an empty box of the right size as a placeholder until we
-// swap in react-native-svg.
-
 type IconProps = { size?: number; color?: string };
 
 function SvgWrap({
@@ -171,13 +167,131 @@ export function TrashIcon({ size = 18, color = '#fff' }: IconProps) {
   );
 }
 
-// Paper-plane style send icon — used as the submit affordance inside the
-// comment / reply composer, replacing the standalone "Comment" button.
 export function SendIcon({ size = 18, color = '#fff' }: IconProps) {
   return (
     <SvgWrap size={size}>
       <path stroke={color} d="M22 2L11 13" />
       <path stroke={color} d="M22 2L15 22l-4-9-9-4z" />
+    </SvgWrap>
+  );
+}
+
+export function PinIcon({ size = 18, color = '#fff' }: IconProps) {
+  return (
+    <SvgWrap size={size}>
+      <path
+        stroke={color}
+        d="M12 17v5"
+      />
+      <path
+        stroke={color}
+        d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.76z"
+      />
+    </SvgWrap>
+  );
+}
+
+export function HourglassIcon({ size = 18, color = '#fff' }: IconProps) {
+  return (
+    <SvgWrap size={size}>
+      <path stroke={color} d="M5 22h14" />
+      <path stroke={color} d="M5 2h14" />
+      <path
+        stroke={color}
+        d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"
+      />
+      <path
+        stroke={color}
+        d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"
+      />
+    </SvgWrap>
+  );
+}
+
+export function BanIcon({ size = 18, color = '#fff' }: IconProps) {
+  return (
+    <SvgWrap size={size}>
+      <circle stroke={color} cx="12" cy="12" r="10" />
+      <line stroke={color} x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+    </SvgWrap>
+  );
+}
+
+export function HammerIcon({ size = 18, color = '#fff' }: IconProps) {
+  return (
+    <SvgWrap size={size}>
+      <path
+        stroke={color}
+        d="m15 12-8.5 8.5c-.83.83-2.17.83-3 0a2.12 2.12 0 0 1 0-3L12 9"
+      />
+      <path stroke={color} d="M17.64 15 22 10.64" />
+      <path
+        stroke={color}
+        d="m20.91 11.7-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91"
+      />
+    </SvgWrap>
+  );
+}
+
+export function WrenchIcon({ size = 18, color = '#fff' }: IconProps) {
+  return (
+    <SvgWrap size={size}>
+      <path
+        stroke={color}
+        d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
+      />
+    </SvgWrap>
+  );
+}
+
+export function HammerWrenchIcon({
+  size = 18,
+  color = '#fff',
+  filled = false,
+}: IconProps & { filled?: boolean }) {
+  const fill = filled ? color : 'none';
+  return (
+    <SvgWrap size={size}>
+      <g transform="rotate(45 12 12)">
+        <path
+          stroke={color}
+          fill={fill}
+          strokeLinejoin="round"
+          d="M3 10.5 h6 v3 h-6 z"
+        />
+        <path
+          stroke={color}
+          fill={fill}
+          strokeLinejoin="round"
+          d="M9 11 h9 v2 h-9 z"
+        />
+      </g>
+      <g transform="rotate(-45 12 12)">
+        <path
+          stroke={color}
+          fill={fill}
+          strokeLinejoin="round"
+          d="M3.5 12 a3 3 0 0 1 3 -3 h1.5 v1.5 h-1.5 a1.5 1.5 0 0 0 0 3 h1.5 v1.5 h-1.5 a3 3 0 0 1 -3 -3 z"
+        />
+        <path
+          stroke={color}
+          fill={fill}
+          strokeLinejoin="round"
+          d="M8 11 h10 v2 h-10 z"
+        />
+        <circle stroke={color} fill={fill} cx="19" cy="12" r="1.6" />
+      </g>
+    </SvgWrap>
+  );
+}
+
+export function MicOffIcon({ size = 18, color = '#fff' }: IconProps) {
+  return (
+    <SvgWrap size={size}>
+      <line stroke={color} x1="1" y1="1" x2="23" y2="23" />
+      <path stroke={color} d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
+      <path stroke={color} d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
+      <line stroke={color} x1="12" y1="19" x2="12" y2="23" />
     </SvgWrap>
   );
 }

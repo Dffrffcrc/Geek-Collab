@@ -14,17 +14,18 @@ import {
 import { db } from '../lib/firebase';
 import { useAuth } from '../lib/auth';
 import { useUserProfile } from '../lib/user-profile';
+import { useUserPhoto } from '../lib/user-photo';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { previewText, timeAgo } from '../lib/forum-utils';
 import { logActivity, muteUser, setPostQuarantine, timeoutUser, useIsMod } from '../lib/moderation';
-import { isAdminUsername, useIsServerAdmin } from '../lib/admins';
+import { useAdmins, useIsServerAdmin } from '../lib/admins';
 import { describeActionError, pinPost, promptModerationReason, unpinPost } from '../lib/admin-tools';
 import { Avatar } from './Avatar';
-import { HeartIcon, CommentIcon, MoreIcon } from './Icons';
+import { HeartIcon, CommentIcon, MoreIcon, PinIcon, HourglassIcon } from './Icons';
 import { OverflowMenu, type MenuAction } from './OverflowMenu';
 import { ReportModal } from './ReportModal';
 import { EditModal } from './EditModal';
-import { UserRoleTags } from './RoleTag';
+import { RoleTag, useUserRole } from './RoleTag';
 import { PostAttachments } from './PostAttachments';
 import type { Attachment } from '../lib/uploads';
 import type { Timestamp } from 'firebase/firestore';
@@ -62,15 +63,14 @@ export function PostCard({
   const profile = useUserProfile();
   const isMod = useIsMod(forumSlug);
   const isAdmin = useIsServerAdmin();
+  const { isAdminUsername } = useAdmins();
   const { width } = useWindowDimensions();
   const isAuthor = !!user && user.uid === post.authorUid;
   const isMobile = width < 640;
-  // Admins can moderate any author including other admins. Mods can only
-  // moderate non-admins; the author-is-admin check stays for the mod branch.
   const canModerate = isAdmin || (isMod && !isAdminUsername(post.authorUsername));
-  // Prefer the new `attachments` field; fall back to the legacy `mediaUrls`
-  // (posts created before the storage integration) via a synthesised
-  // Attachment list so PostAttachments can render them the same way.
+  const authorRole = useUserRole(post.authorUsername, post.authorUid, moderatorUids);
+  // Fall back to legacy `mediaUrls` (pre-storage-integration posts) by
+  // synthesising Attachment records so PostAttachments renders them the same.
   const effectiveAttachments =
     post.attachments && post.attachments.length > 0
       ? post.attachments
@@ -83,13 +83,13 @@ export function PostCard({
           kind: 'image' as const,
         }));
 
+  const authorPhoto = useUserPhoto(post.authorUid);
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [liked, setLiked] = useState(false);
 
-  // Subscribe to the user's like presence on this post so the heart reflects
-  // truth across tabs/devices.
   useEffect(() => {
     if (!user) {
       setLiked(false);
@@ -130,7 +130,7 @@ export function PostCard({
     if (!confirm('Delete this post?')) return;
     if (!user || !profile) return;
     try {
-      // Soft delete — keeps content for admin audit, hides from normal views.
+      // Soft delete: keeps content for admin audit, hides from normal views.
       await updateDoc(doc(db, 'forums', forumSlug, 'posts', post.slug), {
         isDeleted: true,
         deletedAt: serverTimestamp(),
@@ -245,11 +245,11 @@ export function PostCard({
       >
         <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
           <View style={styles.headerLeft}>
-            <Avatar size={32} label={post.authorDisplayName || post.authorUsername} />
+            <Avatar size={32} label={post.authorDisplayName || post.authorUsername} photoURL={authorPhoto} />
             <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
               <View style={styles.usernameRow}>
                 <Text
-                  style={styles.displayName}
+                  style={[styles.displayName, authorRole.nameColor ? { color: authorRole.nameColor } : null]}
                   onPress={() => router.push(`/profile/${post.authorUsername}`)}
                 >
                   {post.authorDisplayName || post.authorUsername}
@@ -259,12 +259,9 @@ export function PostCard({
                   onPress={() => router.push(`/profile/${post.authorUsername}`)}
                 >
                   @{post.authorUsername}
+                  {authorRole.isAdmin && <RoleTag role="ADMIN" />}
+                  {authorRole.isMod && <RoleTag role="MOD" />}
                 </Text>
-                <UserRoleTags
-                  username={post.authorUsername}
-                  uid={post.authorUid}
-                  moderatorUids={moderatorUids}
-                />
               </View>
               <Text style={styles.timestamp}>
                 {timeAgo(post.createdAt)}
@@ -275,10 +272,24 @@ export function PostCard({
 
           <View style={styles.headerRight}>
             {post.isPinned && (
-              <Text style={styles.pinnedTag}>PINNED</Text>
+              <View
+                style={styles.stateIcon}
+                accessibilityLabel="Pinned post"
+                // @ts-expect-error web-only DOM prop passed through by RN Web
+                title="Pinned"
+              >
+                <PinIcon size={15} color={COLORS.yellow} />
+              </View>
             )}
             {post.isQuarantined && (
-              <Text style={styles.quarantineTag}>QUARANTINED</Text>
+              <View
+                style={styles.stateIcon}
+                accessibilityLabel="Quarantined post"
+                // @ts-expect-error web-only DOM prop passed through by RN Web
+                title="Quarantined"
+              >
+                <HourglassIcon size={15} color={COLORS.warn} />
+              </View>
             )}
             {actions.length > 0 && (
               <TouchableOpacity
@@ -347,10 +358,6 @@ export function PostCard({
 }
 
 const styles = StyleSheet.create({
-  // Card tightened toward a Reddit-style density — subtle border in place
-  // of dark-grey block, less padding, smaller radius. Text hierarchy is
-  // still the same (title dominant, meta small); just less real estate
-  // spent on chrome.
   card: {
     backgroundColor: '#232323',
     borderRadius: 8,
@@ -369,45 +376,18 @@ const styles = StyleSheet.create({
   displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13, fontWeight: '700' },
   handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
-  pinnedTag: {
-    backgroundColor: '#2a2500',
-    color: COLORS.yellow,
-    fontSize: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.yellow,
-    fontFamily: BODY_FONT,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    overflow: 'hidden',
-  },
-  quarantineTag: {
-    backgroundColor: COLORS.warnBg,
-    color: COLORS.warn,
-    fontSize: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.warnBorder,
-    fontFamily: BODY_FONT,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    overflow: 'hidden',
+  stateIcon: {
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   moreBtn: { padding: 4 },
-  // Reddit-esque title: prominent but a hair smaller than before, tighter
-  // to the metadata above.
   title: { color: COLORS.textPrimary, fontFamily: HEADING_FONT, fontSize: 19, marginBottom: 6 },
   titleMobile: { fontSize: 17, marginBottom: 4 },
   body: { color: '#bbbbbb', fontFamily: BODY_FONT, fontSize: 13, lineHeight: 19 },
   bodyMobile: { fontSize: 13, lineHeight: 18 },
   footer: { flexDirection: 'row', gap: 8, marginTop: 10 },
   footerMobile: { flexWrap: 'wrap', gap: 6, marginTop: 10 },
-  // Reddit-style action pills: quieter background, tighter padding, so the
-  // meta doesn't compete with the post content.
   iconRow: {
     flexDirection: 'row',
     alignItems: 'center',

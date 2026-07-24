@@ -14,17 +14,20 @@ import { db } from '../../../lib/firebase';
 import { useAuth } from '../../../lib/auth';
 import { useUserProfile } from '../../../lib/user-profile';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../../../lib/theme';
-import { banUser, liftBan, promptModerationReason } from '../../../lib/admin-tools';
-import { isAdminUsername } from '../../../lib/admins';
+import { banUser, describeActionError, liftBan, promptModerationReason } from '../../../lib/admin-tools';
+import { deleteAccountAsAdmin } from '../../../lib/account';
+import { callSetAdmin, useAdmins, useIsServerAdmin } from '../../../lib/admins';
 import { Avatar } from '../../../components/Avatar';
 import { FormInput } from '../../../components/FormInput';
 import { RoleTag } from '../../../components/RoleTag';
+import { BanIcon } from '../../../components/Icons';
 
 type UserRow = {
   uid: string;
   username: string;
   displayName: string;
   email?: string;
+  photoURL?: string | null;
 };
 
 type ForumLite = {
@@ -33,7 +36,7 @@ type ForumLite = {
   moderatorUids: string[];
 };
 
-type Filter = 'all' | 'banned' | 'mods';
+type Filter = 'all' | 'banned' | 'mods' | 'admins';
 
 export default function AdminUsers() {
   const router = useRouter();
@@ -41,8 +44,11 @@ export default function AdminUsers() {
   const compact = width < 768;
   const { user: me } = useAuth();
   const profile = useUserProfile();
+  const { isAdminUsername, adminUids } = useAdmins();
+  const viewerIsAdmin = useIsServerAdmin();
 
   const [users, setUsers] = useState<UserRow[] | null>(null);
+  const [adminBusyUids, setAdminBusyUids] = useState<Set<string>>(new Set());
   const [bannedUids, setBannedUids] = useState<Set<string>>(new Set());
   const [forums, setForums] = useState<ForumLite[]>([]);
   const [search, setSearch] = useState('');
@@ -57,6 +63,7 @@ export default function AdminUsers() {
             username: (d.data().username ?? '').trim(),
             displayName: (d.data().displayName ?? '').trim(),
             email: d.data().email,
+            photoURL: d.data().photoURL ?? null,
           }))
           .filter((u) => u.username !== ''),
       );
@@ -96,6 +103,7 @@ export default function AdminUsers() {
         if (filter === 'banned') return bannedUids.has(u.uid);
         if (filter === 'mods')
           return forums.some((f) => f.moderatorUids.includes(u.uid));
+        if (filter === 'admins') return adminUids.has(u.uid);
         // 'all' excludes banned users — they live exclusively in the Banned tab.
         return !bannedUids.has(u.uid);
       })
@@ -107,7 +115,7 @@ export default function AdminUsers() {
           (u.email ?? '').toLowerCase().includes(q),
       )
       .sort((a, b) => a.username.localeCompare(b.username));
-  }, [users, search, filter, bannedUids, forums]);
+  }, [users, search, filter, bannedUids, forums, adminUids]);
 
   async function toggleBan(u: UserRow) {
     if (!me || !profile) return;
@@ -134,6 +142,53 @@ export default function AdminUsers() {
     return forums.filter((f) => f.moderatorUids.includes(u.uid)).map((f) => f.slug);
   }
 
+  async function deleteAccount(u: UserRow) {
+    // Deliberately double-confirm since this can't be undone. The target's
+    // Firebase Auth record stays (client SDK can't touch other users' auth),
+    // but the profile + username + mod roles are gone. If the target is
+    // banned (which is our precondition), they can't create a new profile
+    // either — /complete-profile is behind BannedScreen.
+    if (!confirm(`Permanently delete @${u.username}'s profile? Their posts stay in the forums but their account and username will be gone. This cannot be undone.`)) {
+      return;
+    }
+    if (!confirm(`Really delete @${u.username}? Type-check: they are currently banned and this will free their username for reuse.`)) {
+      return;
+    }
+    try {
+      await deleteAccountAsAdmin(u.uid, u.username.toLowerCase());
+    } catch (err) {
+      console.error('[admin:users:delete] failed:', err);
+      alert(describeActionError('delete account', err));
+    }
+  }
+
+  async function toggleAdmin(u: UserRow) {
+    const willPromote = !adminUids.has(u.uid);
+    const verb = willPromote ? 'Promote' : 'Revoke admin for';
+    if (!confirm(`${verb} @${u.username}?`)) return;
+    setAdminBusyUids((prev) => {
+      const next = new Set(prev);
+      next.add(u.uid);
+      return next;
+    });
+    try {
+      await callSetAdmin(u.uid, willPromote);
+    } catch (err) {
+      console.error('[admin:users:setAdmin] failed:', err);
+      const message =
+        (err as { message?: string })?.message ??
+        'Could not update admin. Try again.';
+      alert(message);
+    } finally {
+      setAdminBusyUids((prev) => {
+        const next = new Set(prev);
+        next.delete(u.uid);
+        return next;
+      });
+    }
+  }
+
+
   return (
     <ScrollView contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}>
       <Text style={[styles.heading, compact && styles.headingCompact]}>Users</Text>
@@ -146,14 +201,20 @@ export default function AdminUsers() {
       />
 
       <View style={[styles.filterRow, compact && styles.filterRowCompact]}>
-        {(['all', 'banned', 'mods'] as Filter[]).map((f) => (
+        {(['all', 'banned', 'mods', 'admins'] as Filter[]).map((f) => (
           <TouchableOpacity
             key={f}
             onPress={() => setFilter(f)}
             style={[styles.chip, filter === f && styles.chipActive]}
           >
             <Text style={[styles.chipText, filter === f && styles.chipTextActive]}>
-              {f === 'all' ? 'All' : f === 'banned' ? 'Banned / timed out' : 'Moderators'}
+              {f === 'all'
+                ? 'All'
+                : f === 'banned'
+                ? 'Banned / timed out'
+                : f === 'mods'
+                ? 'Moderators'
+                : 'Admins'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -175,20 +236,35 @@ export default function AdminUsers() {
               activeOpacity={0.85}
               onPress={() => router.push(`/profile/${u.username}`)}
             >
-              <Avatar size={42} label={u.displayName || u.username} />
+              <Avatar size={42} label={u.displayName || u.username} photoURL={u.photoURL} />
               <View style={styles.identity}>
                 <View style={styles.nameRow}>
-                  <Text style={styles.displayName} numberOfLines={1}>
+                  <Text
+                    style={[
+                      styles.displayName,
+                      (isAdmin || modOf.length > 0) && { color: COLORS.yellow },
+                    ]}
+                    numberOfLines={1}
+                  >
                     {u.displayName || u.username}
                   </Text>
-                  {isAdmin && <RoleTag role="ADMIN" />}
-                  {isBanned && <Text style={[styles.tag, styles.tagBanned]}>BANNED</Text>}
-                  {!isAdmin && modOf.length > 0 && (
-                    <Text style={[styles.tag, styles.tagMod]}>MOD · {modOf.length}</Text>
+                  {isBanned && (
+                    <View
+                      style={styles.stateIcon}
+                      accessibilityLabel="Banned user"
+                      // @ts-expect-error web-only DOM prop forwarded by RN Web
+                      title="Banned"
+                    >
+                      <BanIcon size={15} color={COLORS.error} />
+                    </View>
                   )}
                 </View>
                 <Text style={styles.username} numberOfLines={1}>
                   @{u.username}
+                  {isAdmin && <RoleTag role="ADMIN" />}
+                  {!isAdmin && modOf.length > 0 && (
+                    <Text style={styles.modInline}> (mod · {modOf.length})</Text>
+                  )}
                   {u.email ? ` · ${u.email}` : ''}
                 </Text>
               </View>
@@ -198,6 +274,31 @@ export default function AdminUsers() {
                     label={isBanned ? 'Lift ban' : 'Ban'}
                     destructive
                     onPress={() => toggleBan(u)}
+                  />
+                )}
+                {/* Promote/demote — only visible to admins, hidden for
+                    banned users (bans should be lifted before granting
+                    admin). Self-demotion is allowed; the Cloud Function
+                    still blocks demoting the LAST admin. */}
+                {viewerIsAdmin && !isBanned && (
+                  <ActBtn
+                    label={
+                      adminBusyUids.has(u.uid)
+                        ? '…'
+                        : isAdmin
+                        ? 'Revoke admin'
+                        : 'Make admin'
+                    }
+                    onPress={() => toggleAdmin(u)}
+                  />
+                )}
+                {/* Delete only shows for already-banned non-admin users —
+                    prevents accidental nukes on active or admin accounts. */}
+                {isBanned && !isAdmin && (
+                  <ActBtn
+                    label="Delete account"
+                    destructive
+                    onPress={() => deleteAccount(u)}
                   />
                 )}
                 <ActBtn label="View" onPress={() => router.push(`/profile/${u.username}`)} />
@@ -253,21 +354,21 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 0 },
   displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
   username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12, marginTop: 2 },
-  tag: {
-    marginLeft: 6,
-    fontSize: 9, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4,
-    fontFamily: BODY_FONT, fontWeight: '700', overflow: 'hidden',
-    letterSpacing: 0.4,
+  // Small wrapper around state icons in the row — adds padding for the
+  // hover-tooltip hit area.
+  stateIcon: {
+    marginLeft: 4,
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  tagBanned: {
-    backgroundColor: COLORS.warnBg,
-    color: COLORS.warn,
-    borderWidth: 1,
-    borderColor: COLORS.warnBorder,
-  },
-  tagMod: {
-    backgroundColor: 'rgba(239,235,69,0.18)', color: COLORS.yellow,
-    borderWidth: 1, borderColor: 'rgba(239,235,69,0.5)',
+  // Inline "(mod · 3)" text — nested inside the @username Text so it
+  // inherits size + family. Same shape as the "(admin)" tag but with a
+  // forum count since the admin panel is one of the few places that count
+  // is useful.
+  modInline: {
+    color: COLORS.yellow,
+    fontWeight: '600',
   },
   actions: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   actionsCompact: { alignSelf: 'stretch', flexWrap: 'wrap' },

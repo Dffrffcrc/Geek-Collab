@@ -4,10 +4,12 @@ import { useRouter } from 'expo-router';
 import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../lib/auth';
+import { useTimeoutStatus } from '../lib/moderation';
 import { signOutPortalUser } from '../lib/portal-auth';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { AuthLayout } from '../components/AuthLayout';
 import { AuthScreenLoading } from '../components/AuthScreenLoading';
+import { BannedScreen } from '../components/BannedScreen';
 import { FormInput } from '../components/FormInput';
 import { PrimaryButton } from '../components/PrimaryButton';
 
@@ -28,6 +30,7 @@ export default function CompleteProfile() {
   const { width } = useWindowDimensions();
   const isMobile = width < 520;
   const { user, initializing, needsProfile, refreshProfile } = useAuth();
+  const { banned, expiresAt, reason } = useTimeoutStatus();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [prefilled, setPrefilled] = useState(false);
@@ -139,6 +142,10 @@ export default function CompleteProfile() {
 
   if (initializing || !user || !needsProfile) {
     return <AuthScreenLoading />;
+  }
+
+  if (banned) {
+    return <BannedScreen reason={reason} expiresAt={expiresAt} />;
   }
 
   return (

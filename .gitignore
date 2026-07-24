@@ -13,6 +13,7 @@ web-build/
 .env
 .env.*
 !.env.example
+secrets/
 
 # Firebase local cache/logs
 .firebase/
@@ -31,5 +32,3 @@ ui-debug.log
 
 expo-env.d.ts
 # @end expo-cli
-
-.agents

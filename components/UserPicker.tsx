@@ -10,6 +10,7 @@ export type PickableUser = {
   uid: string;
   username: string;
   displayName: string;
+  photoURL?: string | null;
 };
 
 export function UserPicker({
@@ -36,6 +37,7 @@ export function UserPicker({
               uid: d.id,
               username: (d.data().username ?? '').trim(),
               displayName: (d.data().displayName ?? '').trim(),
+              photoURL: (d.data().photoURL ?? null) as string | null,
             }))
             // Skip docs missing core fields (orphaned from abandoned signups).
             .filter((u) => u.username !== ''),
@@ -102,7 +104,7 @@ export function UserPicker({
                 onPress={() => toggle(u.uid)}
                 activeOpacity={0.85}
               >
-                <Avatar size={32} label={u.displayName || u.username} />
+                <Avatar size={32} label={u.displayName || u.username} photoURL={u.photoURL} />
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={styles.displayName} numberOfLines={1}>
                     {u.displayName || u.username}

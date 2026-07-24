@@ -20,9 +20,11 @@ import {
   unmuteUser,
 } from '../../../../../lib/moderation';
 import { Avatar } from '../../../../../components/Avatar';
+import { useUserPhoto } from '../../../../../lib/user-photo';
 import { FormInput } from '../../../../../components/FormInput';
-import { UserRoleTags } from '../../../../../components/RoleTag';
-import { isAdminUsername } from '../../../../../lib/admins';
+import { RoleTag } from '../../../../../components/RoleTag';
+import { MicOffIcon, ClockIcon } from '../../../../../components/Icons';
+import { useAdmins } from '../../../../../lib/admins';
 import { promptModerationReason } from '../../../../../lib/admin-tools';
 
 type Participant = {
@@ -43,6 +45,7 @@ export default function UsersTab() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
   const profile = useUserProfile();
+  const { isAdminUsername } = useAdmins();
 
   const [participants, setParticipants] = useState<Participant[] | null>(null);
   const [mutedUids, setMutedUids] = useState<Set<string>>(new Set());
@@ -184,18 +187,41 @@ export default function UsersTab() {
           return (
             <View key={p.uid} style={[styles.card, compact && styles.cardCompact]}>
               <View style={[styles.cardLeft, compact && styles.cardLeftCompact]}>
-                <Avatar size={40} label={p.displayName || p.username} />
+                <LiveAvatar uid={p.uid} label={p.displayName || p.username} size={40} />
                 <View style={{ marginLeft: 12, flex: 1 }}>
                   <View style={styles.nameRow}>
-                    <Text style={styles.displayName} onPress={() => router.push(`/profile/${p.username}`)}>
+                    <Text
+                      style={[styles.displayName, isAdmin && { color: COLORS.yellow }]}
+                      onPress={() => router.push(`/profile/${p.username}`)}
+                    >
                       {p.displayName}
                     </Text>
-                    <UserRoleTags username={p.username} />
                   </View>
-                  <Text style={styles.username}>@{p.username}</Text>
+                  <Text style={styles.username}>
+                    @{p.username}
+                    {isAdmin && <RoleTag role="ADMIN" />}
+                  </Text>
                   <View style={styles.tagRow}>
-                    {isMuted && <Text style={[styles.tag, styles.tagMuted]}>MUTED</Text>}
-                    {isTimedOut && <Text style={[styles.tag, styles.tagTimeout]}>TIMED OUT</Text>}
+                    {isMuted && (
+                      <View
+                        style={styles.stateIcon}
+                        accessibilityLabel="Muted in this forum"
+                        // @ts-expect-error web-only DOM prop forwarded by RN Web
+                        title="Muted in this forum"
+                      >
+                        <MicOffIcon size={14} color={COLORS.warn} />
+                      </View>
+                    )}
+                    {isTimedOut && (
+                      <View
+                        style={styles.stateIcon}
+                        accessibilityLabel="Timed out globally"
+                        // @ts-expect-error web-only DOM prop forwarded by RN Web
+                        title="Timed out globally"
+                      >
+                        <ClockIcon size={14} color={COLORS.error} />
+                      </View>
+                    )}
                     <Text style={styles.stats}>
                       {p.postCount ?? 0} posts · {p.commentCount ?? 0} comments
                       {p.lastActiveAt ? ` · last active ${timeAgo(p.lastActiveAt)}` : ''}
@@ -230,6 +256,11 @@ export default function UsersTab() {
       )}
     </ScrollView>
   );
+}
+
+function LiveAvatar({ uid, label, size }: { uid: string; label: string; size: number }) {
+  const photoURL = useUserPhoto(uid);
+  return <Avatar size={size} label={label} photoURL={photoURL} />;
 }
 
 const styles = StyleSheet.create({
@@ -268,17 +299,7 @@ const styles = StyleSheet.create({
   displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
   username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12 },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 4 },
-  tag: {
-    fontSize: 9,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    fontFamily: BODY_FONT,
-    fontWeight: '700',
-    overflow: 'hidden',
-  },
-  tagMuted: { backgroundColor: 'rgba(255,170,85,0.2)', color: '#ffaa55' },
-  tagTimeout: { backgroundColor: 'rgba(255,118,118,0.18)', color: COLORS.error },
+  stateIcon: { padding: 2, justifyContent: 'center', alignItems: 'center' },
   stats: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11 },
   actions: { flexDirection: 'column', gap: 6 },
   actionsCompact: { width: '100%', flexDirection: 'row', flexWrap: 'wrap' },

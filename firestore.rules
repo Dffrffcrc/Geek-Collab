@@ -26,33 +26,19 @@ service cloud.firestore {
       );
     }
 
-    // Admin allowlist — must mirror ADMIN_USERNAMES in `lib/admins.ts`.
-    // Edit BOTH files when adding/removing an admin, then redeploy rules.
-    function adminUsernames() {
-      return [
-        'thesomethingco.',
-        '_burntsandwich',
-        'siyuan',
-        'zwe',
-        'Epic_Blox5',
-        'paul',
-        'julwrites',
-      ];
-    }
-
+    // Admin authority = Firebase Auth custom claim { admin: true } on the
+    // signed-in user's ID token. Claims are set by the `setAdmin` Cloud
+    // Function (or the one-time `bootstrap-admin.mjs`), which also mirrors
+    // the same admin's uid into /admins/{uid} — that mirror is what powers
+    // `targetIsAdmin(uid)` below and the client-side admin badge everywhere.
     function isAdmin() {
-      return isSignedIn() &&
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
-               in adminUsernames();
+      return isSignedIn() && request.auth.token.admin == true;
     }
 
-    // True iff the user at /users/{uid} has an admin username. Used to block
-    // mods from acting on admin accounts (mute/timeout/etc.).
+    // True iff /admins/{uid} exists. Used to block mods from acting on
+    // admin-authored content and admin accounts (mute/timeout/edit/delete).
     function targetIsAdmin(uid) {
-      return exists(/databases/$(database)/documents/users/$(uid)) &&
-             get(/databases/$(database)/documents/users/$(uid)).data.username
-               in adminUsernames();
+      return exists(/databases/$(database)/documents/admins/$(uid));
     }
 
     // ---- users -----------------------------------------------------------
@@ -65,7 +51,11 @@ service cloud.firestore {
         && request.auth.uid == uid
         && !request.resource.data.diff(resource.data).affectedKeys()
              .hasAny(['username', 'usernameLower', 'email']);
-      allow delete: if false;
+      // Account deletion — the user can delete their own; admins can delete
+      // anyone (paired with the ban flow so a banned account can be fully
+      // removed after moderation). Both paths always delete the paired
+      // usernames doc alongside.
+      allow delete: if isSignedIn() && (request.auth.uid == uid || isAdmin());
     }
 
     // ---- usernames index (username->uid lookup) -------
@@ -78,8 +68,26 @@ service cloud.firestore {
     match /usernames/{name} {
       allow read: if true;
       allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      // Owner can release their own username on self-delete. Admins can
+      // release any username as part of the admin-initiated account
+      // deletion of a banned user.
+      allow delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
       allow update: if false;
+    }
+
+    // ---- global user reports ---------------------------------------------
+    // Anyone signed-in can file a report about another user (used by the
+    // 3-dots menu on the public profile page). Admins can list/resolve
+    // them. Users can read their own to see status.
+    match /userReports/{reportId} {
+      allow read: if isAdmin()
+                  || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
+      allow create: if isSignedIn()
+                    && !userTimedOut()
+                    && request.resource.data.reporterUid == request.auth.uid
+                    && request.resource.data.reportedUid is string
+                    && request.resource.data.reportedUid != request.auth.uid;
+      allow update, delete: if isAdmin();
     }
 
     // ---- global timeouts (admin-only write) ---
@@ -89,6 +97,20 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create, update: if isAdmin();
       allow delete: if isAdmin();
+    }
+
+    // ---- admins index (uid -> {username, ...}) --------------------------
+    // Mirror of the { admin: true } Firebase Auth custom claim, written by
+    // the `setAdmin` Cloud Function (and the bootstrap-admin script) via
+    // the Admin SDK. Rules deny all client writes: the ONLY way to promote
+    // or demote is through the Cloud Function, which verifies the caller
+    // already holds the admin claim.
+    //
+    // Read is signed-in so every client can render the ADMIN badge next to
+    // any user + block mods from acting on admin-authored content.
+    match /admins/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
     }
 
     // ---- forums ---------------------------------------------------------
@@ -166,7 +188,7 @@ service cloud.firestore {
           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPinned']) || isAdmin()) && (
           (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
           // Mods can update anyone's post except admins'.
-          (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
+          (isModOf(slug) && !targetIsAdmin(resource.data.authorUid)) ||
           isAdmin() ||
           // Counter-only writes (any signed-in user — used for likes/comments).
           request.resource.data.diff(resource.data).affectedKeys()
@@ -180,7 +202,7 @@ service cloud.firestore {
 
         allow delete: if isSignedIn() && (
           resource.data.authorUid == request.auth.uid ||
-          (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
+          (isModOf(slug) && !targetIsAdmin(resource.data.authorUid)) ||
           isAdmin()
         );
 
@@ -195,7 +217,7 @@ service cloud.firestore {
           allow update: if isSignedIn() && (
             (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
             // Mods can edit any comment except admins'.
-            (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
+            (isModOf(slug) && !targetIsAdmin(resource.data.authorUid)) ||
             isAdmin() ||
             // Author can soft-delete their own comment regardless of mute/timeout.
             (resource.data.authorUid == request.auth.uid &&
@@ -204,7 +226,7 @@ service cloud.firestore {
           );
           allow delete: if isSignedIn() && (
             resource.data.authorUid == request.auth.uid ||
-            (isModOf(slug) && !(resource.data.authorUsername in adminUsernames())) ||
+            (isModOf(slug) && !targetIsAdmin(resource.data.authorUid)) ||
             isAdmin()
           );
         }

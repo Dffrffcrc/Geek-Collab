@@ -63,7 +63,7 @@ export function Topbar({
           </TouchableOpacity>
         )}
         <TouchableOpacity onPress={() => router.push('/profile')} activeOpacity={0.8}>
-          <Avatar size={isMobile ? 34 : 40} label={profile?.displayName ?? profile?.username} />
+          <Avatar size={isMobile ? 34 : 40} label={profile?.displayName ?? profile?.username} photoURL={profile?.photoURL} />
         </TouchableOpacity>
       </View>
     </View>

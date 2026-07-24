@@ -10,9 +10,13 @@ export type UserProfile = {
   username: string;
   displayName: string;
   email: string;
+  bio?: string;
+  photoURL?: string | null;
   recentForums?: RecentForum[];
   createdAt?: Timestamp;
 };
+
+export const MAX_BIO_LENGTH = 240;
 
 export function useUserProfile() {
   const { user } = useAuth();
@@ -23,7 +27,6 @@ export function useUserProfile() {
       setProfile(null);
       return;
     }
-    // Live subscription so the sidebar's "Recently Visited" stays fresh.
     const ref = doc(db, 'users', user.uid);
     return onSnapshot(ref, (snap) => {
       if (snap.exists()) setProfile({ uid: user.uid, ...(snap.data() as Omit<UserProfile, 'uid'>) });
@@ -34,8 +37,6 @@ export function useUserProfile() {
   return profile;
 }
 
-// Track a forum visit on the user's profile. Keeps the most-recent 5,
-// dedup-ed by slug, with `readOnly` reflecting the forum's state at view time.
 export async function trackForumVisit(
   uid: string,
   slug: string,

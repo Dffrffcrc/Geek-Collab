@@ -26,7 +26,7 @@ import {
   type Report,
 } from '../../../../../lib/moderation';
 import { FormInput } from '../../../../../components/FormInput';
-import { isAdminUsername, useIsServerAdmin } from '../../../../../lib/admins';
+import { useAdmins, useIsServerAdmin } from '../../../../../lib/admins';
 import { promptModerationReason } from '../../../../../lib/admin-tools';
 
 export default function ReportsTab() {
@@ -37,6 +37,7 @@ export default function ReportsTab() {
   const { user } = useAuth();
   const profile = useUserProfile();
   const viewerIsAdmin = useIsServerAdmin();
+  const { isAdminUsername } = useAdmins();
 
   const [reports, setReports] = useState<Report[] | null>(null);
   const [search, setSearch] = useState('');

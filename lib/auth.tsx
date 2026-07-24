@@ -15,14 +15,9 @@ type AuthState = {
   user: User | null;
   initializing: boolean;
   authError: string | null;
-  // True when Firebase Auth has a user but Firestore has no matching
-  // users/{uid} doc yet — the user needs to visit /complete-profile before
-  // they can enter the app. Set on every auth state change based on a
-  // getDoc against users/{uid}.
+  // True when Firebase Auth has a user but users/{uid} doesn't exist — the
+  // caller should route to /complete-profile before entering the app.
   needsProfile: boolean;
-  // Re-check the profile without waiting for the next auth state change.
-  // Called by /complete-profile after it creates the doc so the app-wide
-  // routing (which reads needsProfile) updates immediately.
   refreshProfile: () => Promise<void>;
 };
 
@@ -78,6 +73,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
           setUser(u);
+          // Force a token refresh on sign-in so any custom claims granted
+          // (e.g. admin) since the last cached token show up right away
+          // instead of waiting for the ~1-hour rotation. Best-effort.
+          try {
+            await u.getIdToken(true);
+          } catch (err) {
+            console.warn('[auth] token refresh failed:', err);
+          }
           try {
             const snap = await getDoc(doc(db, 'users', u.uid));
             if (cancelled) return;
@@ -85,10 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } catch (err) {
             console.warn('[auth] profile check failed:', err);
             if (cancelled) return;
-            // Fail closed: if we can't tell, don't send the user to
-            // /complete-profile — better to let them into the app than to
-            // trap them on a signup screen because of a transient network
-            // hiccup.
+            // Fail open on transient errors: better to let the user in than
+            // trap them at /complete-profile.
             setNeedsProfile(false);
           }
           setInitializing(false);

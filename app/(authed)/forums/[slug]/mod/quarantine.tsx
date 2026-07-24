@@ -23,7 +23,7 @@ import {
   timeoutUser,
 } from '../../../../../lib/moderation';
 import { FormInput } from '../../../../../components/FormInput';
-import { isAdminUsername } from '../../../../../lib/admins';
+import { useAdmins } from '../../../../../lib/admins';
 import { promptModerationReason } from '../../../../../lib/admin-tools';
 
 type QPost = {
@@ -43,6 +43,7 @@ export default function QuarantineTab() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
   const profile = useUserProfile();
+  const { isAdminUsername } = useAdmins();
 
   const [posts, setPosts] = useState<QPost[] | null>(null);
   const [search, setSearch] = useState('');

@@ -9,9 +9,6 @@ import {
 import { COLORS, BODY_FONT } from '../lib/theme';
 import { formatSize, type Attachment } from '../lib/uploads';
 
-// Renders below a post or comment body. Images appear as tappable thumbnails
-// that open the full-size URL in a new tab; PDFs and PPTX render as a labelled
-// card with the filename + size, tappable to download / open.
 export function AttachmentStrip({
   attachments,
   size = 'normal',
