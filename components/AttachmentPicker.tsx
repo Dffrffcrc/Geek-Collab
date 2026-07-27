@@ -21,6 +21,7 @@ import {
   validateFile,
   type Attachment,
 } from '../lib/uploads';
+import { MAX_ATTACHMENTS_PER_ITEM } from '../lib/content-limits';
 
 type PendingUpload = {
   key: string;
@@ -95,7 +96,14 @@ export const AttachmentPicker = forwardRef<
 
     const rejected: string[] = [];
     const accepted: File[] = [];
-    for (const f of files) {
+    const remainingSlots = Math.max(
+      0,
+      MAX_ATTACHMENTS_PER_ITEM - attachmentsRef.current.length - pending.length,
+    );
+    if (files.length > remainingSlots) {
+      rejected.push(`You can attach up to ${MAX_ATTACHMENTS_PER_ITEM} files.`);
+    }
+    for (const f of files.slice(0, remainingSlots)) {
       const err = validateFile(f, {
         allowedTypes: ALLOWED_UPLOAD_TYPES,
         maxBytes: MAX_UPLOAD_BYTES,

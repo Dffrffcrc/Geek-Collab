@@ -1,6 +1,7 @@
 import { StyleSheet, Linking } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
+import { isSafeExternalUrl } from '../lib/url-safety';
 
 
 
@@ -18,6 +19,7 @@ export function MarkdownBody({
     <Markdown
       style={sheet}
       onLinkPress={(url) => {
+        if (!isSafeExternalUrl(url, true)) return false;
         Linking.openURL(url).catch(() => undefined);
         return false;
       }}

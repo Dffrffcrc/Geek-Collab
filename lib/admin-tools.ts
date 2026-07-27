@@ -132,7 +132,7 @@ export function promptModerationReason(action: string, targetUsername: string): 
     window.alert('A reason is required.');
     return null;
   }
-  return trimmed;
+  return trimmed.slice(0, 500);
 }
 
 export function describeActionError(scope: string, err: unknown): string {

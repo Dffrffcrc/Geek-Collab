@@ -11,6 +11,7 @@ import { ImageIcon, SendIcon } from './Icons';
 import { AttachmentPicker, type AttachmentPickerHandle } from './AttachmentPicker';
 import { DropZone } from './DropZone';
 import { pickFiles, UPLOAD_ACCEPT, type Attachment } from '../lib/uploads';
+import { MAX_COMMENT_BODY_LENGTH } from '../lib/content-limits';
 
 
 
@@ -88,6 +89,7 @@ export const InlineComposer = forwardRef<
           ]}
           value={value}
           onChangeText={onChangeText}
+          maxLength={MAX_COMMENT_BODY_LENGTH}
           placeholder={placeholder}
           placeholderTextColor={COLORS.textPlaceholder}
           multiline

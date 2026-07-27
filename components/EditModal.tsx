@@ -8,6 +8,11 @@ import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 import { logActivity } from '../lib/moderation';
 import { FormInput } from './FormInput';
 import { XIcon } from './Icons';
+import {
+  MAX_COMMENT_BODY_LENGTH,
+  MAX_POST_BODY_LENGTH,
+  MAX_POST_TITLE_LENGTH,
+} from '../lib/content-limits';
 
 type Common = {
   visible: boolean;
@@ -49,6 +54,14 @@ export function EditModal(props: EditPost | EditComment) {
     if (!user || !profile) return setError('You must be signed in.');
     if (props.kind === 'post' && !title.trim()) return setError('Title is required.');
     if (!body.trim()) return setError('Body cannot be empty.');
+    if (props.kind === 'post' && title.trim().length > MAX_POST_TITLE_LENGTH) {
+      return setError(`Title must be ${MAX_POST_TITLE_LENGTH} characters or fewer.`);
+    }
+    const maxBodyLength =
+      props.kind === 'post' ? MAX_POST_BODY_LENGTH : MAX_COMMENT_BODY_LENGTH;
+    if (body.trim().length > maxBodyLength) {
+      return setError(`Body must be ${maxBodyLength} characters or fewer.`);
+    }
 
     setBusy(true);
     try {
@@ -101,7 +114,12 @@ export function EditModal(props: EditPost | EditComment) {
           {props.kind === 'post' && (
             <>
               <Text style={styles.label}>Title</Text>
-              <FormInput value={title} onChangeText={setTitle} placeholder="Title" />
+              <FormInput
+                value={title}
+                onChangeText={setTitle}
+                placeholder="Title"
+                maxLength={MAX_POST_TITLE_LENGTH}
+              />
             </>
           )}
 
@@ -109,6 +127,9 @@ export function EditModal(props: EditPost | EditComment) {
           <FormInput
             value={body}
             onChangeText={setBody}
+            maxLength={
+              props.kind === 'post' ? MAX_POST_BODY_LENGTH : MAX_COMMENT_BODY_LENGTH
+            }
             placeholder="Body"
             multiline
             style={{ height: 160, paddingTop: 14 }}

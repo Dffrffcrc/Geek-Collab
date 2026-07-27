@@ -1,0 +1,6 @@
+export const MAX_FORUM_NAME_LENGTH = 100;
+export const MAX_FORUM_DESCRIPTION_LENGTH = 2_000;
+export const MAX_POST_TITLE_LENGTH = 160;
+export const MAX_POST_BODY_LENGTH = 20_000;
+export const MAX_COMMENT_BODY_LENGTH = 10_000;
+export const MAX_ATTACHMENTS_PER_ITEM = 10;

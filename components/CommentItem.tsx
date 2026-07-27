@@ -29,6 +29,7 @@ import { RoleTag, UserRoleTags, useUserRole } from './RoleTag';
 import { PostAttachments } from './PostAttachments';
 import { InlineComposer } from './InlineComposer';
 import { deleteAttachment, type Attachment } from '../lib/uploads';
+import { MAX_COMMENT_BODY_LENGTH } from '../lib/content-limits';
 import type { Timestamp } from 'firebase/firestore';
 
 export type Comment = {
@@ -113,6 +114,9 @@ export function CommentItem({
     setReplyError(null);
     const t = replyText.trim();
     if (!t && replyAttachments.length === 0) return;
+    if (t.length > MAX_COMMENT_BODY_LENGTH) {
+      return setReplyError(`Reply must be ${MAX_COMMENT_BODY_LENGTH} characters or fewer.`);
+    }
     if (!user || !profile) return setReplyError('You must be signed in.');
     const blocked = violatesContentFilter(t);
     if (blocked) {

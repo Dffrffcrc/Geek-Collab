@@ -164,6 +164,7 @@ export function ReportModal({
                 placeholder="Optional. Give moderators more context."
                 value={details}
                 onChangeText={setDetails}
+                maxLength={1000}
                 multiline
                 style={{ height: 110, paddingTop: 14 }}
               />

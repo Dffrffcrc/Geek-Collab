@@ -20,6 +20,10 @@ import { XIcon } from './Icons';
 import { AttachmentPicker, type AttachmentPickerHandle } from './AttachmentPicker';
 import { DropZone } from './DropZone';
 import { deleteAttachment, type Attachment } from '../lib/uploads';
+import {
+  MAX_POST_BODY_LENGTH,
+  MAX_POST_TITLE_LENGTH,
+} from '../lib/content-limits';
 
 export function PostComposer({
   forumSlug,
@@ -45,6 +49,12 @@ export function PostComposer({
     const b = body.trim();
     if (!t) return setError('Add a title.');
     if (!b) return setError('Add some text.');
+    if (t.length > MAX_POST_TITLE_LENGTH) {
+      return setError(`Title must be ${MAX_POST_TITLE_LENGTH} characters or fewer.`);
+    }
+    if (b.length > MAX_POST_BODY_LENGTH) {
+      return setError(`Post must be ${MAX_POST_BODY_LENGTH} characters or fewer.`);
+    }
     if (!user || !profile) return setError('You must be signed in.');
     const blocked = violatesContentFilter(t) ?? violatesContentFilter(b);
     if (blocked) {
@@ -120,11 +130,17 @@ export function PostComposer({
       </View>
 
       <DropZone onFiles={(files) => pickerRef.current?.addFiles(files)}>
-        <FormInput placeholder="Title" value={title} onChangeText={setTitle} />
+        <FormInput
+          placeholder="Title"
+          value={title}
+          onChangeText={setTitle}
+          maxLength={MAX_POST_TITLE_LENGTH}
+        />
         <FormInput
           placeholder="Write something…"
           value={body}
           onChangeText={setBody}
+          maxLength={MAX_POST_BODY_LENGTH}
           multiline
           style={{ height: 140, paddingTop: 14 }}
         />

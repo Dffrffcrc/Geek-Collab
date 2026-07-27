@@ -5,6 +5,38 @@ service cloud.firestore {
     // ---- helpers ---------------------------------------------------------
     function isSignedIn() { return request.auth != null; }
 
+    function currentProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasCurrentAuthorIdentity(data) {
+      return data.authorUid == request.auth.uid &&
+             data.authorUsername == currentProfile().username &&
+             data.authorDisplayName == currentProfile().displayName;
+    }
+
+    function isBoundedString(value, maxLength) {
+      return value is string && value.size() > 0 && value.size() <= maxLength;
+    }
+
+    function isOptionalBoundedString(data, field, maxLength) {
+      return !data.keys().hasAny([field]) ||
+             (data[field] is string && data[field].size() <= maxLength);
+    }
+
+    function hasBoundedAttachments(data) {
+      return !data.keys().hasAny(['attachments']) ||
+             (data.attachments is list && data.attachments.size() <= 10);
+    }
+
+    function counterMovesAtMostOne(field) {
+      return resource.data[field] is int &&
+             request.resource.data[field] is int &&
+             request.resource.data[field] >= 0 &&
+             request.resource.data[field] >= resource.data[field] - 1 &&
+             request.resource.data[field] <= resource.data[field] + 1;
+    }
+
     function forumIsActive(slug) {
       return get(/databases/$(database)/documents/forums/$(slug)).data.closesAt > request.time;
     }
@@ -44,13 +76,41 @@ service cloud.firestore {
     // ---- users -----------------------------------------------------------
     match /users/{uid} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.auth.uid == uid;
-      // username, usernameLower, and email are immutable after creation —
-      // changing them would bypass the admin allowlist check in isAdmin().
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasAll([
+             'email', 'username', 'usernameLower', 'displayName',
+             'authProvider', 'createdAt'
+           ])
+        && request.resource.data.keys().hasOnly([
+             'email', 'username', 'usernameLower', 'displayName',
+             'phoneNumber', 'photoURL', 'authProvider', 'createdAt'
+           ])
+        && request.resource.data.username.matches('^[A-Za-z0-9_.-]{1,20}$')
+        && request.resource.data.usernameLower == request.resource.data.username.lower()
+        && isBoundedString(request.resource.data.displayName, 40)
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.authProvider == 'portal'
+        && request.resource.data.createdAt == request.time;
+      // Identity fields are immutable. A user may only update the profile
+      // fields that the current client actually owns.
       allow update: if isSignedIn()
         && request.auth.uid == uid
-        && !request.resource.data.diff(resource.data).affectedKeys()
-             .hasAny(['username', 'usernameLower', 'email']);
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['displayName', 'bio', 'photoURL', 'recentForums'])
+        && isBoundedString(request.resource.data.displayName, 40)
+        && isOptionalBoundedString(request.resource.data, 'bio', 240)
+        && (
+             !request.resource.data.keys().hasAny(['photoURL']) ||
+             request.resource.data.photoURL == null ||
+             (request.resource.data.photoURL is string &&
+              request.resource.data.photoURL.size() <= 2048)
+           )
+        && (
+             !request.resource.data.keys().hasAny(['recentForums']) ||
+             (request.resource.data.recentForums is list &&
+              request.resource.data.recentForums.size() <= 5)
+           );
       // Account deletion — the user can delete their own; admins can delete
       // anyone (paired with the ban flow so a banned account can be fully
       // removed after moderation). Both paths always delete the paired
@@ -59,15 +119,14 @@ service cloud.firestore {
     }
 
     // ---- usernames index (username->uid lookup) -------
-    // Read is public because signup.tsx checks whether a username is taken
-    // BEFORE creating the auth account (there's no signed-in user yet at
-    // that point). Usernames are non-sensitive public identifiers (they
-    // appear in @mentions and profile URLs), so relaxing this to `if true`
-    // costs nothing security-wise and fixes the "permission-denied on
-    // signup" error.
+    // Portal OIDC happens before profile completion, so username availability
+    // checks never need anonymous access.
     match /usernames/{name} {
-      allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && name.matches('^[a-z0-9_.-]{1,20}$')
+                    && request.resource.data.keys().hasOnly(['uid'])
+                    && request.resource.data.uid == request.auth.uid;
       // Owner can release their own username on self-delete. Admins can
       // release any username as part of the admin-initiated account
       // deletion of a banned user.
@@ -85,8 +144,12 @@ service cloud.firestore {
       allow create: if isSignedIn()
                     && !userTimedOut()
                     && request.resource.data.reporterUid == request.auth.uid
+                    && request.resource.data.reporterUsername == currentProfile().username
                     && request.resource.data.reportedUid is string
-                    && request.resource.data.reportedUid != request.auth.uid;
+                    && request.resource.data.reportedUid != request.auth.uid
+                    && isBoundedString(request.resource.data.reason, 500)
+                    && request.resource.data.status == 'open'
+                    && request.resource.data.createdAt == request.time;
       allow update, delete: if isAdmin();
     }
 
@@ -95,7 +158,16 @@ service cloud.firestore {
     // per-forum /mutes subcollection instead.
     match /timeouts/{uid} {
       allow read: if isSignedIn();
-      allow create, update: if isAdmin();
+      allow create, update: if isAdmin()
+                            && request.resource.data.timedOutBy == request.auth.uid
+                            && request.resource.data.timedOutByUsername ==
+                                 currentProfile().username
+                            && isBoundedString(request.resource.data.reason, 500)
+                            && request.resource.data.createdAt == request.time
+                            && (
+                              request.resource.data.expiresAt == null ||
+                              request.resource.data.expiresAt is timestamp
+                            );
       allow delete: if isAdmin();
     }
 
@@ -116,14 +188,49 @@ service cloud.firestore {
     // ---- forums ---------------------------------------------------------
     match /forums/{slug} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && !userTimedOut();
-      allow update: if isSignedIn() && (
-        request.auth.uid == resource.data.createdBy ||
-        isModOf(slug) ||
-        isAdmin() ||
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['postCount', 'activeUserCount'])
-      );
+      allow create: if isAdmin()
+                    && !userTimedOut()
+                    && request.resource.data.keys().hasAll([
+                         'name', 'slug', 'description', 'closesAt', 'createdAt',
+                         'createdBy', 'moderatorUids', 'postCount'
+                       ])
+                    && request.resource.data.keys().hasOnly([
+                         'name', 'slug', 'description', 'closesAt', 'createdAt',
+                         'createdBy', 'moderatorUids', 'postCount'
+                       ])
+                    && request.resource.data.slug == slug
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.createdAt == request.time
+                    && isBoundedString(request.resource.data.name, 100)
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() <= 2000
+                    && request.resource.data.closesAt is timestamp
+                    && request.resource.data.closesAt > request.time
+                    && request.resource.data.moderatorUids is list
+                    && request.resource.data.moderatorUids.size() <= 20
+                    && request.auth.uid in request.resource.data.moderatorUids
+                    && request.resource.data.postCount == 0;
+      allow update: if isSignedIn()
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['slug', 'createdBy', 'createdAt'])
+        && isBoundedString(request.resource.data.name, 100)
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 2000
+        && request.resource.data.moderatorUids is list
+        && request.resource.data.moderatorUids.size() <= 20
+        && (
+          isAdmin() ||
+          (
+            isModOf(slug) &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['description', 'closesAt'])
+          ) ||
+          (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['postCount']) &&
+            request.resource.data.postCount == resource.data.postCount + 1
+          )
+        );
       // Only admins (with an /admins/{uid} doc) can delete a forum, even
       // a closed (read-only) one. The client cleans up subcollections
       // first; subcollection delete rules below also allow admins.
@@ -133,7 +240,17 @@ service cloud.firestore {
       // anyone (including other admins).
       match /mutes/{uid} {
         allow read: if isSignedIn();
-        allow create: if isAdmin() || (isModOf(slug) && !targetIsAdmin(uid));
+        allow create: if (
+                        isAdmin() ||
+                        (isModOf(slug) && !targetIsAdmin(uid))
+                      )
+                      && request.resource.data.mutedBy == request.auth.uid
+                      && request.resource.data.mutedAt == request.time
+                      && (
+                        request.resource.data.reason == null ||
+                        (request.resource.data.reason is string &&
+                         request.resource.data.reason.size() <= 500)
+                      );
         allow delete: if isModOf(slug) || isAdmin();
         allow update: if false;
       }
@@ -153,7 +270,18 @@ service cloud.firestore {
       // doc whose parent forum has been removed.
       match /activity/{eventId} {
         allow read: if isAdmin() || isModOf(slug);
-        allow create: if isSignedIn();
+        allow create: if isSignedIn()
+                      && request.resource.data.actorUid == request.auth.uid
+                      && request.resource.data.actorUsername == currentProfile().username
+                      && isBoundedString(request.resource.data.type, 40)
+                      && isOptionalBoundedString(request.resource.data, 'details', 500)
+                      && (
+                        !request.resource.data.type.matches(
+                          '^(post_quarantined|post_unquarantined|user_muted|user_unmuted|user_timed_out|report_resolved)$'
+                        ) ||
+                        isModOf(slug) ||
+                        isAdmin()
+                      );
         allow update: if false;
         allow delete: if isAdmin() || isModOf(slug);
       }
@@ -167,7 +295,11 @@ service cloud.firestore {
                     || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
         allow create: if isSignedIn()
                       && !userTimedOut()
-                      && request.resource.data.reporterUid == request.auth.uid;
+                      && request.resource.data.reporterUid == request.auth.uid
+                      && request.resource.data.reporterUsername == currentProfile().username
+                      && isBoundedString(request.resource.data.reason, 40)
+                      && isOptionalBoundedString(request.resource.data, 'details', 1000)
+                      && request.resource.data.status == 'open';
         allow update, delete: if isModOf(slug) || isAdmin();
       }
 
@@ -178,21 +310,56 @@ service cloud.firestore {
         allow create: if isSignedIn()
                       && !userTimedOut()
                       && !userMutedIn(slug)
-                      && request.resource.data.authorUid == request.auth.uid
+                      && hasCurrentAuthorIdentity(request.resource.data)
+                      && request.resource.data.slug == postId
+                      && isBoundedString(request.resource.data.title, 160)
+                      && isBoundedString(request.resource.data.body, 20000)
+                      && hasBoundedAttachments(request.resource.data)
+                      && request.resource.data.likeCount == 0
+                      && request.resource.data.commentCount == 0
+                      && request.resource.data.nonAuthorCommentCount == 0
+                      && request.resource.data.reportCount == 0
+                      && request.resource.data.isQuarantined == false
+                      && request.resource.data.isDeleted == false
                       && forumIsActive(slug);
 
         // Author can edit own; mods can edit any (including isQuarantined).
         // Anyone signed-in can update only the denormalized counters.
         // isPinned is admin-only — enforced by the outer AND before any branch.
-        allow update: if isSignedIn() &&
-          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPinned']) || isAdmin()) && (
-          (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
+        allow update: if isSignedIn()
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['slug', 'authorUid', 'authorUsername', 'createdAt'])
+          && isBoundedString(request.resource.data.title, 160)
+          && isBoundedString(request.resource.data.body, 20000)
+          && hasBoundedAttachments(request.resource.data)
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPinned']) || isAdmin()) && (
+          (
+            resource.data.authorUid == request.auth.uid &&
+            !userTimedOut() &&
+            !userMutedIn(slug) &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['title', 'body', 'editedAt', 'attachments'])
+          ) ||
           // Mods can update anyone's post except admins'.
-          (isModOf(slug) && !targetIsAdmin(resource.data.authorUid)) ||
+          (
+            isModOf(slug) &&
+            !targetIsAdmin(resource.data.authorUid) &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly([
+                'title', 'body', 'editedAt', 'attachments', 'isQuarantined',
+                'isDeleted', 'deletedAt', 'deletedBy', 'deletedByUsername'
+              ])
+          ) ||
           isAdmin() ||
           // Counter-only writes (any signed-in user — used for likes/comments).
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['likeCount', 'commentCount', 'nonAuthorCommentCount', 'reportCount']) ||
+          (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['likeCount', 'commentCount', 'nonAuthorCommentCount', 'reportCount']) &&
+            counterMovesAtMostOne('likeCount') &&
+            counterMovesAtMostOne('commentCount') &&
+            counterMovesAtMostOne('nonAuthorCommentCount') &&
+            counterMovesAtMostOne('reportCount')
+          ) ||
           // Author can soft-delete their own post even if currently muted/
           // timed out — you can always remove your own content.
           (resource.data.authorUid == request.auth.uid &&
@@ -212,12 +379,33 @@ service cloud.firestore {
           allow create: if isSignedIn()
                         && !userTimedOut()
                         && !userMutedIn(slug)
-                        && request.resource.data.authorUid == request.auth.uid
+                        && hasCurrentAuthorIdentity(request.resource.data)
+                        && isBoundedString(request.resource.data.body, 10000)
+                        && hasBoundedAttachments(request.resource.data)
                         && forumIsActive(slug);
-          allow update: if isSignedIn() && (
-            (resource.data.authorUid == request.auth.uid && !userTimedOut() && !userMutedIn(slug)) ||
+          allow update: if isSignedIn()
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(['authorUid', 'authorUsername', 'createdAt'])
+            && isBoundedString(request.resource.data.body, 10000)
+            && hasBoundedAttachments(request.resource.data)
+            && (
+            (
+              resource.data.authorUid == request.auth.uid &&
+              !userTimedOut() &&
+              !userMutedIn(slug) &&
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['body', 'editedAt', 'attachments'])
+            ) ||
             // Mods can edit any comment except admins'.
-            (isModOf(slug) && !targetIsAdmin(resource.data.authorUid)) ||
+            (
+              isModOf(slug) &&
+              !targetIsAdmin(resource.data.authorUid) &&
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly([
+                  'body', 'editedAt', 'attachments', 'isDeleted', 'deletedAt',
+                  'deletedBy', 'deletedByUsername'
+                ])
+            ) ||
             isAdmin() ||
             // Author can soft-delete their own comment regardless of mute/timeout.
             (resource.data.authorUid == request.auth.uid &&
