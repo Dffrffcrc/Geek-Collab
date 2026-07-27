@@ -2,9 +2,9 @@ import { View, Text, Image, TouchableOpacity, StyleSheet, Linking } from 'react-
 import { COLORS, BODY_FONT } from '../lib/theme';
 import { faviconFor, hostnameFor, pathSummaryFor } from '../lib/link-previews';
 
-// One card per detected URL in a post body. Favicon + domain + trimmed URL.
-// No title / description yet — those need a server-side OG scrape. When we
-// add that, only this component changes; the extraction API stays the same.
+
+
+
 export function LinkPreviewCard({
   url,
   onPress,

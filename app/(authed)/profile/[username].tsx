@@ -62,7 +62,7 @@ export default function PublicProfile() {
     if (!username) return;
     let cancelled = false;
     (async () => {
-      // Username -> uid via the public usernames index.
+
       const lookup = await getDoc(doc(db, 'usernames', username.toLowerCase()));
       if (!lookup.exists()) {
         if (!cancelled) setProfile(null);
@@ -99,9 +99,9 @@ export default function PublicProfile() {
               .filter((d) => {
                 const dd = d.data();
                 if (dd.isDeleted === true) return false;
-                // Quarantined posts are for admin-only visibility; hide
-                // them from every other viewer including the author's own
-                // profile.
+
+
+
                 if (dd.isQuarantined === true && !isAdmin) return false;
                 return true;
               })
@@ -135,9 +135,9 @@ export default function PublicProfile() {
     if (!reason || !reason.trim()) return;
     setReportBusy(true);
     try {
-      // Global userReports collection — an admin-only audit trail. Rules
-      // allow any signed-in user to create (with their own reporterUid),
-      // and admins to read/resolve.
+
+
+
       await addDoc(collection(db, 'userReports'), {
         reportedUid: profile.uid,
         reportedUsername: profile.username,

@@ -32,39 +32,39 @@ type PendingUpload = {
   previewUrl?: string;
 };
 
-// Public handle for parents that want to feed files programmatically —
-// used by the paste/drop DropZone wrapper so a pasted screenshot or a
-// dropped file lands in the same pending-upload pipeline as the picker
-// dialog.
+
+
+
+
 export type AttachmentPickerHandle = {
   addFiles: (files: File[]) => void;
 };
 
-// Picker + uploads list combined. The parent owns the committed `attachments`
-// array (the ones that finished uploading) and is notified via onChange every
-// time a new one completes or an existing one is removed. Pending in-flight
-// uploads live in local state — the parent doesn't see them until they're
-// done, so it can't accidentally save a half-uploaded record.
+
+
+
+
+
 export const AttachmentPicker = forwardRef<
   AttachmentPickerHandle,
   {
     attachments: Attachment[];
     onChange: (next: Attachment[]) => void;
     disabled?: boolean;
-    // When true, hide the "Add file" button + hint text and render only the
-    // pending/committed uploads list. Used by inline composers that provide
-    // their own trigger (an image icon inside the input) and drive uploads
-    // via the imperative addFiles handle.
+
+
+
+
     hideTrigger?: boolean;
   }
 >(function AttachmentPicker({ attachments, onChange, disabled, hideTrigger }, ref) {
   const { user } = useAuth();
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [pickerError, setPickerError] = useState<string | null>(null);
-  // Mirror `attachments` in a ref so simultaneously-completing uploads see
-  // each other's appends even before React re-renders. Without this, two
-  // uploads finishing in the same tick would each read the stale prop and
-  // one would clobber the other's onChange.
+
+
+
+
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
 
@@ -73,9 +73,9 @@ export const AttachmentPicker = forwardRef<
     () => ({
       addFiles: (files: File[]) => acceptFiles(files),
     }),
-    // acceptFiles is a stable closure that uses refs for attachments and
-    // reads `user` at call time from the closure — no need to redeclare
-    // per render since React re-runs useImperativeHandle each render anyway.
+
+
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -87,8 +87,8 @@ export const AttachmentPicker = forwardRef<
     acceptFiles(files);
   }
 
-  // Shared file-processing pipeline used by the picker dialog, paste events,
-  // and drag-drop. Validates, starts uploads, tracks pending state.
+
+
   function acceptFiles(files: File[]) {
     setPickerError(null);
     if (!user || files.length === 0) return;
@@ -163,8 +163,8 @@ export const AttachmentPicker = forwardRef<
     const target = attachments[index];
     const next = attachments.filter((_, i) => i !== index);
     onChange(next);
-    // Best-effort — even if the object was never in Storage (shouldn't happen)
-    // the delete is silent.
+
+
     if (target) deleteAttachment(target);
   }
 

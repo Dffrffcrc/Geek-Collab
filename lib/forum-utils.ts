@@ -4,7 +4,7 @@ export function slugify(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '') // strip diacritics
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-')
@@ -16,7 +16,7 @@ export function toMillis(d: Timestamp | Date | number | null | undefined): numbe
   if (!d) return 0;
   if (typeof d === 'number') return d;
   if (d instanceof Date) return d.getTime();
-  // Firestore Timestamp
+
   if (typeof (d as Timestamp).toMillis === 'function') return (d as Timestamp).toMillis();
   return 0;
 }
@@ -56,10 +56,10 @@ export function timeAgo(d: Timestamp | Date | number): string {
   return `${months}mo ago`;
 }
 
-// Popularity = likes + (engagement-comments * weight).
-// "Engagement comments" = non-author comments only (the author replying to
-// their own thread shouldn't inflate popularity). Older posts that don't have
-// `nonAuthorCommentCount` fall back to total `commentCount`.
+
+
+
+
 const COMMENT_WEIGHT = 3;
 export function popularity(post: {
   likeCount?: number;
@@ -71,23 +71,23 @@ export function popularity(post: {
   return likes + engagement * COMMENT_WEIGHT;
 }
 
-// Trim a body for the forum-list preview card. Strips common markdown
-// syntax so headings, bold/italic, links, code fences etc. don't render as
-// literal asterisks/hashes/backticks in the preview.
+
+
+
 export function previewText(body: string, max = 160): string {
   if (!body) return '';
   const stripped = body
-    .replace(/```[\s\S]*?```/g, '') // fenced code blocks
-    .replace(/`([^`]+)`/g, '$1') // inline code
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // images
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links → label
-    .replace(/^\s{0,3}#{1,6}\s+/gm, '') // headings
-    .replace(/^\s*>+\s?/gm, '') // blockquotes
-    .replace(/^\s*[-*+]\s+/gm, '') // bullet lists
-    .replace(/^\s*\d+\.\s+/gm, '') // numbered lists
-    .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold
-    .replace(/(\*|_)(.*?)\1/g, '$2') // italic
-    .replace(/~~(.*?)~~/g, '$1') // strikethrough
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*>+\s?/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/(\*\*|__)(.*?)\1/g, '$2')
+    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/~~(.*?)~~/g, '$1')
     .replace(/\s+/g, ' ');
   const trimmed = stripped.trim();
   if (trimmed.length <= max) return trimmed;

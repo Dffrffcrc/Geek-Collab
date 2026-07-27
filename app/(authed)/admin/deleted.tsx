@@ -84,9 +84,9 @@ export default function AdminDeleted() {
   }, []);
 
   useEffect(() => {
-    // Comments live in `forums/{slug}/posts/{postId}/comments/{commentId}`,
-    // so we use a collection-group query keyed by isDeleted. Needs the
-    // matching collection-group index in firestore.indexes.json.
+
+
+
     const q = query(
       collectionGroup(db, 'comments'),
       where('isDeleted', '==', true),

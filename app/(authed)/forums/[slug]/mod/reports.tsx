@@ -42,14 +42,14 @@ export default function ReportsTab() {
   const [reports, setReports] = useState<Report[] | null>(null);
   const [search, setSearch] = useState('');
   const [reasonFilter, setReasonFilter] = useState<string>('All');
-  // Track per-target soft-delete and quarantine state so we can hide
-  // already-applied actions (Delete on already-deleted content, Quarantine
-  // on already-quarantined posts).
+
+
+
   const [deletedTargets, setDeletedTargets] = useState<Record<string, boolean>>({});
   const [quarantinedPosts, setQuarantinedPosts] = useState<Record<string, boolean>>({});
-  // Forum-scope mute presence (uid -> muted) and global timeout presence
-  // (uid -> active timeout). Drive disabled-state for Mute and Timeout
-  // buttons so a mod can't fire the same action twice in a row.
+
+
+
   const [mutedUids, setMutedUids] = useState<Set<string>>(new Set());
   const [timedOutUids, setTimedOutUids] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<string | null>(null);
@@ -70,18 +70,18 @@ export default function ReportsTab() {
       },
       (err) => {
         console.warn('[mod:reports] subscribe failed:', err);
-        // Clear the loading spinner so the page doesn't appear stuck.
+
         setReports([]);
         setActionError(`reports: ${err.code ?? err.message}`);
       },
     );
   }, [slug]);
 
-  // For each open report, fetch the underlying post/comment once to know if
-  // it's already soft-deleted (and for posts, whether it's quarantined).
-  // Used to hide actions that have already been applied — clicking
-  // Delete/Quarantine on already-handled content was a no-op that confused
-  // mods.
+
+
+
+
+
   useEffect(() => {
     if (!slug || !reports) return;
     const open = reports.filter((r) => r.status === 'open' || r.status === 'quarantined');
@@ -126,7 +126,7 @@ export default function ReportsTab() {
     };
   }, [slug, reports, deletedTargets, quarantinedPosts]);
 
-  // Forum-scope mute presence — drives the "Mute" button's disabled state.
+
   useEffect(() => {
     if (!slug) return;
     return onSnapshot(
@@ -136,9 +136,9 @@ export default function ReportsTab() {
     );
   }, [slug]);
 
-  // Global active-timeout presence — drives the "Timeout" button's disabled
-  // state. Filters out timeouts whose `expiresAt` has elapsed, so an old
-  // expired timeout doesn't permanently grey out the button.
+
+
+
   useEffect(() => {
     return onSnapshot(
       collection(db, 'timeouts'),
@@ -265,10 +265,10 @@ export default function ReportsTab() {
     }
   }
 
-  // Mods clear a report by marking it resolved. We used to also expose a
-  // "Dismiss" button that hard-deleted the report doc, but it did the same
-  // thing visually (vanished from the open queue) while losing the audit
-  // trail. One button, one outcome.
+
+
+
+
   async function resolveReport(reportId: string) {
     setActionError(null);
     try {

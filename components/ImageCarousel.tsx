@@ -38,9 +38,9 @@ export function ImageCarousel({
     if (w > 0 && Math.abs(w - width) > 0.5) setWidth(w);
   }
 
-  // Default tap behaviour: open the in-app lightbox. Callers (e.g. PostCard
-  // in card mode) can override with `onImagePress` to navigate to the post
-  // detail instead — the lightbox never opens in that path.
+
+
+
   function open(url: string, i: number) {
     if (onImagePress) onImagePress(url, i);
     else setLightboxIndex(i);
@@ -54,11 +54,11 @@ export function ImageCarousel({
     }
   }
 
-  // Only commit index changes when scroll is close to a snap point. Rounding
-  // the raw offset mid-drag causes the dots to flip-flop as the finger
-  // crosses each page midpoint; that's what the "blinky and stuttery" bug
-  // was. Tight neighborhood keeps them stable during motion and settles them
-  // exactly once when the swipe lands.
+
+
+
+
+
   function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
     if (width === 0) return;
     const raw = e.nativeEvent.contentOffset.x / width;
@@ -68,9 +68,9 @@ export function ImageCarousel({
     }
   }
 
-  // Belt-and-braces: when momentum ends we're definitively on a page, so
-  // commit the exact index in case the fast-motion threshold above happened
-  // to skip past a snap point without triggering an update.
+
+
+
   function onSettle(e: NativeSyntheticEvent<NativeScrollEvent>) {
     if (width === 0) return;
     const rounded = Math.round(e.nativeEvent.contentOffset.x / width);
@@ -172,17 +172,17 @@ export function ImageCarousel({
 
 const styles = StyleSheet.create({
   wrap: {
-    // Explicit width + stretch so nested-flex quirks on RN Web don't collapse
-    // this subtree. Was the root cause of the previous "cards are all over
-    // the place" regression.
+
+
+
     width: '100%',
     alignSelf: 'stretch',
     marginTop: 12,
   },
   frame: {
     width: '100%',
-    // Browser sets height from aspectRatio the instant width is known — no
-    // JS measurement race, no layout shift after mount.
+
+
     aspectRatio: ASPECT,
     backgroundColor: COLORS.bgDark,
     borderRadius: 10,
@@ -194,9 +194,9 @@ const styles = StyleSheet.create({
   fill: { width: '100%', height: '100%' },
   scrollContent: { flexDirection: 'row' },
   slide: { height: '100%' },
-  // Fallback size while width measurement hasn't landed yet. Doesn't matter
-  // visually — the frame is already sized via aspectRatio, so this only
-  // affects the ScrollView's off-screen content sizing.
+
+
+
   slideFallback: { width: 1 },
   image: { width: '100%', height: '100%' },
   arrow: {

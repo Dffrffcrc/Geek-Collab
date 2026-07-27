@@ -90,9 +90,9 @@ export default function PostDetail() {
   const [commentAttachments, setCommentAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Comment sort — persisted per-user in localStorage so the choice sticks
-  // across posts and reloads. `oldest` (chronological) is the historical
-  // default so unchanged users see the same ordering they always had.
+
+
+
   const [commentSort, setCommentSort] = useState<'oldest' | 'newest' | 'popular'>(() => {
     if (typeof window === 'undefined') return 'oldest';
     const stored = window.localStorage.getItem('geekcollab.commentSort');
@@ -189,7 +189,7 @@ export default function PostDetail() {
       });
       await runTransaction(db, async (tx) => {
         const updates: Record<string, unknown> = { commentCount: increment(1) };
-        // Only count toward popularity if a non-author commented.
+
         if (post && user.uid !== post.authorUid) {
           updates.nonAuthorCommentCount = increment(1);
         }
@@ -216,7 +216,7 @@ export default function PostDetail() {
     if (post.isDeleted) return;
     if (!confirm('Delete this post?')) return;
     try {
-      // Soft delete — admins can still see and restore.
+
       await updateDoc(doc(db, 'forums', slug, 'posts', postSlug), {
         isDeleted: true,
         deletedAt: serverTimestamp(),
@@ -302,7 +302,7 @@ export default function PostDetail() {
   const closed = isClosed(forum.closesAt);
   const isAuthor = !!user && user.uid === post.authorUid;
 
-  // Block the post detail entirely for non-mods if it's quarantined.
+
   if (post.isQuarantined && !isMod && !isAdmin) {
     return (
       <View style={styles.notFound}>
@@ -313,7 +313,7 @@ export default function PostDetail() {
       </View>
     );
   }
-  // Same for soft-deleted posts: invisible except to mods/admins for audit.
+
   if (post.isDeleted && !isMod && !isAdmin) {
     return (
       <View style={styles.notFound}>
@@ -325,8 +325,8 @@ export default function PostDetail() {
     );
   }
 
-  // Admins can moderate any author (including other admins). Mods keep
-  // the no-acting-on-admins guard.
+
+
   const canModerate = isAdmin || (isMod && !isAdminUsername(post.authorUsername));
   const actions: MenuAction[] = [];
   if (isAuthor && !post.isDeleted) actions.push({ label: 'Edit', onPress: () => setEditOpen(true) });
@@ -499,14 +499,14 @@ export default function PostDetail() {
         <Text style={styles.empty}>No comments yet.</Text>
       ) : (
         (() => {
-          // Build a parent→children map so CommentItem can render the tree
-          // recursively. Soft-deleted comments stay visible to per-forum
-          // mods (they need an audit view inside the thread). Admins
-          // intentionally do NOT see them here — they're meant to use the
-          // dedicated deleted view, and the previous behavior made it look
-          // like "delete didn't work" because the comment kept appearing
-          // tagged DELETED. Note the admin exclusion still applies even
-          // when the admin happens to also be in the forum's moderatorUids.
+
+
+
+
+
+
+
+
           const visible = comments.filter((c) => !c.isDeleted || (isMod && !isAdmin));
           const map = new Map<string | null, Comment[]>();
           for (const c of visible) {
@@ -515,9 +515,9 @@ export default function PostDetail() {
             list.push(c);
             map.set(k, list);
           }
-          // Nested replies always render chronologically inside their thread
-          // (a reply that turned up later shouldn't jump above the message it
-          // replies to). Only the top-level list respects the sort choice.
+
+
+
           for (const [, list] of map) {
             list.sort(
               (a, b) =>
@@ -528,9 +528,9 @@ export default function PostDetail() {
           if (commentSort === 'newest') {
             topLevel.reverse();
           } else if (commentSort === 'popular') {
-            // "Popular" = most direct-or-deep replies. Sum descendants for
-            // each top-level comment by walking the map. Non-author replies
-            // aren't specially weighted — replies are replies.
+
+
+
             const countDescendants = (id: string): number => {
               const kids = map.get(id) ?? [];
               return kids.length + kids.reduce((s, k) => s + countDescendants(k.id), 0);
@@ -589,8 +589,8 @@ const styles = StyleSheet.create({
   author: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 15, fontWeight: '700' },
   handle: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
   timestamp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12 },
-  // Wrapper around state icons in the post header (quarantined, etc.).
-  // Pads for hit area + hover-tooltip target.
+
+
   stateIcon: {
     padding: 4,
     justifyContent: 'center',

@@ -107,8 +107,8 @@ export function PostComposer({
         {onCancel && (
           <TouchableOpacity
             onPress={() => {
-              // Clean up any files the user uploaded but is abandoning.
-              // Best-effort; a failed delete just leaves an orphan in Storage.
+
+
               for (const a of attachments) deleteAttachment(a);
               onCancel();
             }}

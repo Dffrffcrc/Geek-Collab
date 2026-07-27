@@ -7,8 +7,8 @@ import {
 } from 'firebase/storage';
 import { storage } from './firebase';
 
-// `path` is retained so we can call deleteObject() later when the attachment
-// is removed or the parent post is deleted.
+
+
 export type Attachment = {
   url: string;
   path: string;
@@ -20,8 +20,8 @@ export type Attachment = {
 
 export type AttachmentKind = 'image' | 'pdf' | 'pptx' | 'other';
 
-// Must stay in sync with storage.rules — rules are the source of truth, this
-// is just a fast-reject before the upload starts.
+
+
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
@@ -54,7 +54,7 @@ export function formatSize(bytes: number): string {
   return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
 }
 
-// Strips separators/control chars so a hostile filename can't escape the uid/ scope.
+
 function sanitizeFilename(name: string): string {
   const trimmed = name
     .replace(/[/\\?%*:|"<>\x00-\x1f]/g, '_')
@@ -64,8 +64,8 @@ function sanitizeFilename(name: string): string {
   return trimmed || 'file';
 }
 
-// Deliberately not expo-image-picker/expo-document-picker: those pull native
-// modules that inflate the web bundle, and this app is web-only.
+
+
 export function pickFiles(options: {
   accept: string;
   multiple?: boolean;
@@ -82,7 +82,7 @@ export function pickFiles(options: {
     input.onchange = () => {
       resolve(input.files ? Array.from(input.files) : []);
     };
-    // Some browsers (older Safari) need the input in the DOM to fire the dialog.
+
     input.style.position = 'fixed';
     input.style.left = '-9999px';
     document.body.appendChild(input);
@@ -145,8 +145,8 @@ export function uploadFile(params: {
   return { attachment, cancel: () => task.cancel(), task };
 }
 
-// Best-effort — never throws so a rules-blocked or already-deleted object
-// doesn't crash the caller.
+
+
 export async function deleteAttachment(attachment: Attachment): Promise<void> {
   try {
     await deleteObject(ref(storage, attachment.path));

@@ -48,8 +48,8 @@ export default function ForumPage() {
   const muted = useIsMutedInForum(slug);
   const timeoutState = useTimeoutStatus();
   const compact = width < 768;
-  // Admins can open the mod panel of any forum even if they aren't listed
-  // in moderatorUids — that's the whole point of being a server admin.
+
+
   const canOpenModPanel = isMod || isAdmin;
 
   const [forum, setForum] = useState<Forum | null | undefined>(undefined);
@@ -81,14 +81,14 @@ export default function ForumPage() {
     });
   }, [user, slug, forum]);
 
-  // Mods see quarantined posts (visually flagged); everyone else has them filtered out.
-  // Apply search + sort over the visible set. NOTE: this hook must run on every
-  // render (including before the forum-loading early returns), so it stays here
-  // rather than after the conditional returns below — moving it past them
-  // breaks the rules of hooks.
+
+
+
+
+
   const visiblePosts = useMemo(() => {
-    // Hide soft-deleted posts in the regular forum view (admin sees them in
-    // /admin/deleted). Quarantined posts are visible to mods + admins only.
+
+
     const base = (posts ?? [])
       .filter((p) => !p.isDeleted)
       .filter((p) => isMod || isAdmin || !p.isQuarantined);
@@ -102,7 +102,7 @@ export default function ForumPage() {
             p.authorUsername.toLowerCase().includes(q),
         );
     return [...filtered].sort((a, b) => {
-      // Pinned posts always float above everything else.
+
       if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
       if (sort === 'popular') return popularity(b) - popularity(a);
       return (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0);
@@ -293,8 +293,8 @@ const styles = StyleSheet.create({
   bannerReason: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginTop: 4, fontStyle: 'italic' },
 
   controls: { marginBottom: 16 },
-  // Matches the Reddit-style compact pills used on the post-detail comment
-  // sort so users see the same shape/weight for the same class of action.
+
+
   sortRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   sortRowCompact: { flexWrap: 'wrap', marginTop: 4 },
   sortLabel: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 11, marginRight: 4, letterSpacing: 0.5 },

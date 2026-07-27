@@ -48,8 +48,8 @@ export default function ActivityTab() {
       },
       (err) => {
         console.warn('[mod:activity] subscribe failed:', err);
-        // Clear the spinner so the page stops looking stuck and surface
-        // why we got nothing.
+
+
         setItems([]);
         setLoadError(`${err.code ?? err.message}`);
       },

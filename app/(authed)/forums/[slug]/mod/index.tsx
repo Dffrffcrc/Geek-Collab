@@ -42,14 +42,14 @@ export default function ModDashboard() {
   useEffect(() => {
     if (!slug) return;
     const unsubs: Array<() => void> = [];
-    // Reset error list each time slug changes so we don't accumulate stale
-    // failures from a previous forum.
+
+
     setLoadErrors([]);
 
-    // Wraps an onSnapshot listener with an error callback that (a) logs,
-    // (b) appends a human-readable line to the error banner, and (c)
-    // sets the loading state to its empty value so the spinner clears
-    // and the page stops looking "stuck".
+
+
+
+
     function listen(
       label: string,
       build: () => () => void,
@@ -166,7 +166,7 @@ export default function ModDashboard() {
       return;
     setClosing(true);
     try {
-      // Setting closesAt to "now" trips isClosed() everywhere.
+
       await updateDoc(doc(db, 'forums', slug), {
         closesAt: Timestamp.fromMillis(Date.now()),
       });
@@ -194,7 +194,7 @@ export default function ModDashboard() {
       return;
     setDeleting(true);
     try {
-      // Best-effort: log the action while the forum still exists.
+
       await logActivity(slug, user.uid, profile.username, 'post_deleted', {
         targetType: 'post',
         targetId: slug,
@@ -355,10 +355,10 @@ const styles = StyleSheet.create({
   dangerHeading: { color: COLORS.error, fontFamily: HEADING_FONT, fontSize: 16, marginBottom: 6 },
   dangerHelp: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 12, marginBottom: 12, lineHeight: 18 },
   dangerBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
-  // Both danger-zone buttons read as destructive — close turns the forum
-  // read-only, delete wipes it. Close is a hollow red outline, delete is
-  // solid red, so they share the visual language without becoming
-  // identical.
+
+
+
+
   closeBtn: {
     paddingHorizontal: 18,
     paddingVertical: 10,

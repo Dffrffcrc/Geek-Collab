@@ -2,10 +2,10 @@ import { StyleSheet, Linking } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { COLORS, BODY_FONT, HEADING_FONT } from '../lib/theme';
 
-// Themed markdown renderer for post and comment bodies. CommonMark-compatible
-// (bold, italic, lists, links, code, blockquote, headings). We deliberately
-// disable images — media uploads are deferred and inline image markdown would
-// pull arbitrary external assets.
+
+
+
+
 export function MarkdownBody({
   children,
   size = 'normal',
@@ -22,7 +22,7 @@ export function MarkdownBody({
         return false;
       }}
       rules={{
-        // Strip images outright until we have a media host.
+
         image: () => null,
       }}
     >

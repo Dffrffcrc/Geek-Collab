@@ -15,8 +15,8 @@ type AuthState = {
   user: User | null;
   initializing: boolean;
   authError: string | null;
-  // True when Firebase Auth has a user but users/{uid} doesn't exist — the
-  // caller should route to /complete-profile before entering the app.
+
+
   needsProfile: boolean;
   refreshProfile: () => Promise<void>;
 };
@@ -73,9 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
           setUser(u);
-          // Force a token refresh on sign-in so any custom claims granted
-          // (e.g. admin) since the last cached token show up right away
-          // instead of waiting for the ~1-hour rotation. Best-effort.
+
+
+
           try {
             await u.getIdToken(true);
           } catch (err) {
@@ -88,8 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } catch (err) {
             console.warn('[auth] profile check failed:', err);
             if (cancelled) return;
-            // Fail open on transient errors: better to let the user in than
-            // trap them at /complete-profile.
+
+
             setNeedsProfile(false);
           }
           setInitializing(false);

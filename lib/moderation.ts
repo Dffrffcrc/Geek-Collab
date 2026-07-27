@@ -73,11 +73,11 @@ export type Activity = {
   createdAt: Timestamp;
 };
 
-// Call-site convention:
-//   user_*    → details = target's username (no @)
-//   post_*    → details = post title if available; targetId = slug
-//   comment_* → targetId = comment id (opaque, never surfaced)
-//   report_*  → targetId = report id (opaque, never surfaced)
+
+
+
+
+
 export function describeActivity(a: Pick<Activity, 'type' | 'targetId' | 'details'>): string {
   const { type, targetId, details } = a;
   const postLabel = details ? `"${details}"` : targetId ? `"${targetId}"` : '';
@@ -117,7 +117,7 @@ export function describeActivity(a: Pick<Activity, 'type' | 'targetId' | 'detail
   }
 }
 
-// Best-effort — never block UX on a logging failure.
+
 export async function logActivity(
   forumSlug: string,
   actorUid: string,
@@ -213,8 +213,8 @@ export async function liftTimeout(targetUid: string): Promise<void> {
   await deleteDoc(doc(db, 'timeouts', targetUid));
 }
 
-// Subcollection failures are logged and skipped; the top-level doc delete
-// is what actually removes the forum from listings.
+
+
 export async function deleteForumCascading(forumSlug: string): Promise<void> {
   async function deleteAllInCollection(path: string[]): Promise<void> {
     try {
@@ -293,10 +293,10 @@ export function useIsMutedInForum(forumSlug: string | undefined | null) {
   return muted;
 }
 
-// A `timeouts/{uid}` doc with `expiresAt: null` is a permanent ban; any other
-// expiresAt is a temporary timeout. `banned` is the strict permanent case;
-// `timedOut` is the umbrella covering both so existing content-write guards
-// stay simple.
+
+
+
+
 export function useTimeoutStatus() {
   const { user } = useAuth();
   const [state, setState] = useState<{

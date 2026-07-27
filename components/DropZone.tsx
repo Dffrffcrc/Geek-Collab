@@ -2,13 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { COLORS, BODY_FONT } from '../lib/theme';
 
-// Wraps a composer so users can paste an image from the clipboard or drop
-// files anywhere inside. Both paths hand File[] to `onFiles`, which the
-// caller pipes into `AttachmentPickerHandle.addFiles`. Shows a dashed
-// overlay while a drag is over the zone so the drop target is obvious.
-//
-// Web-only. On native it renders as a passthrough — RN doesn't have a
-// clipboard/drop model comparable to the DOM's, and this app is web-first.
+
+
+
+
+
+
+
 export function DropZone({
   onFiles,
   children,
@@ -16,16 +16,16 @@ export function DropZone({
   onFiles: (files: File[]) => void;
   children: ReactNode;
 }) {
-  // `any` ref because RN Web's View accepts any host ref but the imported
-  // View type doesn't formally expose the DOM element.
+
+
   const containerRef = useRef<any>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  // Track drag-enter/leave depth so nested children entering/leaving don't
-  // flicker the overlay. Only the outermost leave clears it.
+
+
   const dragDepth = useRef(0);
 
-  // Keep the callback fresh in a ref so the listeners don't have to be
-  // re-bound on every render.
+
+
   const onFilesRef = useRef(onFiles);
   onFilesRef.current = onFiles;
 
@@ -45,15 +45,15 @@ export function DropZone({
         }
       }
       if (files.length > 0) {
-        // Only prevent default when we actually consume the paste — pastes
-        // that are just text bubble through to the underlying input.
+
+
         e.preventDefault();
         onFilesRef.current(files);
       }
     }
 
     function handleDragEnter(e: DragEvent) {
-      // Only care about drags that carry files.
+
       if (!e.dataTransfer?.types.includes('Files')) return;
       e.preventDefault();
       dragDepth.current += 1;
@@ -62,7 +62,7 @@ export function DropZone({
 
     function handleDragOver(e: DragEvent) {
       if (!e.dataTransfer?.types.includes('Files')) return;
-      // preventDefault on dragover is what makes the drop actually fire.
+
       e.preventDefault();
     }
 

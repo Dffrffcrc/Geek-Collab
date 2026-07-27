@@ -47,8 +47,8 @@ export type Comment = {
   deletedByUsername?: string;
 };
 
-// Past this depth the tree still grows logically but visually stops indenting
-// so deep threads stay readable on narrow screens.
+
+
 const INDENT_CAP = 5;
 
 export function CommentItem({
@@ -95,8 +95,8 @@ export function CommentItem({
   const [replyError, setReplyError] = useState<string | null>(null);
 
   const children = childrenByParent?.get(comment.id) ?? [];
-  // Default-collapse beyond the top level so deep threads don't dominate
-  // the page on first paint.
+
+
   const [repliesOpen, setRepliesOpen] = useState(depth === 0);
 
   const isReply = depth > 0;
@@ -104,7 +104,7 @@ export function CommentItem({
 
   function openReply() {
     setReplyError(null);
-    // Pre-fill an @mention so the recipient stays obvious as indent compresses at depth.
+
     setReplyText(`@${comment.authorUsername} `);
     setReplyOpen(true);
   }
@@ -160,7 +160,7 @@ export function CommentItem({
   }
 
   async function deleteComment() {
-    // Guard: re-running on an already-deleted comment would double-decrement commentCount.
+
     if (comment.isDeleted) return;
     if (!confirm('Delete this comment?')) return;
     if (!user || !profile) return;

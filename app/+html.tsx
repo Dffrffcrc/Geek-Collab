@@ -1,9 +1,9 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
-// Customize the document root for static-rendered web. Adds a slim, dark
-// scrollbar that matches the rest of the app and resets the body so
-// ScrollView overflow works correctly.
+
+
+
 export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="en">

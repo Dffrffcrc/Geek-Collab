@@ -54,32 +54,32 @@ export default function MyProfile() {
 
   const [posts, setPosts] = useState<AuthoredPost[] | null>(null);
 
-  // Display name edit
+
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
 
-  // Bio edit
+
   const [editingBio, setEditingBio] = useState(false);
   const [draftBio, setDraftBio] = useState('');
   const [savingBio, setSavingBio] = useState(false);
   const [bioError, setBioError] = useState<string | null>(null);
 
-  // Avatar upload
+
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
 
-  // Account deletion (unchanged from before)
+
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Load posts authored by the user across all forums. Filters soft-deleted
-  // posts always; filters quarantined posts unless the viewer is an admin
-  // (quarantine is meant to isolate content for admin review, so even the
-  // author doesn't see their quarantined post in the profile timeline).
+
+
+
+
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -123,7 +123,7 @@ export default function MyProfile() {
     };
   }, [user, isAdmin]);
 
-  // ---- Display name ----------------------------------------------------
+
   function beginEditName() {
     setDraftName(profile?.displayName ?? '');
     setNameError(null);
@@ -158,7 +158,7 @@ export default function MyProfile() {
     }
   }
 
-  // ---- Bio -------------------------------------------------------------
+
   function beginEditBio() {
     setDraftBio(profile?.bio ?? '');
     setBioError(null);
@@ -231,9 +231,9 @@ export default function MyProfile() {
     }
   }
 
-  // Setup checklist — Instagram-style "your profile is incomplete" nudge.
-  // Only shown while at least one item is undone; once everything's set, it
-  // disappears entirely so it doesn't nag users forever.
+
+
+
   const setupItems: { key: string; label: string; done: boolean; action: () => void }[] = [
     {
       key: 'photo',
@@ -249,8 +249,8 @@ export default function MyProfile() {
     },
     {
       key: 'displayName',
-      // A default display name matching username-lowercase is a strong
-      // signal the user hasn't personalised it yet.
+
+
       label: 'Set a display name',
       done:
         !!profile?.displayName &&
@@ -529,14 +529,14 @@ export default function MyProfile() {
   );
 }
 
-// Full-width scroll — the previous 720px maxWidth was cutting off long
-// posts. Uses the same padding rhythm as the forum listing so the profile
-// sits visually alongside the rest of the app.
+
+
+
 const styles = StyleSheet.create({
   scroll: { padding: 32, paddingBottom: 64 },
   scrollCompact: { padding: 16, paddingBottom: 40 },
 
-  // Identity header
+
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 20, marginBottom: 24 },
   headerCompact: { flexDirection: 'column', alignItems: 'flex-start', gap: 14, marginBottom: 18 },
   avatarCol: { alignItems: 'center', gap: 6 },
@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
   editLinkWrap: { marginLeft: 10 },
   editLink: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12, textDecorationLine: 'underline' },
 
-  // Setup checklist — Instagram-style completion nudge
+
   setupCard: {
     padding: 16,
     borderRadius: 12,
@@ -618,7 +618,7 @@ const styles = StyleSheet.create({
   setupLabelDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
   setupChevron: { color: COLORS.textMuted, fontSize: 20, fontFamily: BODY_FONT },
 
-  // Sections
+
   section: { marginBottom: 24 },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -649,7 +649,7 @@ const styles = StyleSheet.create({
   empty: { color: COLORS.textMuted, fontFamily: BODY_FONT, fontSize: 13 },
   errorText: { color: COLORS.error, fontFamily: BODY_FONT, fontSize: 12, marginTop: 4 },
 
-  // Edit form buttons
+
   editButtons: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
   btn: {
     paddingVertical: 8,
@@ -664,7 +664,7 @@ const styles = StyleSheet.create({
   btnGhostLabel: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 13 },
   btnDim: { opacity: 0.6 },
 
-  // Danger zone
+
   dangerZone: {
     marginTop: 24,
     padding: 18,

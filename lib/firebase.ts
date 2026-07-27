@@ -18,8 +18,8 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Sanity check: if any required value is missing, scream loud in the console
-// instead of failing later with a confusing Firebase error.
+
+
 const missing = Object.entries(firebaseConfig)
   .filter(([, v]) => !v)
   .map(([k]) => k);

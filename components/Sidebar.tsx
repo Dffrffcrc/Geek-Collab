@@ -115,7 +115,7 @@ export function SidebarContent({
   );
 }
 
-// Also prunes the user-doc array as a best-effort cleanup so deletes stick across reloads.
+
 function useExistingRecentForums(
   uid: string | undefined,
   recent: RecentForum[] | undefined,

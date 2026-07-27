@@ -13,14 +13,14 @@ import {
 import { COLORS, BODY_FONT } from '../lib/theme';
 import { XIcon } from './Icons';
 
-// Full-screen dark-backdrop image viewer. Opens when the user taps an image
-// in a post/comment. Supports navigating through a set of images (so tapping
-// image #2 of a 5-image carousel opens the lightbox on #2 with arrows to
-// walk through the rest without leaving the modal). Click-outside or the X
-// button closes it.
-//
-// This replaces the previous "open image URL in a new tab" behaviour that
-// yanked users out of the app.
+
+
+
+
+
+
+
+
 export function ImageLightbox({
   urls,
   startIndex,
@@ -35,13 +35,13 @@ export function ImageLightbox({
   const [index, setIndex] = useState(startIndex);
   const { width: winW, height: winH } = useWindowDimensions();
 
-  // Reset the index each time the lightbox opens — otherwise reopening it
-  // on a different image would flash the last one first.
+
+
   useEffect(() => {
     if (visible) setIndex(startIndex);
   }, [visible, startIndex]);
 
-  // Keyboard shortcuts on web: Esc close, arrow keys navigate. Native no-op.
+
   useEffect(() => {
     if (!visible || typeof window === 'undefined') return;
     function onKey(e: KeyboardEvent) {

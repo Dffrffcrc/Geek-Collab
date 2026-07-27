@@ -6,15 +6,15 @@ import { ImageCarousel } from './ImageCarousel';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { extractUrls } from '../lib/link-previews';
 
-// The composite render for everything that attaches to a post: image carousel
-// (or single image), non-image file cards (PDF/PPTX), and link-preview cards
-// extracted from the post body.
-//
-// `mode`:
-//   'post'  — inside the post-detail page. Taps open the resource directly.
-//   'card'  — inside a PostCard on the forum list. Taps propagate up so the
-//             parent card navigation still works, EXCEPT for carousel arrows /
-//             dots which stop propagation so paging doesn't trigger nav.
+
+
+
+
+
+
+
+
+
 export function PostAttachments({
   attachments,
   body,
@@ -25,12 +25,12 @@ export function PostAttachments({
   attachments?: Attachment[] | null;
   body?: string | null;
   mode?: 'post' | 'card';
-  // Controls the carousel/file-card scale. 'small' is for comments; 'normal'
-  // is for the post-detail view. Independent of `mode` (which controls tap
-  // behaviour: card → navigate to post, post → open the resource directly).
+
+
+
   size?: 'small' | 'normal';
-  // Called when a resource in the strip is tapped and we're in card mode —
-  // typically navigate to the post detail page.
+
+
   onNavigate?: () => void;
 }) {
   const list = attachments ?? [];
@@ -53,7 +53,7 @@ export function PostAttachments({
           onImagePress={
             mode === 'card'
               ? () => onNavigate?.()
-              : undefined /* undefined → default (open in new tab) */
+              : undefined
           }
         />
       )}
@@ -81,8 +81,8 @@ export function PostAttachments({
   );
 }
 
-// Larger, more inviting PDF/PPTX card than the flat strip version. Prominent
-// badge + filename + size + "open" chevron so users are drawn to tap it.
+
+
 function FileCard({
   attachment,
   mode,
@@ -119,17 +119,17 @@ function FileCard({
   );
 }
 
-// Simple wrapper of the first image only, used in the very-compact PostCard
-// layout when we intentionally want to skip the carousel — kept as an export
-// in case forum listings ever want that. Not used by PostAttachments itself.
+
+
+
 export function FirstImageOnly({ url }: { url: string | undefined }) {
   if (!url) return null;
   return <Image source={{ uri: url }} style={styles.singleImage} resizeMode="cover" />;
 }
 
 const styles = StyleSheet.create({
-  // Explicit width + stretch so the horizontal ScrollView inside
-  // ImageCarousel doesn't get a zero-width parent on RN Web.
+
+
   root: { width: '100%', alignSelf: 'stretch' },
   files: { marginTop: 12, gap: 8 },
   links: { marginTop: 12, gap: 8 },

@@ -38,15 +38,15 @@ export default function AdminReports() {
   const [search, setSearch] = useState('');
   const [reasonFilter, setReasonFilter] = useState<string>('All');
   const [forumFilter, setForumFilter] = useState<string>('All');
-  // Track which targets have already been actioned so the matching button
-  // can disappear and the row reads as "done" instead of inviting another
-  // (no-op) click. Keys are scoped by forumSlug to avoid collisions across
-  // forums that happen to use the same post slug.
+
+
+
+
   const [deletedTargets, setDeletedTargets] = useState<Record<string, boolean>>({});
   const [quarantinedPosts, setQuarantinedPosts] = useState<Record<string, boolean>>({});
   const [bannedUids, setBannedUids] = useState<Set<string>>(new Set());
 
-  // Forum names for the filter dropdown.
+
   useEffect(() => {
     return onSnapshot(collection(db, 'forums'), (snap) => {
       const map = new Map<string, string>();
@@ -78,8 +78,8 @@ export default function AdminReports() {
     );
   }, []);
 
-  // For each open report, fetch the underlying post/comment once so we
-  // know whether Delete/Quarantine have already been applied.
+
+
   useEffect(() => {
     if (!reports) return;
     const open = reports.filter((r) => r.status === 'open' || r.status === 'quarantined');
@@ -125,9 +125,9 @@ export default function AdminReports() {
     };
   }, [reports, deletedTargets, quarantinedPosts]);
 
-  // Active-ban presence — drives the "Ban" button's disabled state.
-  // Filters out expired timeouts so an old expired entry doesn't permanently
-  // grey out the button.
+
+
+
   useEffect(() => {
     return onSnapshot(collection(db, 'timeouts'), (snap) => {
       const now = Date.now();

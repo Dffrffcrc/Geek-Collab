@@ -65,7 +65,7 @@ export default function NewForum() {
         setBusy(false);
         return;
       }
-      // Always include the creator (an admin) as a moderator.
+
       const finalMods = Array.from(new Set([...moderatorUids, user!.uid]));
       await setDoc(ref, {
         name: trimmedName,

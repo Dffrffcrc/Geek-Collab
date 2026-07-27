@@ -24,8 +24,8 @@ export default function Login() {
     router.replace(needsProfile ? '/complete-profile' : '/forums');
   }, [initializing, needsProfile, router, user, banned]);
 
-  // Surface any error the AuthProvider caught while completing a portal
-  // redirect (e.g. cancelled sign-in, bad state token).
+
+
   useEffect(() => {
     if (authError) setError(authError);
   }, [authError]);
@@ -37,7 +37,7 @@ export default function Login() {
       await startPortalSignIn();
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
-      // Popup dismissed by the user isn't really an error — just quiet it.
+
       if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
         return;
       }
@@ -62,9 +62,11 @@ export default function Login() {
       <Text style={[styles.heading, isMobile && styles.headingMobile]}>
         Log in to forum.geekshacking:
       </Text>
+
       <Text style={styles.body}>
-        Sign in with your GeeksHacking account through the portal.
+        If the page returns a 404 error, please redo the login process.
       </Text>
+
       {error && <Text style={styles.error}>{error}</Text>}
       <PrimaryButton
         label="Continue with GeeksHacking Portal"

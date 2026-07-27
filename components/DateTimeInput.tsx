@@ -1,10 +1,10 @@
 import { Platform, StyleSheet, TextInput } from 'react-native';
 import { COLORS, BODY_FONT } from '../lib/theme';
 
-// react-native-web passes through unknown JSX intrinsic elements to the DOM,
-// so on web we render a plain <input type="datetime-local"> for the OS-native
-// picker. On mobile we fall back to a plain text input (we'll swap in a real
-// native picker when we add mobile support).
+
+
+
+
 export function DateTimeInput({
   value,
   onChange,

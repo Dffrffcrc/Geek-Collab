@@ -45,9 +45,9 @@ export default function ModLayout() {
       </View>
     );
   }
-  // Admins are implicitly moderators of every forum, even if they aren't
-  // explicitly added to moderatorUids. Without this branch an admin who
-  // hasn't been added as a forum mod gets locked out of their own panel.
+
+
+
   const isMod = (forum.moderatorUids ?? []).includes(user.uid);
   if (!isMod && !isAdmin) {
     return (

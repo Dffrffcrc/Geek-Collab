@@ -104,7 +104,7 @@ export default function AdminUsers() {
         if (filter === 'mods')
           return forums.some((f) => f.moderatorUids.includes(u.uid));
         if (filter === 'admins') return adminUids.has(u.uid);
-        // 'all' excludes banned users — they live exclusively in the Banned tab.
+
         return !bannedUids.has(u.uid);
       })
       .filter(
@@ -143,11 +143,11 @@ export default function AdminUsers() {
   }
 
   async function deleteAccount(u: UserRow) {
-    // Deliberately double-confirm since this can't be undone. The target's
-    // Firebase Auth record stays (client SDK can't touch other users' auth),
-    // but the profile + username + mod roles are gone. If the target is
-    // banned (which is our precondition), they can't create a new profile
-    // either — /complete-profile is behind BannedScreen.
+
+
+
+
+
     if (!confirm(`Permanently delete @${u.username}'s profile? Their posts stay in the forums but their account and username will be gone. This cannot be undone.`)) {
       return;
     }
@@ -354,18 +354,18 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 0 },
   displayName: { color: COLORS.textPrimary, fontFamily: BODY_FONT, fontSize: 14, fontWeight: '700' },
   username: { color: COLORS.yellow, fontFamily: BODY_FONT, fontSize: 12, marginTop: 2 },
-  // Small wrapper around state icons in the row — adds padding for the
-  // hover-tooltip hit area.
+
+
   stateIcon: {
     marginLeft: 4,
     padding: 4,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // Inline "(mod · 3)" text — nested inside the @username Text so it
-  // inherits size + family. Same shape as the "(admin)" tag but with a
-  // forum count since the admin panel is one of the few places that count
-  // is useful.
+
+
+
+
   modInline: {
     color: COLORS.yellow,
     fontWeight: '600',

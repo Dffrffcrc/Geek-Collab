@@ -10,20 +10,20 @@ import { getIdTokenResult, onIdTokenChanged } from 'firebase/auth';
 import { auth, db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
-// =============================================================================
-// ADMIN AUTHORITY
-// =============================================================================
-// There is no hardcoded admin list anymore. Admins are defined by:
-//   - a Firebase Auth custom claim { admin: true } on the user's ID token, and
-//   - a mirrored /admins/{uid} Firestore doc.
-// Both are written atomically by the `setAdmin` Cloud Function (functions/
-// src/index.ts) or the one-time bootstrap script (functions/bootstrap-
-// admin.mjs) for the very first admin.
-//
-// The client subscribes to the /admins collection so it can render admin
-// badges next to any user + gate mod actions on admin-authored content
-// without needing a Cloud Function round-trip.
-// =============================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 type Admin = {
   uid: string;
@@ -79,11 +79,11 @@ export function AdminsProvider({ children }: { children: ReactNode }) {
   return <AdminsContext.Provider value={state}>{children}</AdminsContext.Provider>;
 }
 
-// Hook returns the live admin snapshot plus two lookup helpers. Components
-// that need to check other users' admin status (badges, "can I moderate
-// this admin's post" gates) should destructure `isAdminUsername` / `isAdminUid`
-// from here — they close over the current snapshot and trigger a re-render
-// when it changes.
+
+
+
+
+
 export function useAdmins() {
   const state = useContext(AdminsContext);
   return {
@@ -95,9 +95,9 @@ export function useAdmins() {
   };
 }
 
-// True when the currently signed-in user has the { admin: true } custom
-// claim on their Firebase Auth ID token. Reactively updates as the token
-// rotates (Firebase rotates hourly, or on demand via getIdToken(true)).
+
+
+
 export function useIsServerAdmin(): boolean {
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -120,9 +120,9 @@ export function useIsServerAdmin(): boolean {
   return isAdmin;
 }
 
-// Calls functions/src/index.ts#setAdmin. Only admins can invoke it (the
-// Cloud Function checks the caller's custom claim). Throws on rejection —
-// callers should surface the message from HttpsError.
+
+
+
 export async function callSetAdmin(targetUid: string, admin: boolean): Promise<void> {
   const call = httpsCallable<{ targetUid: string; admin: boolean }, { ok: boolean }>(
     functions,

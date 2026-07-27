@@ -16,15 +16,15 @@ import { PrimaryButton } from '../components/PrimaryButton';
 const MAX_DISPLAY_NAME = 40;
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{1,20}$/;
 
-// Signup step for users who've just authenticated through the OIDC portal
-// but don't have a Firestore users/{uid} doc yet. Prompts them to pick a
-// username and confirm their display name. Email is inherited from the
-// OIDC identity and shown read-only.
-//
-// Not routable directly — the AuthProvider sets needsProfile=true when the
-// profile is missing, and every top-level layout redirects here based on
-// that flag. On successful submit we call refreshProfile() so the flag
-// flips and the app routes into /forums.
+
+
+
+
+
+
+
+
+
 export default function CompleteProfile() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -37,9 +37,9 @@ export default function CompleteProfile() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Bounce to /login if not signed in, or to /forums if profile already
-  // exists (they don't belong on this page anymore). Only run once state
-  // has stabilised so we don't flap during initial mount.
+
+
+
   useEffect(() => {
     if (initializing) return;
     if (!user) {
@@ -50,8 +50,8 @@ export default function CompleteProfile() {
       router.replace('/forums');
       return;
     }
-    // Prefill display name once from OIDC data. Guarded by `prefilled` so
-    // typing doesn't get clobbered by a re-render.
+
+
     if (!prefilled) {
       const suggested =
         user.displayName?.trim() ||
@@ -93,7 +93,7 @@ export default function CompleteProfile() {
           tx.get(unameRef),
         ]);
         if (profileSnap.exists()) {
-          // Race — some other tab created it. Not an error, just proceed.
+
           return;
         }
         if (unameSnap.exists()) {
@@ -112,8 +112,8 @@ export default function CompleteProfile() {
         tx.set(unameRef, { uid: user.uid });
       });
 
-      // Flip the app-wide needsProfile flag immediately so we don't wait for
-      // the next auth-state fire before routing into /forums.
+
+
       await refreshProfile();
       router.replace('/forums');
     } catch (err: unknown) {
@@ -130,8 +130,8 @@ export default function CompleteProfile() {
   }
 
   async function onCancel() {
-    // If a user lands here and decides they don't want to complete signup,
-    // give them a way back to /login instead of trapping them.
+
+
     try {
       await signOutPortalUser();
     } catch {

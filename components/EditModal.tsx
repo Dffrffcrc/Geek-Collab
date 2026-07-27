@@ -36,7 +36,7 @@ export function EditModal(props: EditPost | EditComment) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset form whenever the modal opens.
+
   useEffect(() => {
     if (!props.visible) return;
     setError(null);

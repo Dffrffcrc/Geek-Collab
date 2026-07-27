@@ -25,7 +25,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     fontSize: 15,
     fontFamily: FONT,
-    // react-native-web: kill the default browser focus ring; we rely on borderColor
+
     // @ts-expect-error web-only style
     outlineStyle: 'none',
   },

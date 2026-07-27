@@ -12,18 +12,18 @@ import { AttachmentPicker, type AttachmentPickerHandle } from './AttachmentPicke
 import { DropZone } from './DropZone';
 import { pickFiles, UPLOAD_ACCEPT, type Attachment } from '../lib/uploads';
 
-// Instagram/Threads-style single-row composer: image trigger on the left,
-// text input in the middle, send trigger on the right, all inside one
-// pill-shaped border. Attachments render below the pill as thumbnails.
-//
-// Design decisions:
-//   * Send is DISABLED (visibly greyed) when there's no text AND no
-//     attachments. No error toast needed — the affordance itself tells you
-//     why it won't fire.
-//   * Image trigger is always visible so users don't have to hunt for it.
-//     (The earlier version put "Add file" below the input, which was fine
-//     for posts but felt heavy for comments.)
-//   * DropZone still wraps everything so paste + drop keep working.
+
+
+
+
+
+
+
+
+
+
+
+
 
 export type InlineComposerHandle = {
   focus: () => void;
@@ -40,7 +40,7 @@ export const InlineComposer = forwardRef<
     onSubmit: () => void;
     placeholder?: string;
     busy?: boolean;
-    // Tighter styling for reply composers nested inside comments.
+
     size?: 'normal' | 'small';
   }
 >(function InlineComposer(
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 8,
     paddingHorizontal: 0,
-    // outlineStyle: 'none' hides the ugly focus ring RN Web adds by default.
+
     // @ts-expect-error web-only prop
     outlineStyle: 'none',
   },
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     paddingVertical: 6,
   },
-  // Media + send button cluster, sitting side-by-side on the right.
+
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -183,8 +183,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // Send is a compact filled circle — smaller than the media icon's hit
-  // area so it doesn't dominate the row. Was 36px before, dropped to 28.
+
+
   sendBtn: {
     width: 28,
     height: 28,

@@ -71,8 +71,8 @@ export function ReportModal({
         status: 'open',
         createdAt: serverTimestamp(),
       });
-      // Bump reportCount on the post (only when reporting a post — comments
-      // don't have their own counter; their reports show up in the panel anyway).
+
+
       if (targetType === 'post') {
         try {
           await runTransaction(db, async (tx) => {

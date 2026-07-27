@@ -7,12 +7,12 @@ import { AuthProvider } from '../lib/auth';
 import { COLORS } from '../lib/theme';
 
 export default function RootLayout() {
-  // Kick off bundled-font loading but DO NOT block the app on it. The
-  // Google Fonts CDN <link> in app/+html.tsx is the primary source on web
-  // and the font-family chain in lib/theme.ts (`SpaceMono, "Space Mono",
-  // monospace`) lets the browser pick whichever is ready first. Blocking
-  // the whole shell on `fontsLoaded` used to trap users on the spinner
-  // when the bundled .ttf 404'd on production.
+
+
+
+
+
+
   useFonts({
     SpaceMono: SpaceMono_400Regular,
     SpecialElite: SpecialElite_400Regular,

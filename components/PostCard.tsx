@@ -69,8 +69,8 @@ export function PostCard({
   const isMobile = width < 640;
   const canModerate = isAdmin || (isMod && !isAdminUsername(post.authorUsername));
   const authorRole = useUserRole(post.authorUsername, post.authorUid, moderatorUids);
-  // Fall back to legacy `mediaUrls` (pre-storage-integration posts) by
-  // synthesising Attachment records so PostAttachments renders them the same.
+
+
   const effectiveAttachments =
     post.attachments && post.attachments.length > 0
       ? post.attachments
@@ -130,7 +130,7 @@ export function PostCard({
     if (!confirm('Delete this post?')) return;
     if (!user || !profile) return;
     try {
-      // Soft delete: keeps content for admin audit, hides from normal views.
+
       await updateDoc(doc(db, 'forums', forumSlug, 'posts', post.slug), {
         isDeleted: true,
         deletedAt: serverTimestamp(),

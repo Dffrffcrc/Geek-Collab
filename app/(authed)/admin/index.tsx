@@ -37,15 +37,15 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<number | null>(null);
   const [recentMod, setRecentMod] = useState<Activity[] | null>(null);
   const [forumSlugs, setForumSlugs] = useState<string[]>([]);
-  // Surface query errors instead of silently flattening them to 0 — that
-  // way "missing collection-group index" doesn't look like "no data".
+
+
   const [loadErrors, setLoadErrors] = useState<string[]>([]);
   const pushErr = (label: string, err: { code?: string; message?: string }) =>
     setLoadErrors((prev) => [...prev, `${label}: ${err.code ?? err.message ?? 'unknown error'}`]);
 
   useEffect(() => {
     setLoadErrors([]);
-    // One-shot counts for the heavier queries — these don't change every second.
+
     (async () => {
       try {
         const forumCount = (await getCountFromServer(collection(db, 'forums'))).data().count;
