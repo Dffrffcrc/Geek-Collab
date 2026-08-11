@@ -1,6 +1,7 @@
 import { View, Text, Image, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { COLORS, BODY_FONT } from '../lib/theme';
 import { faviconFor, hostnameFor, pathSummaryFor } from '../lib/link-previews';
+import { isSafeExternalUrl } from '../lib/url-safety';
 
 
 
@@ -18,7 +19,7 @@ export function LinkPreviewCard({
 
   function handlePress() {
     if (onPress) onPress();
-    else Linking.openURL(url).catch(() => undefined);
+    else if (isSafeExternalUrl(url)) Linking.openURL(url).catch(() => undefined);
   }
 
   return (

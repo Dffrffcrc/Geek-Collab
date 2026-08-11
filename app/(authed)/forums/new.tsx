@@ -11,6 +11,10 @@ import { FormInput } from '../../../components/FormInput';
 import { PrimaryButton } from '../../../components/PrimaryButton';
 import { DateTimeInput } from '../../../components/DateTimeInput';
 import { UserPicker } from '../../../components/UserPicker';
+import {
+  MAX_FORUM_DESCRIPTION_LENGTH,
+  MAX_FORUM_NAME_LENGTH,
+} from '../../../lib/content-limits';
 
 function toLocalInputValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -50,6 +54,14 @@ export default function NewForum() {
     const trimmedName = name.trim();
     const slug = slugify(trimmedName);
     if (!trimmedName) return setError('Forum needs a name.');
+    if (trimmedName.length > MAX_FORUM_NAME_LENGTH) {
+      return setError(`Name must be ${MAX_FORUM_NAME_LENGTH} characters or fewer.`);
+    }
+    if (description.trim().length > MAX_FORUM_DESCRIPTION_LENGTH) {
+      return setError(
+        `Description must be ${MAX_FORUM_DESCRIPTION_LENGTH} characters or fewer.`,
+      );
+    }
     if (!slug) return setError('Name must contain at least one letter or number.');
     if (!closesAt) return setError('Pick a close date and time.');
     const closesAtMs = new Date(closesAt).getTime();
@@ -92,13 +104,19 @@ export default function NewForum() {
       <Text style={[styles.heading, compact && styles.headingCompact]}>Create a forum</Text>
 
       <Text style={styles.label}>Name</Text>
-      <FormInput placeholder="e.g. Workshop 3: Intro to Linux" value={name} onChangeText={setName} />
+      <FormInput
+        placeholder="e.g. Workshop 3: Intro to Linux"
+        value={name}
+        onChangeText={setName}
+        maxLength={MAX_FORUM_NAME_LENGTH}
+      />
 
       <Text style={styles.label}>Description (optional)</Text>
       <FormInput
         placeholder="What this forum is for"
         value={description}
         onChangeText={setDescription}
+        maxLength={MAX_FORUM_DESCRIPTION_LENGTH}
         multiline
         style={{ height: 80, paddingTop: 14 }}
       />

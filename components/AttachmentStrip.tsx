@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { COLORS, BODY_FONT } from '../lib/theme';
 import { formatSize, type Attachment } from '../lib/uploads';
+import { isSafeExternalUrl } from '../lib/url-safety';
 
 export function AttachmentStrip({
   attachments,
@@ -34,7 +35,11 @@ function AttachmentTile({
   attachment: Attachment;
   small: boolean;
 }) {
-  const open = () => Linking.openURL(attachment.url).catch(() => undefined);
+  const open = () => {
+    if (isSafeExternalUrl(attachment.url)) {
+      Linking.openURL(attachment.url).catch(() => undefined);
+    }
+  };
 
   if (attachment.kind === 'image') {
     const dimension = small ? 96 : 160;

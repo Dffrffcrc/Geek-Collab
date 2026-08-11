@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Linking } from 'react-native';
 import { COLORS, BODY_FONT } from '../lib/theme';
 import { formatSize, type Attachment } from '../lib/uploads';
+import { isSafeExternalUrl } from '../lib/url-safety';
 import { ImageCarousel } from './ImageCarousel';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import { extractUrls } from '../lib/link-previews';
@@ -100,7 +101,9 @@ function FileCard({
       onNavigate?.();
       return;
     }
-    Linking.openURL(attachment.url).catch(() => undefined);
+    if (isSafeExternalUrl(attachment.url)) {
+      Linking.openURL(attachment.url).catch(() => undefined);
+    }
   }
 
   return (

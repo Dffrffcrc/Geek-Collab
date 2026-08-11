@@ -45,6 +45,7 @@ import { EditModal } from '../../../../components/EditModal';
 import { PostAttachments } from '../../../../components/PostAttachments';
 import { InlineComposer } from '../../../../components/InlineComposer';
 import { type Attachment } from '../../../../lib/uploads';
+import { MAX_COMMENT_BODY_LENGTH } from '../../../../lib/content-limits';
 
 type Post = {
   title: string;
@@ -165,6 +166,9 @@ export default function PostDetail() {
     setError(null);
     const t = commentText.trim();
     if (!t && commentAttachments.length === 0) return;
+    if (t.length > MAX_COMMENT_BODY_LENGTH) {
+      return setError(`Comment must be ${MAX_COMMENT_BODY_LENGTH} characters or fewer.`);
+    }
     if (!user || !profile || !slug || !postSlug) return;
     if (timedOut) return setError('You are timed out and cannot comment.');
     if (muted) return setError('You are muted in this forum.');
